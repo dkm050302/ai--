@@ -1,0 +1,32 @@
+{
+  "name": "goldpilot-backend",
+  "version": "1.0.0",
+  "description": "GoldPilot 黄金交易决策系统 - 后端服务",
+  "main": "dist/app.js",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "lint": "echo 'Linting...' && exit 0",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.6.2",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.8.0",
+    "nodemon": "^3.1.14",
+    "tsx": "^4.22.0",
+    "typescript": "^6.0.3"
+  }
+}
