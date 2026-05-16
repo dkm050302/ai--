@@ -64,5 +64,11 @@ export function createDefaultDailyStats(): DailyStats {
     totalProfit: 1850,
     totalLoss: 450,
     netProfit: 1400,
+    upProb: 55,
+    downProb: 45,
+    risk: 50,
+    riskLevel: 'medium',
+    positionAdvice: 50,
+    stopLoss: 2.5,
   };
 }

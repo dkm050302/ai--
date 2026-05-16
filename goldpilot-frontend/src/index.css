@@ -1,10 +1,29 @@
+/* Ant Design - @import must be first */
+@import 'antd/dist/reset.css';
+
 /* TailwindCSS */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Ant Design */
-@import 'antd/dist/reset.css';
+/* CSS变量 - 完全按照index.html */
+:root {
+  --bg: #f4f7fa;
+  --paper: #ffffff;
+  --ink: #1d252d;
+  --muted: #667482;
+  --line: #dfe6ec;
+  --line-dark: #c8d2dc;
+  --blue: #1769e0;
+  --blue-soft: #edf5ff;
+  --red: #e3342f;
+  --red-soft: #fff0f0;
+  --green: #0f9f6e;
+  --green-soft: #eafaf3;
+  --amber: #b97800;
+  --amber-soft: #fff8e6;
+  --panel-shadow: 0 14px 34px rgba(25, 44, 63, 0.08);
+}
 
 /* 全局样式 */
 * {
@@ -14,16 +33,515 @@
 body {
   margin: 0;
   min-height: 100vh;
-  color: #1d252d;
-  background: #f4f7fa;
+  color: var(--ink);
+  background: var(--bg);
   font-family: "PingFang SC", "Microsoft YaHei", "Avenir Next", sans-serif;
   font-size: 14px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+/* 页面布局 - 完全按照index.html */
+.page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+/* 顶部导航栏 */
+.date-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 64px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 2px 10px rgba(25, 44, 63, 0.04);
+}
+
+.brand-block {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-name {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.brand-sub {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.date-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.date-text {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 5px rgba(15, 159, 110, 0.1);
+}
+
+/* 主内容区 */
+.main {
+  display: grid;
+  grid-template-columns: minmax(720px, 1.05fr) minmax(500px, 0.95fr);
+  gap: 14px;
+  padding: 14px;
+  min-height: 0;
+}
+
+.left,
+.right {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 左侧网格 */
+.left-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* 决策卡片 */
+.decision-card {
+  display: grid;
+  grid-template-columns: 1.2fr 0.9fr 0.9fr;
+  gap: 10px;
+  padding: 13px;
+  background:
+    linear-gradient(120deg, rgba(23, 105, 224, 0.08), transparent 44%),
+    var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--panel-shadow);
+}
+
+.decision-main {
+  padding-right: 10px;
+  border-right: 1px solid var(--line);
+}
+
+.decision-kicker {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.decision-main h1 {
+  margin: 6px 0 8px;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: bold;
+  color: var(--ink);
+}
+
+.decision-main p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.decision-box {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.decision-box strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+/* 卡片样式 */
+.card,
+.market-card,
+.account-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--panel-shadow);
+}
+
+.card {
+  min-height: 160px;
+  padding: 13px;
+}
+
+.card-title,
+.panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.card-title strong,
+.panel-title strong {
+  font-size: 15px;
+}
+
+.sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Pill 标签 */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-dark);
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pill.red {
+  border-color: #ffc9c9;
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.pill.green {
+  border-color: #bdebd7;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.pill.amber {
+  border-color: #f5d47a;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.pill.blue {
+  border-color: #b8d9f2;
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+/* 数据指标 */
+.metric {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 35px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.metric:last-child {
+  border-bottom: 0;
+}
+
+.metric b {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.red {
+  color: var(--red);
+}
+
+.green {
+  color: var(--green);
+}
+
+.blue {
+  color: var(--blue);
+}
+
+.amber {
+  color: var(--amber);
+}
+
+/* 进度条 */
+.prob-bar,
+.risk-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf1f5;
+  border: 1px solid var(--line);
+  margin: 9px 0 11px;
+}
+
+.prob-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #72d79f);
+}
+
+.risk-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #f0bd45, var(--red));
+}
+
+/* 迷你列表 */
+.mini-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mini-item {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 8px;
+  line-height: 1.45;
+  padding: 8px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+}
+
+.mini-time {
+  color: var(--blue);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 宽面板 */
+.wide-panels {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 0.82fr 0.88fr 0.9fr;
+  gap: 10px;
+}
+
+.feed {
+  min-height: 0;
+  padding: 13px;
+  overflow: hidden;
+}
+
+.scroll {
+  display: grid;
+  gap: 9px;
+  max-height: calc(100vh - 392px);
+  min-height: 270px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+/* 事件和快讯行 */
+.event-row,
+.flash-row {
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  gap: 10px;
+  padding: 9px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: #fbfcfe;
+}
+
+.event-row.important {
+  background: var(--amber-soft);
+  border-color: #f2d184;
+}
+
+.flash-row.hot {
+  background: var(--red-soft);
+  border-color: #ffc6c6;
+}
+
+.flash-row.hot .flash-text {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.row-time {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.row-text,
+.flash-text {
+  line-height: 1.48;
+}
+
+/* 市场卡片 */
+.market-card {
+  flex: 1;
+  min-height: 460px;
+  padding: 13px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
+.quote-strip {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.quote {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfe;
+}
+
+.quote .sub {
+  font-size: 12px;
+}
+
+.quote .value {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote:first-child .value {
+  font-size: 18px;
+}
+
+/* 账户卡片 */
+.account-card {
+  padding: 13px;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.account {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfe;
+}
+
+.account .sub {
+  font-size: 12px;
+}
+
+.account b {
+  display: block;
+  margin-top: 5px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 动作列表 */
+.action-list {
+  display: grid;
+  gap: 9px;
+}
+
+.action-item {
+  padding: 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: #fbfcfe;
+}
+
+.action-item strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+/* K线图相关样式 */
+.chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.periods button {
+  border: 1px solid var(--line-dark);
+  background: #f8fafc;
+  border-radius: 5px;
+  padding: 6px 9px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.periods button.active {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.chart-wrap {
+  min-height: 330px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background:
+    linear-gradient(#eef3f7 1px, transparent 1px),
+    linear-gradient(90deg, #eef3f7 1px, transparent 1px),
+    #ffffff;
+  background-size: 100% 58px, 70px 100%;
 }
 
 /* 自定义滚动条 */
@@ -33,14 +551,69 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c8d2dc;
+  background: #cbd5e1;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8b2ba;
+  background: #94a3b8;
+}
+
+/* 辅助类 */
+.mr-1 {
+  margin-right: 0.25rem;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+/* 响应式 */
+@media (max-width: 1220px) {
+  .main {
+    grid-template-columns: 1fr;
+  }
+  .scroll {
+    max-height: 360px;
+  }
+}
+
+@media (max-width: 780px) {
+  .page {
+    grid-template-rows: auto 1fr;
+  }
+  .date-bar {
+    min-height: 52px;
+    font-size: 16px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .main {
+    padding: 10px;
+  }
+  .left-grid,
+  .decision-card,
+  .wide-panels,
+  .quote-strip,
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-main {
+    padding-right: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+  .market-card {
+    min-height: 560px;
+  }
 }

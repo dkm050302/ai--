@@ -1,57 +1,60 @@
-import { formatNumber, getPriceColorClass } from '@/utils/format';
-import type { PriceData } from '@/types';
+import { formatNumber } from '@/utils/format';
 
 interface PriceCardProps {
-  data: PriceData;
+  priceData: {
+    price: number;
+    change: number;
+    changePct: number;
+    high: number;
+    low: number;
+  };
 }
 
 /**
- * 价格卡片组件 - 显示现货黄金实时报价
+ * 价格卡片组件 - 完全按照index.html设计
  */
-export function PriceCard({ data }: PriceCardProps) {
-  const { price, change, changePct, high, low } = data;
+export function PriceCard({ priceData }: PriceCardProps) {
+  const { price, change, changePct, high, low } = priceData;
+
+  const getColorClass = (value: number) => {
+    return value >= 0 ? 'green' : 'red';
+  };
 
   return (
-    <div className="grid grid-cols-[1.2fr_repeat(4,_1fr)] gap-2">
+    <>
       {/* 现货黄金价格 */}
-      <div className="min-w-0 p-2 border border-line rounded bg-[#fbfcfe]">
-        <span className="text-xs text-muted block">现货黄金 XAU/USD</span>
-        <div className={`text-base font-extrabold tabular-nums mt-1 whitespace-nowrap overflow-hidden text-ellipsis ${getPriceColorClass(change)}`}>
-          {formatNumber(price)}
-        </div>
+      <div className="quote">
+        <span className="sub">现货黄金 XAU/USD</span>
+        <div className={`value ${getColorClass(change)}`}>{formatNumber(price)}</div>
       </div>
 
       {/* 涨跌额 */}
-      <div className="min-w-0 p-2 border border-line rounded bg-[#fbfcfe]">
-        <span className="text-xs text-muted block">涨跌额</span>
-        <div className={`text-base font-extrabold tabular-nums mt-1 whitespace-nowrap overflow-hidden text-ellipsis ${getPriceColorClass(change)}`}>
+      <div className="quote">
+        <span className="sub">涨跌额</span>
+        <div className={`value ${getColorClass(change)}`}>
           {change >= 0 ? '+' : ''}{formatNumber(change)}
         </div>
       </div>
 
       {/* 涨跌幅 */}
-      <div className="min-w-0 p-2 border border-line rounded bg-[#fbfcfe]">
-        <span className="text-xs text-muted block">涨跌幅</span>
-        <div className={`text-base font-extrabold tabular-nums mt-1 whitespace-nowrap overflow-hidden text-ellipsis ${getPriceColorClass(change)}`}>
+      <div className="quote">
+        <span className="sub">涨跌幅</span>
+        <div className={`value ${getColorClass(change)}`}>
           {changePct >= 0 ? '+' : ''}{formatNumber(changePct)}%
         </div>
       </div>
 
       {/* 最高价 */}
-      <div className="min-w-0 p-2 border border-line rounded bg-[#fbfcfe]">
-        <span className="text-xs text-muted block">最高</span>
-        <div className="text-base font-extrabold tabular-nums mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
-          {formatNumber(high)}
-        </div>
+      <div className="quote">
+        <span className="sub">最高</span>
+        <div className="value">{formatNumber(high)}</div>
       </div>
 
       {/* 最低价 */}
-      <div className="min-w-0 p-2 border border-line rounded bg-[#fbfcfe]">
-        <span className="text-xs text-muted block">最低</span>
-        <div className="text-base font-extrabold tabular-nums mt-1 whitespace-nowrap overflow-hidden text-ellipsis">
-          {formatNumber(low)}
-        </div>
+      <div className="quote">
+        <span className="sub">最低</span>
+        <div className="value">{formatNumber(low)}</div>
       </div>
-    </div>
+    </>
   );
 }

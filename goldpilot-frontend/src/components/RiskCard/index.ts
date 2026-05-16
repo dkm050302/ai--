@@ -1,0 +1,1 @@
+export { RiskCard } from './RiskCard';

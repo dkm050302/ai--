@@ -12,5 +12,8 @@ export function createDefaultPriceData(): PriceData {
     high: 2392.80,
     low: 2375.60,
     timestamp: new Date(),
+    support1: 2380.00,
+    support2: 2375.00,
+    resistance1: 2395.00,
   };
 }

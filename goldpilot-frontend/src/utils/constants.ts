@@ -1,9 +1,10 @@
 /**
  * API配置
+ * 生产环境使用空字符串作为baseURL，通过Nginx代理
  */
 export const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
-  wsURL: import.meta.env.VITE_WS_URL || 'ws://localhost:3000',
+  baseURL: import.meta.env.VITE_API_URL || '',
+  wsURL: import.meta.env.VITE_WS_URL || (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host,
 } as const;
 
 /**

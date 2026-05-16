@@ -32,7 +32,7 @@ export class SignalService {
         timestamp: {
           $gte: new Date(now.getTime() - 60000), // 1分钟内
         },
-        period,
+        period: period as any,
       });
 
       if (existingSignal) {
@@ -180,7 +180,7 @@ export class SignalService {
    */
   async getSignalsByPeriod(period: string, limit: number = 50): Promise<Signal[]> {
     try {
-      return await SignalModel.find({ period })
+      return await SignalModel.find({ period: period as any })
         .sort({ timestamp: -1 })
         .limit(limit)
         .lean();

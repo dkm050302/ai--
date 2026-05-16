@@ -1,79 +1,103 @@
-import { formatMoney, getPriceColorClass } from '@/utils/format';
+import { formatMoney } from '@/utils/format';
 import type { Account } from '@/types';
 
 interface AccountCardProps {
-  data: Account;
+  accountData: Account;
 }
 
 /**
- * 账户卡片组件 - 显示账户交易情况
+ * 账户卡片组件 - 完全按照index.html设计
  */
-export function AccountCard({ data }: AccountCardProps) {
+export function AccountCard({ accountData }: AccountCardProps) {
   const {
     equity,
     freeMargin,
     positions,
     dailyPnl,
     riskUsed,
-  } = data;
+  } = accountData;
 
-  // 计算持仓手数
-  const totalLots = positions.reduce((sum, pos) => sum + pos.volume, 0);
+  const totalLots = positions.reduce((sum: number, pos: any) => sum + pos.volume, 0);
+
+  // 模拟其他数据 - 参考index.html
+  const modelConfidence = 72;
+  const nextEvent = '22:15';
+  const positionSide = dailyPnl >= 0 ? '黄金多单' : '黄金轻仓';
+
+  const getColorClass = (value: number) => {
+    return value >= 0 ? 'green' : 'red';
+  };
 
   return (
-    <div className="p-[13px] bg-paper border border-line rounded-lg shadow-panel">
-      {/* 标题栏 */}
-      <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-line">
-        <strong className="text-sm">账号交易情况</strong>
-        <span className="inline-flex items-center justify-center min-h-[22px] px-2 py-0.5 rounded-full border border-line bg-[#f8fafc] text-muted text-xs whitespace-nowrap">
-          模拟账户
-        </span>
+    <article className="account-card">
+      <div className="panel-title">
+        <strong>账号交易情况</strong>
+        <span className="pill green">模拟账户</span>
       </div>
 
-      {/* 账户信息网格 */}
-      <div className="grid grid-cols-[repeat(5,_minmax(0,_1fr))] gap-2">
+      <div className="account-grid">
         {/* 账户净值 */}
-        <div className="min-w-0 p-2.5 border border-line rounded bg-[#fbfcfe]">
-          <span className="text-xs text-muted block">账户净值</span>
-          <b className="block mt-1 text-base font-extrabold tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
-            {formatMoney(equity)}
-          </b>
+        <div className="account">
+          <span className="sub">账户净值</span>
+          <b>${formatMoney(equity)}</b>
         </div>
 
         {/* 可用保证金 */}
-        <div className="min-w-0 p-2.5 border border-line rounded bg-[#fbfcfe]">
-          <span className="text-xs text-muted block">可用保证金</span>
-          <b className="block mt-1 text-base font-extrabold tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
-            {formatMoney(freeMargin)}
-          </b>
+        <div className="account">
+          <span className="sub">可用保证金</span>
+          <b>${formatMoney(freeMargin)}</b>
         </div>
 
         {/* 持仓手数 */}
-        <div className="min-w-0 p-2.5 border border-line rounded bg-[#fbfcfe]">
-          <span className="text-xs text-muted block">持仓手数</span>
-          <b className="block mt-1 text-base font-extrabold tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
-            {totalLots.toFixed(1)}
-          </b>
+        <div className="account">
+          <span className="sub">持仓手数</span>
+          <b>{totalLots.toFixed(1)}</b>
         </div>
 
         {/* 今日盈亏 */}
-        <div className="min-w-0 p-2.5 border border-line rounded bg-[#fbfcfe]">
-          <span className="text-xs text-muted block">今日盈亏</span>
-          <b className={`block mt-1 text-base font-extrabold tabular-nums whitespace-nowrap overflow-hidden text-ellipsis ${getPriceColorClass(dailyPnl)}`}>
+        <div className="account">
+          <span className="sub">今日盈亏</span>
+          <b className={getColorClass(dailyPnl)}>
             {dailyPnl >= 0 ? '+' : ''}{formatMoney(dailyPnl)}
           </b>
         </div>
 
         {/* 风险占用 */}
-        <div className="min-w-0 p-2.5 border border-line rounded bg-[#fbfcfe]">
-          <span className="text-xs text-muted block">风险占用</span>
-          <b className={`block mt-1 text-base font-extrabold tabular-nums whitespace-nowrap overflow-hidden text-ellipsis ${
-            riskUsed >= 70 ? 'text-red-500' : riskUsed >= 48 ? 'text-amber-500' : 'text-green-500'
-          }`}>
-            {riskUsed.toFixed(0)}%
-          </b>
+        <div className="account">
+          <span className="sub">风险占用</span>
+          <b className="amber">{riskUsed.toFixed(0)}%</b>
+        </div>
+
+        {/* 服务提醒 */}
+        <div className="account">
+          <span className="sub">服务提醒</span>
+          <b className="blue">待触达</b>
+        </div>
+
+        {/* 模型信心 */}
+        <div className="account">
+          <span className="sub">模型信心</span>
+          <b>{modelConfidence}%</b>
+        </div>
+
+        {/* 下一事件 */}
+        <div className="account">
+          <span className="sub">下一事件</span>
+          <b>{nextEvent}</b>
+        </div>
+
+        {/* 持仓方向 */}
+        <div className="account">
+          <span className="sub">持仓方向</span>
+          <b className={dailyPnl >= 0 ? 'green' : 'amber'}>{positionSide}</b>
+        </div>
+
+        {/* 产品阶段 */}
+        <div className="account">
+          <span className="sub">产品阶段</span>
+          <b>前端原型</b>
         </div>
       </div>
-    </div>
+    </article>
   );
 }

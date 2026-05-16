@@ -16,6 +16,10 @@ export interface PriceData {
   high: number;
   low: number;
   timestamp: Date;
+  // 支撑压力位
+  support1?: number;
+  support2?: number;
+  resistance1?: number;
 }
 
 // 信号类型
@@ -67,6 +71,13 @@ export interface DailyStats {
   totalProfit: number;
   totalLoss: number;
   netProfit: number;
+  // 概率和风险
+  upProb?: number;
+  downProb?: number;
+  risk?: number;
+  riskLevel?: 'low' | 'medium' | 'high';
+  positionAdvice?: number;
+  stopLoss?: number;
 }
 
 // 事件类型
