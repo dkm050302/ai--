@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, MarkerPosition, MarkerShape } from 'lightweight-charts';
 import type { Candle, Signal } from '@/types';
 
 interface ChartProps {
@@ -96,13 +96,66 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
     seriesRef.current.setData(candlestickData);
   }, [candles]);
 
-  // 添加信号标记（简化版本，后续可以优化）
+  // 添加信号标记
   useEffect(() => {
     if (!seriesRef.current || signals.length === 0) return;
 
-    // TODO: 添加信号标记到图表上
-    // 可以使用 seriesRef.current.setMarkers() 方法
-  }, [signals]);
+    // 过滤当前周期的信号
+    const currentPeriodSignals = signals.filter(s => s.period === period);
+
+    // 转换为Lightweight Charts标记格式
+    const markers = currentPeriodSignals.map(signal => {
+      const time = (new Date(signal.timestamp).getTime() / 1000) as Time;
+
+      // 根据信号方向和状态设置标记样式
+      let position: MarkerPosition;
+      let color: string;
+      let shape: MarkerShape;
+      let text: string;
+
+      if (signal.direction === 'long') {
+        position = 'belowBar';
+        if (signal.status === 'profit') {
+          color = '#0f9f6e'; // 绿色
+          shape = 'arrowUp';
+          text = '买盈';
+        } else if (signal.status === 'loss') {
+          color = '#e3342f'; // 红色
+          shape = 'arrowUp';
+          text = '买亏';
+        } else {
+          color = '#1769e0'; // 蓝色
+          shape = 'arrowUp';
+          text = '买入';
+        }
+      } else {
+        position = 'aboveBar';
+        if (signal.status === 'profit') {
+          color = '#0f9f6e'; // 绿色
+          shape = 'arrowDown';
+          text = '卖盈';
+        } else if (signal.status === 'loss') {
+          color = '#e3342f'; // 红色
+          shape = 'arrowDown';
+          text = '卖亏';
+        } else {
+          color = '#e3342f'; // 红色
+          shape = 'arrowDown';
+          text = '卖出';
+        }
+      }
+
+      return {
+        time,
+        position,
+        color,
+        shape,
+        text,
+      };
+    });
+
+    seriesRef.current.setMarkers(markers);
+  }, [signals, period]);
 
   return (
     <div className="bg-paper border border-line rounded-lg shadow-panel p-[13px] flex flex-col" style={{ minHeight: '460px' }}>
