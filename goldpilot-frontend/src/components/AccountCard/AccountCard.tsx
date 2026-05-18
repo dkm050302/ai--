@@ -17,7 +17,7 @@ export function AccountCard({ accountData }: AccountCardProps) {
     riskUsed,
   } = accountData;
 
-  const totalLots = positions.reduce((sum: number, pos: any) => sum + pos.volume, 0);
+  const totalLots = positions.reduce((sum, pos) => sum + pos.volume, 0);
 
   // 模拟其他数据 - 参考index.html
   const modelConfidence = 72;

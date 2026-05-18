@@ -1,5 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, type Time, CandlestickSeries } from 'lightweight-charts';
+import {
+  createChart,
+  createSeriesMarkers,
+  type CandlestickData,
+  CandlestickSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
+} from 'lightweight-charts';
 import type { Candle, Signal } from '@/types';
 
 interface ChartProps {
@@ -25,6 +35,7 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -75,6 +86,7 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
 
     chartRef.current = chart;
     seriesRef.current = candlestickSeries;
+    markersRef.current = createSeriesMarkers(candlestickSeries, []);
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
@@ -89,6 +101,7 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      markersRef.current = null;
       chart.remove();
     };
   }, []);
@@ -114,11 +127,11 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
   }, [candles]);
 
   useEffect(() => {
-    if (!seriesRef.current || signals.length === 0) return;
+    if (!markersRef.current) return;
 
     const currentPeriodSignals = signals.filter(s => s.period === period);
 
-    const markers = currentPeriodSignals.map(signal => {
+    const markers: SeriesMarker<Time>[] = currentPeriodSignals.map(signal => {
       const time = (new Date(signal.timestamp).getTime() / 1000) as Time;
 
       let position: 'aboveBar' | 'belowBar';
@@ -161,13 +174,7 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
       return { time, position, color, shape, text };
     });
 
-    try {
-      if (typeof (seriesRef.current as any).setMarkers === 'function') {
-        (seriesRef.current as any).setMarkers(markers);
-      }
-    } catch (error) {
-      console.warn('Markers not supported:', error);
-    }
+    markersRef.current.setMarkers(markers);
   }, [signals, period]);
 
   return (

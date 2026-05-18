@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { API_CONFIG } from '@/utils/constants';
 
-type WebSocketEventHandler = (data: any) => void;
+type WebSocketEventHandler<T = unknown> = (data: T) => void;
 
 class WebSocketService {
   private socket: Socket | null = null;
