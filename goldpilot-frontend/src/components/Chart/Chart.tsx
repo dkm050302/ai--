@@ -1,16 +1,7 @@
-import { useEffect, useRef } from 'react';
-import {
-  createChart,
-  createSeriesMarkers,
-  type CandlestickData,
-  CandlestickSeries,
-  type IChartApi,
-  type ISeriesApi,
-  type ISeriesMarkersPluginApi,
-  type SeriesMarker,
-  type Time,
-} from 'lightweight-charts';
+import { useEffect, useRef, useMemo } from 'react';
+import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, type Time, CandlestickSeries } from 'lightweight-charts';
 import type { Candle, Signal } from '@/types';
+import { detectSignals, getSignalMarkerText } from '@/utils/signalCalculator';
 
 interface ChartProps {
   candles: Candle[];
@@ -28,20 +19,34 @@ const periods = [
   { value: '1d', label: '日线' },
 ];
 
-export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) {
+/**
+ * K线图组件 - 完全按照index.html设计
+ */
+export function Chart({ candles, signals: externalSignals, period, onPeriodChange }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+
+  // 实时计算信号（仅在1分钟周期）
+  const calculatedSignals = useMemo(() => {
+    if (period === '1m' && candles.length > 233) {
+      return detectSignals(candles);
+    }
+    return [];
+  }, [candles, period]);
+
+  // 使用计算出的信号或外部传入的信号
+  const signals = calculatedSignals.length > 0 ? calculatedSignals : externalSignals;
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const container = chartContainerRef.current;
     const rect = container.getBoundingClientRect();
+
     const chart = createChart(container, {
       width: rect.width,
-      height: 330,
+      height: rect.height || 500,
       layout: {
         background: { color: '#ffffff' },
         textColor: '#667482',
@@ -82,19 +87,25 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
 
     chartRef.current = chart;
     seriesRef.current = candlestickSeries;
-    markersRef.current = createSeriesMarkers(candlestickSeries, []);
 
     const handleResize = () => {
-      if (!chartContainerRef.current || !chartRef.current) return;
-      const newRect = chartContainerRef.current.getBoundingClientRect();
-      chartRef.current.applyOptions({ width: newRect.width });
+      if (chartContainerRef.current && chartRef.current) {
+        const newRect = chartContainerRef.current.getBoundingClientRect();
+        chartRef.current.applyOptions({
+          width: newRect.width,
+          height: newRect.height,
+        });
+      }
     };
 
+    // 使用ResizeObserver监听容器大小变化
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
     window.addEventListener('resize', handleResize);
 
     return () => {
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
-      markersRef.current = null;
       chart.remove();
     };
   }, []);
@@ -120,40 +131,71 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
   }, [candles]);
 
   useEffect(() => {
-    if (!markersRef.current) return;
+    if (!seriesRef.current || signals.length === 0) return;
 
-    const currentPeriodSignals = signals.filter(s => s.period === period);
-    const markers: SeriesMarker<Time>[] = currentPeriodSignals.map(signal => {
+    const currentPeriodSignals = signals.filter(s => s.period === period || period === '1m');
+
+    const markers = currentPeriodSignals.map(signal => {
       const time = (new Date(signal.timestamp).getTime() / 1000) as Time;
 
+      let position: 'aboveBar' | 'belowBar';
+      let color: string;
+      let shape: 'arrowUp' | 'arrowDown';
+      let text: string;
+
+      const markerText = getSignalMarkerText(signal);
+
       if (signal.direction === 'long') {
-        return {
-          time,
-          position: 'belowBar',
-          color: signal.status === 'loss' ? '#e3342f' : '#0f9f6e',
-          shape: 'arrowUp',
-          text: signal.status === 'pending' ? '买入' : signal.status === 'profit' ? '买盈' : '买损',
-        };
+        position = 'belowBar';
+        if (signal.status === 'profit') {
+          color = '#0f9f6e';
+          shape = 'arrowUp';
+          text = markerText;
+        } else if (signal.status === 'loss') {
+          color = '#e3342f';
+          shape = 'arrowUp';
+          text = '止损';
+        } else {
+          color = '#1769e0';
+          shape = 'arrowUp';
+          text = markerText;
+        }
+      } else {
+        position = 'aboveBar';
+        if (signal.status === 'profit') {
+          color = '#0f9f6e';
+          shape = 'arrowDown';
+          text = markerText;
+        } else if (signal.status === 'loss') {
+          color = '#e3342f';
+          shape = 'arrowDown';
+          text = '止损';
+        } else {
+          color = '#e3342f';
+          shape = 'arrowDown';
+          text = markerText;
+        }
       }
 
-      return {
-        time,
-        position: 'aboveBar',
-        color: signal.status === 'profit' ? '#0f9f6e' : '#e3342f',
-        shape: 'arrowDown',
-        text: signal.status === 'pending' ? '卖出' : signal.status === 'profit' ? '卖盈' : '卖损',
-      };
+      return { time, position, color, shape, text };
     });
 
-    markersRef.current.setMarkers(markers);
+    try {
+      if (typeof (seriesRef.current as any).setMarkers === 'function') {
+        (seriesRef.current as any).setMarkers(markers);
+      }
+    } catch (error) {
+      console.warn('Markers not supported:', error);
+    }
   }, [signals, period]);
 
   return (
-    <div className="min-h-0 flex flex-col">
+    <>
+      {/* K线图标题和周期切换 */}
       <div className="chart-head">
         <div>
           <strong>现货黄金蜡烛图</strong>
-          <div className="sub">当前使用免费行情源轮询生成，后续可替换为交易级 K 线。</div>
+          <div className="sub">实时行情，信号提醒基于EMA/ATR技术分析</div>
         </div>
         <div className="periods" id="periods">
           {periods.map((p) => (
@@ -169,7 +211,11 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
         </div>
       </div>
 
-      <div ref={chartContainerRef} className="chart-wrap" />
-    </div>
+      {/* 图表容器 */}
+      <div
+        ref={chartContainerRef}
+        className="chart-wrap"
+      />
+    </>
   );
 }

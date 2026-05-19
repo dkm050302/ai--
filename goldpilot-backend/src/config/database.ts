@@ -4,8 +4,6 @@ import mongoose from 'mongoose';
  * 连接MongoDB数据库
  */
 export async function connectDatabase(): Promise<void> {
-  const nodeEnv = process.env.NODE_ENV || 'development';
-
   try {
     const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/goldpilot';
 
@@ -38,7 +36,7 @@ export async function connectDatabase(): Promise<void> {
     console.error('❌ MongoDB connection failed:', error);
 
     // 在开发环境下，如果没有MongoDB，警告但继续运行
-    if (nodeEnv === 'development') {
+    if (process.env.NODE_ENV === 'development') {
       console.warn('⚠️  Running without MongoDB (development mode)');
       console.warn('⚠️  Database features will be disabled');
     } else {

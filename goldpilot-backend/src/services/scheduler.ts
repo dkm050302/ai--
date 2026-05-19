@@ -1,16 +1,11 @@
 import { signalService } from './signal';
 import { logger } from '../utils';
-import mongoose from 'mongoose';
 
 /**
  * 定时任务调度器
  */
 class SchedulerService {
   private intervals: Map<string, NodeJS.Timeout> = new Map();
-
-  private isDatabaseReady(): boolean {
-    return mongoose.connection.readyState === 1;
-  }
 
   /**
    * 启动信号检测定时任务
@@ -65,11 +60,6 @@ class SchedulerService {
    * 启动待处理信号检查定时任务
    */
   startPendingSignalCheck(): void {
-    if (!this.isDatabaseReady()) {
-      logger.warn('MongoDB is not connected; pending signal scheduler skipped');
-      return;
-    }
-
     // 每10秒检查一次待处理信号
     this.schedule('pending-signal-check', 10 * 1000, async () => {
       try {
@@ -88,11 +78,6 @@ class SchedulerService {
    * 启动旧数据清理定时任务
    */
   startCleanupTask(): void {
-    if (!this.isDatabaseReady()) {
-      logger.warn('MongoDB is not connected; cleanup scheduler skipped');
-      return;
-    }
-
     // 每天凌晨2点清理旧信号
     this.schedule('cleanup-old-signals', 24 * 60 * 60 * 1000, async () => {
       try {
