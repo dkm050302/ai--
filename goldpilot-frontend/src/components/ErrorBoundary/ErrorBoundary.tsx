@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ReactNode } from 'react';
 import { Result, Button } from 'antd';
 import { logger } from '@/utils/logger';
 
@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
     };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: any) {
     logger.error('Error Boundary caught an error:', error);
     logger.error('Error Info:', errorInfo);
 

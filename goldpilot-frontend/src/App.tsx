@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import { PriceCard } from '@/components/PriceCard';
 import { Chart } from '@/components/Chart';
-import { AccountCard } from '@/components/AccountCard';
 import { DecisionCard } from '@/components/DecisionCard';
 import { ProbCard } from '@/components/ProbCard';
 import { RiskCard } from '@/components/RiskCard';
@@ -10,90 +9,94 @@ import { SupportCard } from '@/components/SupportCard';
 import { MiniCard } from '@/components/MiniCard';
 import { ActionPanel } from '@/components/ActionPanel';
 import { EventList } from '@/components/EventList';
-import {
-  buildCandlesFromPrice,
-  fetchChineseMarketNews,
-  fetchFreeGoldPrice,
-} from '@/services/freeMarketData';
-import { createDefaultAccountData } from '@/types/account';
+import { createDefaultPriceData } from '@/types/price';
 import { createDefaultSignals, createDefaultDailyStats } from '@/types/signal';
 import { createDefaultEvents, createDefaultFlashes } from '@/types/event';
 import { createDefaultDecisionData } from '@/types/decision';
-import { createDefaultPriceData } from '@/types/price';
-import type { Candle, Event, Flash, PriceData } from '@/types';
+import type { PriceData, Candle } from '@/types';
+import { fetchCandles, createRealtimeConnection } from '@/services/marketData';
+import type { Period } from '@/services/marketData';
 
 function App() {
-  const [period, setPeriod] = useState('1m');
-  const [priceData, setPriceData] = useState<PriceData>(() => createDefaultPriceData());
-  const [events, setEvents] = useState<Event[]>(() => createDefaultEvents());
-  const [flashes, setFlashes] = useState<Flash[]>(() => createDefaultFlashes());
-  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [period, setPeriod] = useState<Period>('1m');
+  const [priceData, setPriceData] = useState<PriceData>(createDefaultPriceData());
+  const [candles, setCandles] = useState<Candle[]>([]);
 
-  const accountData = createDefaultAccountData();
+  // 静态数据
   const signals = createDefaultSignals();
   const stats = createDefaultDailyStats();
+  const events = createDefaultEvents();
+  const flashes = createDefaultFlashes();
   const decisionData = createDefaultDecisionData();
 
-  const candles = useMemo<Candle[]>(
-    () => buildCandlesFromPrice(priceData, period),
-    [period, priceData]
-  );
-
+  // 获取K线数据
   useEffect(() => {
-    let mounted = true;
-
-    const refreshPrice = async () => {
+    const loadCandles = async () => {
       try {
-        const nextPrice = await fetchFreeGoldPrice();
-        if (!mounted) return;
-        setPriceData(nextPrice);
-        setIsLiveMode(true);
+        const data = await fetchCandles(period, 500);
+        setCandles(data);
       } catch (error) {
-        console.warn('[App] 价格刷新失败，保留本地兜底数据', error);
-        if (mounted) {
-          setIsLiveMode(false);
-        }
+        console.error('Failed to load candles:', error);
       }
     };
 
-    refreshPrice();
-    const timer = window.setInterval(refreshPrice, 15000);
+    loadCandles();
+  }, [period]);
 
-    return () => {
-      mounted = false;
-      window.clearInterval(timer);
-    };
-  }, []);
-
+  // 实时价格更新
   useEffect(() => {
-    let mounted = true;
-
-    const refreshNews = async () => {
-      try {
-        const nextNews = await fetchChineseMarketNews();
-        if (!mounted) return;
-        setEvents(nextNews.events);
-        setFlashes(nextNews.flashes);
-      } catch (error) {
-        console.warn('[App] 中文快讯刷新失败，保留本地兜底数据', error);
+    const cleanup = createRealtimeConnection(
+      (price) => {
+        setPriceData({
+          symbol: price.symbol,
+          price: price.price,
+          change: price.change,
+          changePct: price.changePct,
+          high: price.high,
+          low: price.low,
+          support1: price.price * 0.995,
+          support2: price.price * 0.99,
+          resistance1: price.price * 1.005,
+          timestamp: price.timestamp,
+        });
+      },
+      (error) => {
+        console.error('Real-time price error:', error);
       }
-    };
+    );
 
-    refreshNews();
-    const timer = window.setInterval(refreshNews, 5 * 60 * 1000);
-
-    return () => {
-      mounted = false;
-      window.clearInterval(timer);
-    };
+    return cleanup;
   }, []);
 
   return (
     <div className="page">
-      <Header modeText={isLiveMode ? '免费实时源' : '本地兜底'} />
+      {/* 顶部导航栏 */}
+      <Header />
 
+      {/* 主内容区 - 左边K线，右边信息 */}
       <main className="main">
-        <section className="left" aria-label="技术面与基本面">
+        {/* 左侧区域：实时行情K线图 */}
+        <section className="left" aria-label="实时行情K线图">
+          {/* 市场卡片 - 报价条 + K线图 */}
+          <article className="market-card">
+            {/* 报价条 */}
+            <div className="quote-strip">
+              <PriceCard priceData={priceData} />
+            </div>
+
+            {/* K线图 */}
+            <Chart
+              candles={candles}
+              signals={signals}
+              period={period}
+              onPeriodChange={(p) => setPeriod(p as Period)}
+            />
+          </article>
+        </section>
+
+        {/* 右侧区域：信息咨询与分析 */}
+        <section className="right" aria-label="信息咨询与分析">
+          {/* 今日决策卡片 */}
           <DecisionCard
             headline={decisionData.headline}
             summary={decisionData.summary}
@@ -101,12 +104,15 @@ function App() {
             aiReason={decisionData.aiReason}
           />
 
-          <div className="left-grid">
+          {/* 六卡片网格 */}
+          <div className="info-grid">
+            {/* 上涨/下跌概率 */}
             <ProbCard
               upProb={stats.upProb || 55}
               downProb={stats.downProb || 45}
             />
 
+            {/* 仓位管理警示 */}
             <RiskCard
               risk={stats.risk || 50}
               riskLevel={stats.riskLevel || 'medium'}
@@ -114,12 +120,14 @@ function App() {
               stopLoss={stats.stopLoss || 2.5}
             />
 
+            {/* 当前行情支撑压力 */}
             <SupportCard
-              support1={priceData.support1 || priceData.price - 8}
-              support2={priceData.support2 || priceData.price - 18}
-              resistance1={priceData.resistance1 || priceData.price + 10}
+              support1={priceData.support1 || 4800}
+              support2={priceData.support2 || 4750}
+              resistance1={priceData.resistance1 || 4900}
             />
 
+            {/* 当天重要数据 */}
             <MiniCard
               title="当天重要数据"
               pillText="三星以上"
@@ -131,9 +139,10 @@ function App() {
               }))}
             />
 
+            {/* 当天重要事项 */}
             <MiniCard
               title="当天重要事项"
-              pillText="北京时间"
+              pillText="18:00-05:00"
               pillColor="amber"
               items={events.slice(0, 3).map(e => ({
                 time: e.time,
@@ -142,10 +151,11 @@ function App() {
               }))}
             />
 
+            {/* 实时市场快讯 */}
             <MiniCard
-              title="中文市场快讯"
-              pillText={isLiveMode ? '实时更新' : '兜底数据'}
-              pillColor={isLiveMode ? 'red' : 'amber'}
+              title="实时市场快讯"
+              pillText="实时更新"
+              pillColor="red"
               items={flashes.slice(0, 3).map(f => ({
                 time: f.time,
                 text: f.text,
@@ -154,35 +164,23 @@ function App() {
             />
           </div>
 
+          {/* 三宽面板 */}
           <div className="wide-panels">
-            <EventList events={events} flashes={[]} showFlashes={false} />
-            <EventList events={[]} flashes={flashes} showEvents={false} />
+            {/* 美国重要事件明细 */}
+            <EventList events={events} flashes={[]} />
 
+            {/* 市场快讯流 */}
+            <EventList events={[]} flashes={flashes} />
+
+            {/* AI智能交易分析建议 */}
             <ActionPanel
               actions={[
-                { title: '客户提醒', text: '现货黄金使用免费行情源轮询更新，短线波动放大时提醒客户控制追单节奏。' },
-                { title: '交易动作', text: '结合支撑压力位观察回踩与突破，免费源可能存在延迟，正式跟单前需接交易级行情。' },
-                { title: '风险控制', text: '事件公布前降低仓位暴露，单笔风险建议控制在账户净值的 1.2% 以内。' },
+                { title: '客户提醒', text: '黄金短线偏多，但临近美国事件窗口，建议客户避免追涨满仓。' },
+                { title: '交易动作', text: '若回踩第一支撑附近企稳，可关注小仓跟随机会。' },
+                { title: '风险控制', text: '事件公布前把单笔风险控制在账户净值的1.2%以内。' },
               ]}
             />
           </div>
-        </section>
-
-        <section className="right" aria-label="实时行情与账号交易情况">
-          <article className="market-card">
-            <div className="quote-strip">
-              <PriceCard priceData={priceData} />
-            </div>
-
-            <Chart
-              candles={candles}
-              signals={signals}
-              period={period}
-              onPeriodChange={setPeriod}
-            />
-          </article>
-
-          <AccountCard accountData={accountData} />
         </section>
       </main>
     </div>

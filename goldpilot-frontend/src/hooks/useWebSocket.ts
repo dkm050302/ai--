@@ -1,19 +1,18 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_CONFIG } from '@/utils/constants';
-import type { Account, PriceData, Signal } from '@/types';
 
-interface WebSocketMessage<T> {
+interface WebSocketMessage {
   type: string;
-  data: T;
+  data: any;
   timestamp: number;
 }
 
 export function useWebSocket() {
   const [connected, setConnected] = useState(false);
-  const [priceData, setPriceData] = useState<PriceData | null>(null);
-  const [signalData, setSignalData] = useState<Signal | null>(null);
-  const [accountData, setAccountData] = useState<Account | null>(null);
+  const [priceData, setPriceData] = useState<any>(null);
+  const [signalData, setSignalData] = useState<any>(null);
+  const [accountData, setAccountData] = useState<any>(null);
   const socketRef = useRef<Socket | null>(null);
 
   // 连接WebSocket
@@ -47,7 +46,7 @@ export function useWebSocket() {
     });
 
     // 订阅价格更新
-    socket.on('price', (data: WebSocketMessage<PriceData>) => {
+    socket.on('price', (data: WebSocketMessage) => {
       console.log('[WebSocket] Price update:', data);
       if (data.data) {
         setPriceData(data.data);
@@ -55,7 +54,7 @@ export function useWebSocket() {
     });
 
     // 订阅信号更新
-    socket.on('signal', (data: WebSocketMessage<Signal>) => {
+    socket.on('signal', (data: WebSocketMessage) => {
       console.log('[WebSocket] Signal update:', data);
       if (data.data) {
         setSignalData(data.data);
@@ -63,7 +62,7 @@ export function useWebSocket() {
     });
 
     // 订阅账户更新
-    socket.on('account', (data: WebSocketMessage<Account>) => {
+    socket.on('account', (data: WebSocketMessage) => {
       console.log('[WebSocket] Account update:', data);
       if (data.data) {
         setAccountData(data.data);

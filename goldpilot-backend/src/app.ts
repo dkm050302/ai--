@@ -1,4 +1,3 @@
-import path from 'path';
 import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
@@ -6,12 +5,11 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import { connectDatabase } from './config';
 import apiRoutes from './routes/api';
+import metaApiRoutes from './routes/metaApi';
 import { setupWebSocket } from './websocket';
 import { errorHandler, notFoundHandler, requestLogger, detailedRequestLogger } from './middleware';
 import { logger } from './utils';
 import { schedulerService } from './services/scheduler';
-
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const app = express();
 const httpServer = createServer(app);
@@ -36,11 +34,9 @@ if (process.env.NODE_ENV === 'development') {
   app.use(requestLogger);
 }
 
-// 静态文件服务（index.html）
-app.use(express.static(PROJECT_ROOT));
-
 // API路由
 app.use('/api', apiRoutes);
+app.use('/api/metaapi', metaApiRoutes);
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -49,11 +45,6 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
   });
-});
-
-// 前端页面路由
-app.get('/', (req, res) => {
-  res.sendFile(path.join(PROJECT_ROOT, 'index.html'));
 });
 
 // 404处理（必须在所有路由之后）

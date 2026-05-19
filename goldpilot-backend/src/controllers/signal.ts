@@ -1,27 +1,6 @@
 import type { Request, Response } from 'express';
 import { SignalModel, DailyStatsModel } from '../models';
 import type { Signal, DailyStats } from '../types';
-import mongoose from 'mongoose';
-
-function isDatabaseReady(): boolean {
-  return mongoose.connection.readyState === 1;
-}
-
-function createDefaultTodayStats(): Omit<DailyStats, '_id'> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return {
-    date: today,
-    signalCount: 0,
-    winCount: 0,
-    lossCount: 0,
-    winRate: 0,
-    totalProfit: 0,
-    totalLoss: 0,
-    netProfit: 0,
-  };
-}
 
 /**
  * 获取信号列表
@@ -29,19 +8,6 @@ function createDefaultTodayStats(): Omit<DailyStats, '_id'> {
 export async function getSignals(req: Request, res: Response): Promise<void> {
   try {
     const { date } = req.query;
-
-    if (!isDatabaseReady()) {
-      res.json({
-        success: true,
-        data: {
-          date: date || new Date().toISOString().split('T')[0],
-          signals: [],
-          source: 'fallback',
-          message: 'MongoDB is not connected; returning empty signals',
-        },
-      });
-      return;
-    }
 
     const query: any = {};
 
@@ -80,18 +46,6 @@ export async function getSignals(req: Request, res: Response): Promise<void> {
  */
 export async function getTodayStats(req: Request, res: Response): Promise<void> {
   try {
-    if (!isDatabaseReady()) {
-      res.json({
-        success: true,
-        data: {
-          ...createDefaultTodayStats(),
-          source: 'fallback',
-          message: 'MongoDB is not connected; returning default stats',
-        },
-      });
-      return;
-    }
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -99,7 +53,16 @@ export async function getTodayStats(req: Request, res: Response): Promise<void> 
 
     if (!stats) {
       // 如果没有今日统计数据，返回默认值
-      const defaultStats = createDefaultTodayStats();
+      const defaultStats: Omit<DailyStats, '_id'> = {
+        date: today,
+        signalCount: 0,
+        winCount: 0,
+        lossCount: 0,
+        winRate: 0,
+        totalProfit: 0,
+        totalLoss: 0,
+        netProfit: 0,
+      };
 
       res.json({
         success: true,
@@ -129,17 +92,6 @@ export async function getTodayStats(req: Request, res: Response): Promise<void> 
  */
 export async function createSignal(req: Request, res: Response): Promise<void> {
   try {
-    if (!isDatabaseReady()) {
-      res.status(503).json({
-        success: false,
-        error: {
-          code: 'DATABASE_UNAVAILABLE',
-          message: 'MongoDB is not connected; cannot create signal',
-        },
-      });
-      return;
-    }
-
     const signalData = req.body;
 
     const signal = new SignalModel(signalData);
