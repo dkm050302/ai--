@@ -62,6 +62,23 @@ export interface Position {
   profit: number;
 }
 
+// 用户类型
+export interface User {
+  _id?: string;
+  accountId: string;
+  server: string;
+  accountInfo?: {
+    balance: number;
+    equity: number;
+    margin: number;
+    freeMargin: number;
+    positions: Position[];
+    dailyPnl: number;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // 统计类型
 export interface DailyStats {
   _id?: string;
