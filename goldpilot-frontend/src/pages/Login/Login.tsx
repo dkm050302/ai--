@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Form, Input, Button, message, Card } from 'antd';
 import { UserOutlined, LockOutlined, CloudServerOutlined } from '@ant-design/icons';
+import { getApiUrl } from '@/utils/apiConfig';
 
 interface LoginForm {
   accountId: string;
@@ -21,7 +22,7 @@ export function Login() {
     setLoading(true);
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const response = await fetch(`http://localhost:3006${endpoint}`, {
+      const response = await fetch(getApiUrl(endpoint), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

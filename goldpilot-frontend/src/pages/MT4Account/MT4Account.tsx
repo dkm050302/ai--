@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, Button, Form, Input, Modal, message, Descriptions, Tag } from 'antd';
 import { EditOutlined, SaveOutlined, LogoutOutlined, GlobalOutlined, UserOutlined, DollarOutlined, RiseOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { authFetch } from '@/utils/apiConfig';
 
 interface AccountInfo {
   balance: number;
@@ -37,11 +38,7 @@ export function MT4Account() {
     }
 
     try {
-      const response = await fetch('http://localhost:3006/api/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await authFetch('/api/auth/me');
 
       const data = await response.json();
 
@@ -81,12 +78,8 @@ export function MT4Account() {
       setLoading(true);
       const token = localStorage.getItem('token');
 
-      const response = await fetch('http://localhost:3006/api/account/update', {
+      const response = await authFetch('/api/account/update', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify(values),
       });
 
