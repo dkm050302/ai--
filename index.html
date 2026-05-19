@@ -357,6 +357,33 @@
       font-weight: 700;
     }
 
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .event-row.new-item,
+    .flash-row.new-item,
+    .mini-item.new-item,
+    .action-item.new-item {
+      animation: slideIn 0.4s ease-out;
+    }
+
+    .pill .pulse {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      margin-right: 4px;
+      animation: pulse-dot 1.4s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
     .row-time {
       color: var(--muted);
       font-size: 12px;
@@ -647,7 +674,7 @@
           <article class="card">
             <div class="card-title">
               <strong>实时市场快讯</strong>
-              <span class="pill red" id="flashState">实时更新</span>
+              <span class="pill red" id="flashState"><span class="pulse"></span>实时更新</span>
             </div>
             <div class="mini-list" id="flashPreview"></div>
           </article>
@@ -665,7 +692,7 @@
           <article class="card feed">
             <div class="panel-title">
               <strong>市场快讯流</strong>
-              <span class="pill red" id="flashCount">0 条</span>
+              <span class="pill red" id="flashCount"><span class="pulse"></span>0 条</span>
             </div>
             <div class="scroll" id="flashList"></div>
           </article>
@@ -782,35 +809,125 @@
     const fmt = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
-    const importantData = [
-      { time: '20:30', star: '⭐⭐⭐⭐', text: '美国至5月9日当周初请失业金人数' },
-      { time: '20:30', star: '⭐⭐⭐⭐', text: '美国4月零售销售月率' },
-      { time: '20:30', star: '⭐⭐⭐', text: '美国4月进口物价指数月率' },
-      { time: '22:00', star: '⭐⭐⭐', text: '美国3月商业库存月率' }
+    // --- 消息面实时数据引擎 ---
+    const flashTemplates = [
+      { hot: true, tpl: (p) => `现货黄金短线${p.dir === 'up' ? '拉升' : '回落'}，触及 ${p.price} 美元/盎司，${p.dir === 'up' ? '买盘' : '卖盘'}增强。` },
+      { hot: true, tpl: (p) => `美元指数${p.dir === 'up' ? '走弱' : '走强'}，${p.dir === 'up' ? '支撑黄金上行' : '压制黄金反弹'}。` },
+      { hot: true, tpl: () => '交易员提示：纽约盘开盘前后注意控制追涨仓位。' },
+      { hot: true, tpl: (p) => `COMEX黄金成交活跃，短线资金关注 ${p.round} 附近${p.dir === 'up' ? '压力' : '支撑'}。` },
+      { hot: false, tpl: () => '美债收益率小幅震荡，市场等待美联储官员讲话。' },
+      { hot: false, tpl: () => '欧洲盘尾段，现货黄金维持高位整理。' },
+      { hot: false, tpl: () => '市场波动率略有放大，短线操作需注意止损纪律。' },
+      { hot: false, tpl: (p) => `现货黄金交投于 ${p.price} 附近，日内振幅 ${p.range.toFixed(1)} 美元。` },
+      { hot: true, tpl: (p) => `美国${p.dataName}数据${p.surprise}，黄金${p.surprise.includes('超预期') ? '短线波动放大' : '反应平淡'}。` },
+      { hot: false, tpl: () => '技术面短线RSI进入超买区间，关注回调风险。' },
+      { hot: false, tpl: () => '亚盘时段交投清淡，市场等待欧美盘数据指引。' },
+      { hot: true, tpl: (p) => `地缘风险升温，避险资金流入黄金ETF，持仓量${p.dir === 'up' ? '增加' : '减少'}。` },
+      { hot: true, tpl: () => '机构大单成交密集，金银比出现短线异动。' },
+      { hot: false, tpl: () => '原油价格企稳，通胀预期对黄金支撑有限。' },
+      { hot: true, tpl: (p) => `美联储官员讲话临近，市场波动率指数VIX${p.dir === 'up' ? '走高' : '回落'}。` },
     ];
 
-    const importantEvents = [
-      {
-        time: '22:15',
-        star: '⭐⭐⭐⭐',
-        text: '2028年FOMC票委、堪萨斯联储主席施密德就“支付创新与社区银行”发表讲话。'
-      },
-      {
-        time: '次日01:00',
-        star: '⭐⭐⭐',
-        text: '美联储官员发表讲话，关注通胀、就业与利率路径相关措辞。'
+    const dataNamePool = ['初请失业金人数', '零售销售月率', 'CPI', 'PPI', '非农就业', 'ISM制造业', '消费者信心指数'];
+    const surprisePool = ['超预期', '不及预期', '基本符合预期'];
+
+    const economicCalendarPool = [
+      { star: '⭐⭐⭐⭐', text: '美国至本周当周初请失业金人数', baseHour: 20 },
+      { star: '⭐⭐⭐⭐', text: '美国零售销售月率', baseHour: 20 },
+      { star: '⭐⭐⭐', text: '美国进口物价指数月率', baseHour: 20 },
+      { star: '⭐⭐⭐', text: '美国商业库存月率', baseHour: 22 },
+      { star: '⭐⭐⭐⭐', text: '美国CPI年率', baseHour: 20 },
+      { star: '⭐⭐⭐⭐', text: '美国核心PCE物价指数', baseHour: 20 },
+      { star: '⭐⭐⭐', text: '美国密歇根大学消费者信心指数', baseHour: 22 },
+      { star: '⭐⭐⭐', text: '美国耐用品订单月率', baseHour: 20 },
+      { star: '⭐⭐⭐⭐', text: '美国非农就业人口变动', baseHour: 20 },
+      { star: '⭐⭐⭐', text: '美国ISM制造业PMI', baseHour: 22 },
+    ];
+
+    const eventPool = [
+      { star: '⭐⭐⭐⭐', tpl: 'FOMC票委、堪萨斯联储主席施密德就经济前景发表讲话。' },
+      { star: '⭐⭐⭐', tpl: '美联储官员发表讲话，关注通胀、就业与利率路径相关措辞。' },
+      { star: '⭐⭐⭐⭐', tpl: '美联储主席鲍威尔就货币政策发表讲话。' },
+      { star: '⭐⭐⭐', tpl: '欧洲央行公布利率决议。' },
+      { star: '⭐⭐⭐⭐', tpl: '美国财政部公布半年度汇率报告。' },
+      { star: '⭐⭐⭐', tpl: 'FOMC会议纪要公布。' },
+      { star: '⭐⭐⭐⭐', tpl: '美联储理事就银行监管与货币政策发表讲话。' },
+    ];
+
+    // 实时消息状态
+    let flashMessages = []; // { time, hot, text, id }
+    let flashIdCounter = 0;
+    let currentImportantData = [];
+    let currentImportantEvents = [];
+
+    function nowTimeStr() {
+      const now = new Date();
+      return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    }
+
+    function generateFlash() {
+      const template = flashTemplates[Math.floor(Math.random() * flashTemplates.length)];
+      const last = livePrice || { price: latest().close };
+      const round = Math.round(last.price / 5) * 5;
+      const dir = Math.random() > 0.5 ? 'up' : 'down';
+      const recent = candles.slice(-24);
+      const highs = recent.map(c => c.high);
+      const lows = recent.map(c => c.low);
+      const range = Math.max(...highs) - Math.min(...lows);
+      const params = {
+        price: last.price.toFixed(1),
+        round: round.toFixed(0),
+        dir,
+        range,
+        dataName: dataNamePool[Math.floor(Math.random() * dataNamePool.length)],
+        surprise: surprisePool[Math.floor(Math.random() * surprisePool.length)],
+      };
+      return {
+        time: nowTimeStr(),
+        hot: template.hot,
+        text: template.tpl(params),
+        id: ++flashIdCounter,
+      };
+    }
+
+    function generateEconomicData() {
+      const now = new Date();
+      const hour = now.getHours();
+      // 随机选3-4条当日经济数据
+      const shuffled = [...economicCalendarPool].sort(() => Math.random() - 0.5);
+      const count = 3 + Math.floor(Math.random() * 2);
+      return shuffled.slice(0, count).map(item => ({
+        time: `${String(item.baseHour + Math.floor(Math.random() * 2)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`,
+        star: item.star,
+        text: item.text,
+      }));
+    }
+
+    function generateEvents() {
+      const now = new Date();
+      // 选1-2条事件，时间设在当前时间之后
+      const shuffled = [...eventPool].sort(() => Math.random() - 0.5);
+      const count = 1 + Math.floor(Math.random() * 2);
+      const hour = now.getHours();
+      return shuffled.slice(0, count).map((item, i) => {
+        const eventHour = hour + 2 + i * 3;
+        const displayHour = eventHour >= 24 ? `次日${String(eventHour - 24).padStart(2, '0')}` : String(eventHour).padStart(2, '0');
+        return {
+          time: `${displayHour}:${String(10 + Math.floor(Math.random() * 50)).padStart(2, '0')}`,
+          star: item.star,
+          text: item.tpl,
+        };
+      });
+    }
+
+    function seedMessages() {
+      // 初始化时生成一批快讯
+      for (let i = 0; i < 5; i++) {
+        flashMessages.push(generateFlash());
       }
-    ];
-
-    const flashPool = [
-      { time: '20:52', hot: true, text: '现货黄金短线拉升，突破4540美元/盎司，日内波动放大。' },
-      { time: '20:48', hot: true, text: '美国零售销售数据公布后，美元指数回落，黄金买盘增强。' },
-      { time: '20:41', hot: false, text: '美债收益率小幅震荡，市场等待美联储官员讲话。' },
-      { time: '20:30', hot: true, text: '美国初请失业金人数与零售销售数据同步公布，贵金属波动放大。' },
-      { time: '19:58', hot: false, text: '欧洲盘尾段，现货黄金维持高位整理。' },
-      { time: '19:35', hot: true, text: '交易员提示：纽约盘开盘前后注意控制追涨仓位。' },
-      { time: '19:10', hot: false, text: 'COMEX黄金成交活跃，短线资金关注4545附近压力。' }
-    ];
+      currentImportantData = generateEconomicData();
+      currentImportantEvents = generateEvents();
+    }
 
     const serviceActions = {
       bullish: [
@@ -835,12 +952,121 @@
     const GOLD_API_KEY = 'goldapi-a9eecb56e05d32c2cf54a19013a9c3a6-io';
     const API_FETCH_INTERVAL = 60000; // 60秒调用一次，300次/月够用
 
+    // --- 实时新闻API配置 (Finnhub 免费版) ---
+    // 免费注册获取key: https://finnhub.io/register
+    const FINNHUB_API_KEY = 'csjqc19r01qtjnqptlc0csjqc19r01qtjnqptlcg';
+    const FINNHUB_BASE = 'https://finnhub.io/api/v1';
+    const NEWS_FETCH_INTERVAL = 120000; // 2分钟刷新一次新闻
+
     let livePrice = null; // 实时价格数据（来自API）
     let apiConnected = false;
+    let realNews = [];     // 来自Finnhub的真实新闻
+    let realCalendar = []; // 来自Finnhub的经济日历
+    let newsConnected = false;
+
+    // --- 从 Finnhub 获取实时市场新闻 ---
+    async function fetchRealNews() {
+      if (!apiConnected) return;
+      try {
+        const resp = await fetch(`${FINNHUB_BASE}/news?category=forex&token=${FINNHUB_API_KEY}`);
+        if (!resp.ok) throw new Error(`News API ${resp.status}`);
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+          realNews = data.map(item => ({
+            time: new Date(item.datetime * 1000),
+            hot: item.sentiment && item.sentiment !== 'neutral',
+            text: item.headline,
+            url: item.url,
+            source: item.source,
+            id: ++flashIdCounter,
+          }));
+          newsConnected = true;
+          console.log('[Finnhub] 获取新闻:', realNews.length, '条');
+          // 用真实新闻替换模拟快讯
+          flashMessages = realNews.slice(0, 20).map(n => ({
+            ...n,
+            time: `${String(n.time.getHours()).padStart(2, '0')}:${String(n.time.getMinutes()).padStart(2, '0')}`,
+            hot: true,
+          }));
+          renderFlashes();
+          renderSignals();
+          updateStatusBar();
+        }
+      } catch (err) {
+        console.warn('[Finnhub News] 获取失败:', err.message);
+      }
+    }
+
+    // --- 从 Finnhub 获取经济日历 ---
+    async function fetchEconomicCalendar() {
+      if (!apiConnected) return;
+      try {
+        const today = new Date();
+        const resp = await fetch(`${FINNHUB_BASE}/calendar/economic?token=${FINNHUB_API_KEY}`);
+        if (!resp.ok) throw new Error(`Calendar API ${resp.status}`);
+        const data = await resp.json();
+        if (data.economicCalendar && data.economicCalendar.length > 0) {
+          // 过滤今日数据，按重要性筛选
+          realCalendar = data.economicCalendar
+            .filter(item => item.impact === 'high' || item.impact === 'medium')
+            .slice(0, 6)
+            .map(item => ({
+              time: item.time || '--:--',
+              star: item.impact === 'high' ? '⭐⭐⭐⭐' : '⭐⭐⭐',
+              text: `${item.country || 'US'} ${item.event || item.name || '经济数据'}`,
+              actual: item.actual,
+              forecast: item.forecast,
+              previous: item.prev,
+            }));
+          if (realCalendar.length > 0) {
+            currentImportantData = realCalendar;
+            renderEvents();
+            console.log('[Finnhub] 经济日历:', realCalendar.length, '条');
+          }
+        }
+      } catch (err) {
+        console.warn('[Finnhub Calendar] 获取失败:', err.message);
+      }
+    }
+
+    // 实时模式下推送真实新闻为新快讯
+    let lastNewsCount = 0;
+    async function pollNewNews() {
+      if (!apiConnected || !newsConnected) return;
+      try {
+        const resp = await fetch(`${FINNHUB_BASE}/news?category=forex&token=${FINNHUB_API_KEY}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > lastNewsCount) {
+          // 有新新闻，取最新的
+          const newItems = data.slice(0, data.length - lastNewsCount);
+          newItems.reverse().forEach(item => {
+            const t = new Date(item.datetime * 1000);
+            const msg = {
+              time: `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`,
+              hot: true,
+              text: item.headline,
+              url: item.url,
+              source: item.source,
+              id: ++flashIdCounter,
+            };
+            flashMessages.unshift(msg);
+          });
+          if (flashMessages.length > 30) flashMessages = flashMessages.slice(0, 30);
+          lastNewsCount = data.length;
+          const newIds = new Set(flashMessages.slice(0, newItems.length).map(m => m.id));
+          renderFlashes(newIds);
+          renderSignals();
+        } else {
+          lastNewsCount = data.length;
+        }
+      } catch (err) {
+        // 静默失败，不影响界面
+      }
+    }
 
     let period = '1m';
     let candles = buildCandles(86, 4539);
-    let flashCursor = 5;
     let cachedSignals = calculateSignals();
     let rafId = 0;
 
@@ -870,6 +1096,9 @@
           candles = buildCandles(86, livePrice.price);
           cachedSignals = calculateSignals();
           updateStatusBar();
+          // 连接成功后立即获取新闻和经济日历
+          fetchRealNews();
+          fetchEconomicCalendar();
         }
         console.log('[GoldAPI] 实时价格:', livePrice.price);
       } catch (err) {
@@ -880,7 +1109,10 @@
 
     function updateStatusBar() {
       const pill = document.querySelector('.date-meta .pill');
-      if (apiConnected) {
+      if (apiConnected && newsConnected) {
+        pill.innerHTML = '<span class="pulse"></span>实时行情+新闻';
+        pill.className = 'pill green';
+      } else if (apiConnected) {
         pill.textContent = '实时行情';
         pill.className = 'pill green';
       } else {
@@ -982,28 +1214,39 @@
 
     function renderDecision(sig) {
       const mode = signalMode(sig);
-      const hotCount = flashPool.slice(0, flashCursor).filter(item => item.hot).length;
+      const hotCount = flashMessages.filter(item => item.hot).length;
       const riskText = sig.risk >= 70 ? '高风险' : sig.risk >= 48 ? '中风险' : '可控风险';
       const direction = mode === 'bullish' ? '短线偏多' : mode === 'bearish' ? '短线偏空' : '区间震荡';
-      $('decisionHeadline').textContent = `${direction}，${riskText}，22:15讲话前控制追单`;
+      const nextEvt = currentImportantEvents[0];
+      const nextLabel = nextEvt ? nextEvt.time : '--:--';
+      $('decisionHeadline').textContent = `${direction}，${riskText}，${nextLabel}事件前控制追单`;
       $('decisionSummary').textContent = `当前上涨概率 ${sig.up.toFixed(1)}%，第一支撑 ${fmt.format(sig.support1)}，第一压力 ${fmt.format(sig.resistance1)}。系统已把客户服务重点收敛为仓位、事件和触达提醒。`;
       $('aiReason').textContent = `AI解释：短线动量${sig.change >= 0 ? '偏强' : '走弱'}，快讯中有 ${hotCount} 条高优先级消息，事件窗口临近，因此建议以轻仓和价格确认优先。`;
       $('modelConfidence').textContent = `${Math.max(58, Math.min(86, 62 + Math.abs(sig.up - 50) * 0.8)).toFixed(0)}%`;
       $('serviceAlert').textContent = sig.risk >= 58 ? '需触达' : '观察中';
       $('positionSide').textContent = mode === 'bearish' ? '黄金轻仓' : mode === 'neutral' ? '观望仓位' : '黄金多单';
       $('positionSide').className = mode === 'bearish' ? 'amber' : mode === 'neutral' ? 'blue' : 'green';
+      $('nextEvent').textContent = nextLabel;
     }
 
     function renderCountdown() {
+      const nextEvt = currentImportantEvents[0];
+      if (!nextEvt) {
+        $('eventCountdown').textContent = '今日无更多重要事件';
+        return;
+      }
       const now = new Date();
+      const timeStr = nextEvt.time.replace('次日', '');
+      const [h, m] = timeStr.split(':').map(Number);
       const target = new Date(now);
-      target.setHours(22, 15, 0, 0);
-      if (target < now) target.setDate(target.getDate() + 1);
+      target.setHours(h, m, 0, 0);
+      if (nextEvt.time.startsWith('次日') || target < now) target.setDate(target.getDate() + 1);
       const diff = Math.max(0, target - now);
       const hours = String(Math.floor(diff / 3600000)).padStart(2, '0');
       const minutes = String(Math.floor(diff % 3600000 / 60000)).padStart(2, '0');
       const seconds = String(Math.floor(diff % 60000 / 1000)).padStart(2, '0');
-      $('eventCountdown').textContent = `距离 22:15 施密德讲话 ${hours}:${minutes}:${seconds}`;
+      const label = nextEvt.text.length > 20 ? nextEvt.text.slice(0, 20) + '...' : nextEvt.text;
+      $('eventCountdown').textContent = `距离 ${nextEvt.time} ${label} ${hours}:${minutes}:${seconds}`;
     }
 
     function renderActions(sig) {
@@ -1065,12 +1308,12 @@
       tone($('dailyPnl'), pnl);
     }
 
-    function renderMiniList(id, items) {
+    function renderMiniList(id, items, newIds = new Set()) {
       const box = $(id);
       box.textContent = '';
       items.slice(0, 3).forEach(item => {
         const row = document.createElement('div');
-        row.className = 'mini-item';
+        row.className = `mini-item ${newIds.has(item.id) ? 'new-item' : ''}`;
         const time = document.createElement('div');
         time.className = 'mini-time';
         time.textContent = item.time;
@@ -1082,11 +1325,11 @@
     }
 
     function renderEvents() {
-      renderMiniList('dataList', importantData);
-      renderMiniList('eventSummary', importantEvents);
+      renderMiniList('dataList', currentImportantData);
+      renderMiniList('eventSummary', currentImportantEvents);
       const list = $('eventList');
       list.textContent = '';
-      importantEvents.forEach(item => {
+      currentImportantEvents.forEach(item => {
         const row = document.createElement('div');
         row.className = 'event-row important';
         const time = document.createElement('div');
@@ -1100,15 +1343,15 @@
       });
     }
 
-    function renderFlashes() {
-      const active = flashPool.slice(0, flashCursor);
-      $('flashCount').textContent = `${active.length} 条`;
-      renderMiniList('flashPreview', active.filter(item => item.hot));
+    function renderFlashes(newIds = new Set()) {
+      const active = flashMessages;
+      $('flashCount').innerHTML = `<span class="pulse"></span>${active.length} 条`;
+      renderMiniList('flashPreview', active.filter(item => item.hot).slice(0, 3), newIds);
       const list = $('flashList');
       list.textContent = '';
       active.forEach(item => {
         const row = document.createElement('div');
-        row.className = `flash-row ${item.hot ? 'hot' : ''}`;
+        row.className = `flash-row ${item.hot ? 'hot' : ''} ${newIds.has(item.id) ? 'new-item' : ''}`;
         const time = document.createElement('div');
         time.className = 'row-time';
         time.textContent = item.time;
@@ -1118,6 +1361,8 @@
         row.append(time, text);
         list.appendChild(row);
       });
+      // 自动滚动到顶部显示最新消息
+      list.scrollTop = 0;
     }
 
     function drawChart() {
@@ -1266,6 +1511,9 @@
       setToday();
       updateStatusBar();
       bind();
+
+      // 初始化消息面数据
+      seedMessages();
       renderEvents();
       renderFlashes();
       renderSignals();
@@ -1278,11 +1526,53 @@
 
       // 每4秒更新K线（微波动）
       setInterval(updateMarket, 4000);
+
+      // 每8-15秒新增一条快讯
+      // 实时模式：从Finnhub拉取真实新闻；演示模式：模板模拟
+      function pushNewFlash() {
+        if (newsConnected) {
+          // 实时模式：轮询Finnhub看是否有新新闻
+          pollNewNews();
+        } else {
+          // 演示模式：模板生成模拟快讯
+          const newMsg = generateFlash();
+          flashMessages.unshift(newMsg);
+          if (flashMessages.length > 30) flashMessages.pop();
+          const newIds = new Set([newMsg.id]);
+          renderFlashes(newIds);
+          renderSignals();
+        }
+        // 随机间隔8-15秒
+        setTimeout(pushNewFlash, 8000 + Math.random() * 7000);
+      }
+      setTimeout(pushNewFlash, 5000);
+
+      // 定期刷新新闻（实时模式下2分钟拉一次全量）
       setInterval(() => {
-        flashCursor = Math.min(flashPool.length, flashCursor + 1);
-        renderFlashes();
-        renderSignals();
-      }, 7000);
+        if (apiConnected) fetchRealNews();
+      }, NEWS_FETCH_INTERVAL);
+
+      // 每5分钟刷新经济数据
+      setInterval(() => {
+        if (apiConnected) {
+          fetchEconomicCalendar();
+        } else {
+          currentImportantData = generateEconomicData();
+          renderEvents();
+        }
+      }, 300000);
+
+      // 每10分钟刷新事件
+      setInterval(() => {
+        if (apiConnected) {
+          fetchEconomicCalendar();
+        } else {
+          currentImportantEvents = generateEvents();
+          renderEvents();
+          renderSignals();
+        }
+      }, 600000);
+
       setInterval(renderCountdown, 1000);
     }
 
