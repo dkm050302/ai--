@@ -1,13 +1,21 @@
 /**
  * API配置工具
  */
-export const API_BASE_URL = import.meta.env.VITE_API_URL || '/';
+const isDev = import.meta.env.DEV;
+export const API_BASE_URL = isDev
+  ? (import.meta.env.VITE_API_URL || 'http://localhost:3006')
+  : '';
 
 /**
  * 获取完整的API URL
  */
 export function getApiUrl(path: string): string {
-  const baseUrl = API_BASE_URL.replace(/\/$/, ''); // 移除末尾的斜杠
+  if (!API_BASE_URL) {
+    // 生产环境：使用相对路径
+    return path.startsWith('/') ? path : `/${path}`;
+  }
+  // 开发环境：使用完整URL
+  const baseUrl = API_BASE_URL.replace(/\/$/, '');
   const apiPath = path.startsWith('/') ? path : `/${path}`;
   return `${baseUrl}${apiPath}`;
 }
