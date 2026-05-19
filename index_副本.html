@@ -1,0 +1,1200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>现货黄金客户服务首页</title>
+  <style>
+    :root {
+      --bg: #f4f7fa;
+      --paper: #ffffff;
+      --ink: #1d252d;
+      --muted: #667482;
+      --line: #dfe6ec;
+      --line-dark: #c8d2dc;
+      --blue: #1769e0;
+      --blue-soft: #edf5ff;
+      --red: #e3342f;
+      --red-soft: #fff0f0;
+      --green: #0f9f6e;
+      --green-soft: #eafaf3;
+      --amber: #b97800;
+      --amber-soft: #fff8e6;
+      --panel-shadow: 0 14px 34px rgba(25, 44, 63, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: "PingFang SC", "Microsoft YaHei", "Avenir Next", sans-serif;
+      font-size: 14px;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .date-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 64px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: 0 2px 10px rgba(25, 44, 63, 0.04);
+    }
+
+    .brand-block {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-name {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .brand-sub {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .date-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+    }
+
+    .date-text {
+      font-size: 18px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 5px rgba(15, 159, 110, 0.1);
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(720px, 1.05fr) minmax(500px, 0.95fr);
+      gap: 14px;
+      padding: 14px;
+      min-height: 0;
+    }
+
+    .left,
+    .right {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .left-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .decision-card {
+      display: grid;
+      grid-template-columns: 1.2fr 0.9fr 0.9fr;
+      gap: 10px;
+      padding: 13px;
+      background:
+        linear-gradient(120deg, rgba(23, 105, 224, 0.08), transparent 44%),
+        var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--panel-shadow);
+    }
+
+    .decision-main {
+      padding-right: 10px;
+      border-right: 1px solid var(--line);
+    }
+
+    .decision-kicker {
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .decision-main h1 {
+      margin: 6px 0 8px;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+
+    .decision-main p,
+    .decision-box p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .decision-box {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.68);
+    }
+
+    .decision-box strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .card,
+    .market-card,
+    .account-card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--panel-shadow);
+    }
+
+    .card {
+      min-height: 160px;
+      padding: 13px;
+    }
+
+    .card-title,
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .card-title strong,
+    .panel-title strong {
+      font-size: 15px;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line-dark);
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .pill.red {
+      border-color: #ffc9c9;
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .pill.green {
+      border-color: #bdebd7;
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .pill.amber {
+      border-color: #f5d47a;
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .metric {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 35px;
+      border-bottom: 1px dashed var(--line);
+    }
+
+    .metric:last-child { border-bottom: 0; }
+
+    .metric b {
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .red { color: var(--red); }
+    .green { color: var(--green); }
+    .blue { color: var(--blue); }
+    .amber { color: var(--amber); }
+
+    .prob-bar,
+    .risk-bar {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #edf1f5;
+      border: 1px solid var(--line);
+      margin: 9px 0 11px;
+    }
+
+    .prob-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), #72d79f);
+    }
+
+    .risk-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), #f0bd45, var(--red));
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .mini-item {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 8px;
+      line-height: 1.45;
+      padding: 8px;
+      border-radius: 6px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+    }
+
+    .mini-time {
+      color: var(--blue);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wide-panels {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 0.82fr 0.88fr 0.9fr;
+      gap: 10px;
+    }
+
+    .feed {
+      min-height: 0;
+      padding: 13px;
+      overflow: hidden;
+    }
+
+    .scroll {
+      display: grid;
+      gap: 9px;
+      max-height: calc(100vh - 392px);
+      min-height: 270px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .event-row,
+    .flash-row {
+      display: grid;
+      grid-template-columns: 54px 1fr;
+      gap: 10px;
+      padding: 9px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .event-row.important {
+      background: var(--amber-soft);
+      border-color: #f2d184;
+    }
+
+    .flash-row.hot {
+      background: var(--red-soft);
+      border-color: #ffc6c6;
+    }
+
+    .flash-row.hot .flash-text {
+      color: var(--red);
+      font-weight: 700;
+    }
+
+    .row-time {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .row-text,
+    .flash-text {
+      line-height: 1.48;
+    }
+
+    .market-card {
+      flex: 1;
+      min-height: 460px;
+      padding: 13px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .quote-strip {
+      display: grid;
+      grid-template-columns: 1.2fr repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .quote {
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcfe;
+    }
+
+    .quote .value {
+      margin-top: 4px;
+      font-size: 16px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .quote:first-child .value {
+      font-size: 18px;
+    }
+
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .periods {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .periods button {
+      border: 1px solid var(--line-dark);
+      background: #f8fafc;
+      border-radius: 5px;
+      padding: 6px 9px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .periods button.active {
+      border-color: var(--blue);
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .chart-wrap {
+      min-height: 330px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background:
+        linear-gradient(#eef3f7 1px, transparent 1px),
+        linear-gradient(90deg, #eef3f7 1px, transparent 1px),
+        #ffffff;
+      background-size: 100% 58px, 70px 100%;
+    }
+
+    #goldChart {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .account-card {
+      padding: 13px;
+    }
+
+    .account-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .account {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcfe;
+    }
+
+    .account b {
+      display: block;
+      margin-top: 5px;
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .action-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .action-item {
+      padding: 10px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .action-item strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    @media (max-width: 1220px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+      .scroll {
+        max-height: 360px;
+      }
+    }
+
+    @media (max-width: 780px) {
+      .page {
+        grid-template-rows: auto 1fr;
+      }
+      .date-bar {
+        min-height: 52px;
+        font-size: 16px;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .main {
+        padding: 10px;
+      }
+      .left-grid,
+      .decision-card,
+      .wide-panels,
+      .quote-strip,
+      .account-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .decision-main {
+        padding-right: 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 10px;
+      }
+      .market-card {
+        min-height: 560px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="date-bar">
+      <div class="brand-block">
+        <div class="brand-name">GoldPilot 黄金交易决策驾驶舱</div>
+        <div class="brand-sub">面向金融客户服务团队的事件驱动型交易辅助首页</div>
+      </div>
+      <div class="date-meta">
+        <span class="pill green">演示模式</span>
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="date-text" id="today">----/--/--</span>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="left" aria-label="技术面与基本面">
+        <article class="decision-card">
+          <div class="decision-main">
+            <div class="decision-kicker">TODAY DECISION</div>
+            <h1 id="decisionHeadline">纽约盘前，黄金波动放大，等待关键事件确认</h1>
+            <p id="decisionSummary">系统聚合行情、重要数据、美国事件、快讯和账户风险，生成客户服务动作建议。</p>
+          </div>
+          <div class="decision-box">
+            <strong>事件倒计时</strong>
+            <p id="eventCountdown">距离 22:15 重要讲话 --:--:--</p>
+          </div>
+          <div class="decision-box">
+            <strong>AI 解释</strong>
+            <p id="aiReason">上涨概率由短线动量、支撑压力、事件窗口和快讯热度综合生成。</p>
+          </div>
+        </article>
+
+        <div class="left-grid">
+          <article class="card">
+            <div class="card-title">
+              <strong>上涨 / 下跌概率</strong>
+              <span class="pill">公式待接入</span>
+            </div>
+            <div class="metric">
+              <span class="sub">上涨概率</span>
+              <b class="green" id="upProb">--</b>
+            </div>
+            <div class="prob-bar"><div class="prob-fill" id="upBar"></div></div>
+            <div class="metric">
+              <span class="sub">下跌概率</span>
+              <b class="red" id="downProb">--</b>
+            </div>
+            <div class="sub">当前先用行情动量与波动率计算，后续可替换为正式公式。</div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>仓位管理警示</strong>
+              <span class="pill amber" id="riskLabel">--</span>
+            </div>
+            <div class="risk-bar"><div class="risk-fill" id="riskBar"></div></div>
+            <div class="metric">
+              <span class="sub">建议仓位</span>
+              <b id="positionAdvice">--</b>
+            </div>
+            <div class="metric">
+              <span class="sub">最大止损</span>
+              <b class="red" id="stopLoss">--</b>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>当前行情支撑压力</strong>
+              <span class="pill blue">现货黄金</span>
+            </div>
+            <div class="metric">
+              <span class="sub">第一支撑</span>
+              <b class="green" id="support1">--</b>
+            </div>
+            <div class="metric">
+              <span class="sub">第二支撑</span>
+              <b class="green" id="support2">--</b>
+            </div>
+            <div class="metric">
+              <span class="sub">第一压力</span>
+              <b class="red" id="resistance1">--</b>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>当天重要数据</strong>
+              <span class="pill amber">三星以上</span>
+            </div>
+            <div class="mini-list" id="dataList"></div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>当天重要事项</strong>
+              <span class="pill amber">18:00-05:00</span>
+            </div>
+            <div class="mini-list" id="eventSummary"></div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>实时市场快讯</strong>
+              <span class="pill red" id="flashState">实时更新</span>
+            </div>
+            <div class="mini-list" id="flashPreview"></div>
+          </article>
+        </div>
+
+        <div class="wide-panels">
+          <article class="card feed">
+            <div class="panel-title">
+              <strong>美国重要事件明细</strong>
+              <span class="pill">北京时间</span>
+            </div>
+            <div class="scroll" id="eventList"></div>
+          </article>
+
+          <article class="card feed">
+            <div class="panel-title">
+              <strong>市场快讯流</strong>
+              <span class="pill red" id="flashCount">0 条</span>
+            </div>
+            <div class="scroll" id="flashList"></div>
+          </article>
+
+          <article class="card feed">
+            <div class="panel-title">
+              <strong>客户服务动作</strong>
+              <span class="pill green">可执行</span>
+            </div>
+            <div class="action-list" id="actionList"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="right" aria-label="实时行情与账号交易情况">
+        <article class="market-card">
+          <div class="quote-strip">
+            <div class="quote">
+              <span class="sub">现货黄金 XAU/USD</span>
+              <div class="value green" id="lastPrice">--</div>
+            </div>
+            <div class="quote">
+              <span class="sub">涨跌额</span>
+              <div class="value" id="changeValue">--</div>
+            </div>
+            <div class="quote">
+              <span class="sub">涨跌幅</span>
+              <div class="value" id="changePct">--</div>
+            </div>
+            <div class="quote">
+              <span class="sub">最高</span>
+              <div class="value" id="highPrice">--</div>
+            </div>
+            <div class="quote">
+              <span class="sub">最低</span>
+              <div class="value" id="lowPrice">--</div>
+            </div>
+          </div>
+
+          <div class="chart-head">
+            <div>
+              <strong>现货黄金蜡烛图</strong>
+              <div class="sub">可切换不同周期，当前为前端模拟行情。</div>
+            </div>
+            <div class="periods" id="periods">
+              <button type="button" class="active" data-period="1m">1分钟</button>
+              <button type="button" data-period="5m">5分钟</button>
+              <button type="button" data-period="15m">15分钟</button>
+              <button type="button" data-period="1h">1小时</button>
+              <button type="button" data-period="4h">4小时</button>
+              <button type="button" data-period="1d">日线</button>
+            </div>
+          </div>
+
+          <div class="chart-wrap">
+            <canvas id="goldChart"></canvas>
+          </div>
+        </article>
+
+        <article class="account-card">
+          <div class="panel-title">
+            <strong>账号交易情况</strong>
+            <span class="pill green">模拟账户</span>
+          </div>
+          <div class="account-grid">
+            <div class="account">
+              <span class="sub">账户净值</span>
+              <b id="equity">$125,000</b>
+            </div>
+            <div class="account">
+              <span class="sub">可用保证金</span>
+              <b id="freeMargin">$86,400</b>
+            </div>
+            <div class="account">
+              <span class="sub">持仓手数</span>
+              <b id="lots">3.2</b>
+            </div>
+            <div class="account">
+              <span class="sub">今日盈亏</span>
+              <b class="green" id="dailyPnl">+$2,180</b>
+            </div>
+            <div class="account">
+              <span class="sub">风险占用</span>
+              <b class="amber" id="riskUsed">31%</b>
+            </div>
+            <div class="account">
+              <span class="sub">服务提醒</span>
+              <b class="blue" id="serviceAlert">待触达</b>
+            </div>
+            <div class="account">
+              <span class="sub">模型信心</span>
+              <b id="modelConfidence">72%</b>
+            </div>
+            <div class="account">
+              <span class="sub">下一事件</span>
+              <b id="nextEvent">22:15</b>
+            </div>
+            <div class="account">
+              <span class="sub">持仓方向</span>
+              <b class="green" id="positionSide">黄金多单</b>
+            </div>
+            <div class="account">
+              <span class="sub">产品阶段</span>
+              <b>前端原型</b>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+    const importantData = [
+      { time: '20:30', star: '⭐⭐⭐⭐', text: '美国至5月9日当周初请失业金人数' },
+      { time: '20:30', star: '⭐⭐⭐⭐', text: '美国4月零售销售月率' },
+      { time: '20:30', star: '⭐⭐⭐', text: '美国4月进口物价指数月率' },
+      { time: '22:00', star: '⭐⭐⭐', text: '美国3月商业库存月率' }
+    ];
+
+    const importantEvents = [
+      {
+        time: '22:15',
+        star: '⭐⭐⭐⭐',
+        text: '2028年FOMC票委、堪萨斯联储主席施密德就“支付创新与社区银行”发表讲话。'
+      },
+      {
+        time: '次日01:00',
+        star: '⭐⭐⭐',
+        text: '美联储官员发表讲话，关注通胀、就业与利率路径相关措辞。'
+      }
+    ];
+
+    const flashPool = [
+      { time: '20:52', hot: true, text: '现货黄金短线拉升，突破4880美元/盎司，日内涨幅扩大。' },
+      { time: '20:48', hot: true, text: '美国零售销售数据公布后，美元指数回落，黄金买盘增强。' },
+      { time: '20:41', hot: false, text: '美债收益率小幅震荡，市场等待美联储官员讲话。' },
+      { time: '20:30', hot: true, text: '美国初请失业金人数与零售销售数据同步公布，贵金属波动放大。' },
+      { time: '19:58', hot: false, text: '欧洲盘尾段，现货黄金维持高位整理。' },
+      { time: '19:35', hot: true, text: '交易员提示：纽约盘开盘前后注意控制追涨仓位。' },
+      { time: '19:10', hot: false, text: 'COMEX黄金成交活跃，短线资金关注4885附近压力。' }
+    ];
+
+    const serviceActions = {
+      bullish: [
+        ['客户提醒', '黄金短线偏多，但临近美国事件窗口，建议客户避免追涨满仓。'],
+        ['交易动作', '若回踩第一支撑附近企稳，可关注小仓跟随机会。'],
+        ['风险控制', '事件公布前把单笔风险控制在账户净值的1.2%以内。']
+      ],
+      bearish: [
+        ['客户提醒', '短线动量转弱，建议客户降低多单敞口，等待支撑有效性确认。'],
+        ['交易动作', '若跌破第一支撑，优先观察止损纪律和反抽质量。'],
+        ['风险控制', '暂停加仓，避免在重要数据公布前扩大亏损。']
+      ],
+      neutral: [
+        ['客户提醒', '当前方向不清晰，建议客户等待事件落地后再提高仓位。'],
+        ['交易动作', '价格位于支撑压力区间中部，优先观望。'],
+        ['风险控制', '保持轻仓，避免在快讯密集窗口频繁追单。']
+      ]
+    };
+
+    let period = '1m';
+    let candles = buildCandles(86, 4866);
+    let flashCursor = 5;
+
+    function setToday() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      $('today').textContent = `${y}/${m}/${d}`;
+    }
+
+    function buildCandles(count, seed) {
+      const list = [];
+      let close = seed;
+      const now = Date.now();
+      for (let i = count - 1; i >= 0; i -= 1) {
+        const open = close + (Math.random() - 0.52) * 7;
+        close = open + (Math.random() - 0.48) * 10;
+        const high = Math.max(open, close) + Math.random() * 7;
+        const low = Math.min(open, close) - Math.random() * 7;
+        list.push({
+          time: new Date(now - i * 60000),
+          open,
+          high,
+          low,
+          close,
+          volume: 800 + Math.random() * 900
+        });
+      }
+      return list;
+    }
+
+    function latest() {
+      return candles[candles.length - 1];
+    }
+
+    function previous() {
+      return candles[candles.length - 2] || candles[candles.length - 1];
+    }
+
+    function calculateSignals() {
+      const last = latest();
+      const prev = previous();
+      const recent = candles.slice(-24);
+      const highs = recent.map(item => item.high);
+      const lows = recent.map(item => item.low);
+      const closes = recent.map(item => item.close);
+      const momentum = last.close - closes[0];
+      const range = Math.max(...highs) - Math.min(...lows);
+      const changePct = (last.close - prev.close) / prev.close * 100;
+      const up = Math.max(28, Math.min(76, 50 + momentum / 2.8 + changePct * 6));
+      const risk = Math.max(22, Math.min(88, 38 + range / 2.6 + Math.abs(changePct) * 8));
+      return {
+        up,
+        down: 100 - up,
+        risk,
+        support1: Math.min(...lows),
+        support2: Math.min(...lows) - range * 0.22,
+        resistance1: Math.max(...highs),
+        stopLoss: Math.max(1.1, range / last.close * 100 * 1.5),
+        position: Math.max(20, 88 - risk),
+        change: last.close - prev.close,
+        changePct,
+        high: Math.max(...candles.slice(-40).map(item => item.high)),
+        low: Math.min(...candles.slice(-40).map(item => item.low))
+      };
+    }
+
+    function renderSignals() {
+      const sig = calculateSignals();
+      $('upProb').textContent = `${sig.up.toFixed(1)}%`;
+      $('downProb').textContent = `${sig.down.toFixed(1)}%`;
+      $('upBar').style.width = `${sig.up.toFixed(0)}%`;
+      $('riskBar').style.width = `${sig.risk.toFixed(0)}%`;
+      $('riskLabel').textContent = sig.risk >= 70 ? '高风险' : sig.risk >= 48 ? '中风险' : '低风险';
+      $('riskLabel').className = `pill ${sig.risk >= 70 ? 'red' : sig.risk >= 48 ? 'amber' : 'green'}`;
+      $('positionAdvice').textContent = `${sig.position.toFixed(0)}%`;
+      $('stopLoss').textContent = `${sig.stopLoss.toFixed(1)}%`;
+      $('support1').textContent = fmt.format(sig.support1);
+      $('support2').textContent = fmt.format(sig.support2);
+      $('resistance1').textContent = fmt.format(sig.resistance1);
+      renderDecision(sig);
+      renderActions(sig);
+      renderQuote(sig);
+      renderAccount(sig);
+    }
+
+    function signalMode(sig) {
+      if (sig.up >= 57) return 'bullish';
+      if (sig.up <= 43) return 'bearish';
+      return 'neutral';
+    }
+
+    function renderDecision(sig) {
+      const mode = signalMode(sig);
+      const hotCount = flashPool.slice(0, flashCursor).filter(item => item.hot).length;
+      const riskText = sig.risk >= 70 ? '高风险' : sig.risk >= 48 ? '中风险' : '可控风险';
+      const direction = mode === 'bullish' ? '短线偏多' : mode === 'bearish' ? '短线偏空' : '区间震荡';
+      $('decisionHeadline').textContent = `${direction}，${riskText}，22:15讲话前控制追单`;
+      $('decisionSummary').textContent = `当前上涨概率 ${sig.up.toFixed(1)}%，第一支撑 ${fmt.format(sig.support1)}，第一压力 ${fmt.format(sig.resistance1)}。系统已把客户服务重点收敛为仓位、事件和触达提醒。`;
+      $('aiReason').textContent = `AI解释：短线动量${sig.change >= 0 ? '偏强' : '走弱'}，快讯中有 ${hotCount} 条高优先级消息，事件窗口临近，因此建议以轻仓和价格确认优先。`;
+      $('modelConfidence').textContent = `${Math.max(58, Math.min(86, 62 + Math.abs(sig.up - 50) * 0.8)).toFixed(0)}%`;
+      $('serviceAlert').textContent = sig.risk >= 58 ? '需触达' : '观察中';
+      $('positionSide').textContent = mode === 'bearish' ? '黄金轻仓' : mode === 'neutral' ? '观望仓位' : '黄金多单';
+      $('positionSide').className = mode === 'bearish' ? 'amber' : mode === 'neutral' ? 'blue' : 'green';
+    }
+
+    function renderCountdown() {
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(22, 15, 0, 0);
+      if (target < now) target.setDate(target.getDate() + 1);
+      const diff = Math.max(0, target - now);
+      const hours = String(Math.floor(diff / 3600000)).padStart(2, '0');
+      const minutes = String(Math.floor(diff % 3600000 / 60000)).padStart(2, '0');
+      const seconds = String(Math.floor(diff % 60000 / 1000)).padStart(2, '0');
+      $('eventCountdown').textContent = `距离 22:15 施密德讲话 ${hours}:${minutes}:${seconds}`;
+    }
+
+    function renderActions(sig) {
+      const actions = serviceActions[signalMode(sig)];
+      const list = $('actionList');
+      list.textContent = '';
+      actions.forEach(([title, text]) => {
+        const item = document.createElement('div');
+        item.className = 'action-item';
+        const strong = document.createElement('strong');
+        strong.textContent = title;
+        const body = document.createElement('div');
+        body.className = 'sub';
+        body.textContent = text;
+        item.append(strong, body);
+        list.appendChild(item);
+      });
+    }
+
+    function tone(el, value) {
+      el.classList.remove('green', 'red', 'amber');
+      el.classList.add(value > 0 ? 'green' : value < 0 ? 'red' : 'amber');
+    }
+
+    function renderQuote(sig) {
+      const last = latest();
+      $('lastPrice').textContent = fmt.format(last.close);
+      $('changeValue').textContent = `${sig.change >= 0 ? '+' : ''}${fmt.format(sig.change)}`;
+      $('changePct').textContent = `${sig.changePct >= 0 ? '+' : ''}${sig.changePct.toFixed(2)}%`;
+      $('highPrice').textContent = fmt.format(sig.high);
+      $('lowPrice').textContent = fmt.format(sig.low);
+      tone($('lastPrice'), sig.change);
+      tone($('changeValue'), sig.change);
+      tone($('changePct'), sig.change);
+    }
+
+    function renderAccount(sig) {
+      const equity = 125000;
+      const lots = 3.2;
+      const pnl = 2180 + sig.change * 26;
+      const riskUsed = Math.max(18, Math.min(58, sig.risk * 0.62));
+      $('equity').textContent = money.format(equity + pnl);
+      $('freeMargin').textContent = money.format(86400 + pnl * 0.35);
+      $('lots').textContent = lots.toFixed(1);
+      $('dailyPnl').textContent = `${pnl >= 0 ? '+' : ''}${money.format(pnl)}`;
+      $('riskUsed').textContent = `${riskUsed.toFixed(0)}%`;
+      tone($('dailyPnl'), pnl);
+    }
+
+    function renderMiniList(id, items) {
+      const box = $(id);
+      box.textContent = '';
+      items.slice(0, 3).forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'mini-item';
+        const time = document.createElement('div');
+        time.className = 'mini-time';
+        time.textContent = item.time;
+        const text = document.createElement('div');
+        text.textContent = `${item.star ? item.star + ' ' : ''}${item.text}`;
+        row.append(time, text);
+        box.appendChild(row);
+      });
+    }
+
+    function renderEvents() {
+      renderMiniList('dataList', importantData);
+      renderMiniList('eventSummary', importantEvents);
+      const list = $('eventList');
+      list.textContent = '';
+      importantEvents.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'event-row important';
+        const time = document.createElement('div');
+        time.className = 'row-time';
+        time.textContent = item.time;
+        const text = document.createElement('div');
+        text.className = 'row-text';
+        text.textContent = `${item.star} ${item.text}`;
+        row.append(time, text);
+        list.appendChild(row);
+      });
+    }
+
+    function renderFlashes() {
+      const active = flashPool.slice(0, flashCursor);
+      $('flashCount').textContent = `${active.length} 条`;
+      renderMiniList('flashPreview', active.filter(item => item.hot));
+      const list = $('flashList');
+      list.textContent = '';
+      active.forEach(item => {
+        const row = document.createElement('div');
+        row.className = `flash-row ${item.hot ? 'hot' : ''}`;
+        const time = document.createElement('div');
+        time.className = 'row-time';
+        time.textContent = item.time;
+        const text = document.createElement('div');
+        text.className = 'flash-text';
+        text.textContent = item.text;
+        row.append(time, text);
+        list.appendChild(row);
+      });
+    }
+
+    function drawChart() {
+      const canvas = $('goldChart');
+      const wrap = canvas.parentElement;
+      const rect = wrap.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      const periodSize = { '1m': 64, '5m': 56, '15m': 48, '1h': 42, '4h': 36, '1d': 30 }[period];
+      const data = candles.slice(-periodSize);
+      const pad = { left: 50, right: 62, top: 20, bottom: 32 };
+      const width = rect.width - pad.left - pad.right;
+      const height = rect.height - pad.top - pad.bottom;
+      const high = Math.max(...data.map(item => item.high));
+      const low = Math.min(...data.map(item => item.low));
+      const gap = Math.max((high - low) * 0.08, 2);
+      const top = high + gap;
+      const bottom = low - gap;
+      const y = (price) => pad.top + (top - price) / (top - bottom) * height;
+      const step = width / data.length;
+      const candleWidth = Math.max(4, Math.min(12, step * 0.58));
+      const levels = calculateSignals();
+
+      ctx.font = '12px "Avenir Next", sans-serif';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i += 1) {
+        const yy = pad.top + height / 4 * i;
+        const price = top - (top - bottom) / 4 * i;
+        ctx.strokeStyle = '#e4ebf0';
+        ctx.beginPath();
+        ctx.moveTo(pad.left, yy);
+        ctx.lineTo(rect.width - pad.right, yy);
+        ctx.stroke();
+        ctx.fillStyle = '#667482';
+        ctx.fillText(fmt.format(price), rect.width - pad.right + 8, yy + 4);
+      }
+
+      drawLevel(ctx, pad, rect, y, levels.support1, '#0f9f6e', 'S1');
+      drawLevel(ctx, pad, rect, y, levels.resistance1, '#e3342f', 'R1');
+
+      data.forEach((item, index) => {
+        const x = pad.left + step * index + step / 2;
+        const rise = item.close >= item.open;
+        const color = rise ? '#0f9f6e' : '#e3342f';
+        const openY = y(item.open);
+        const closeY = y(item.close);
+        const highY = y(item.high);
+        const lowY = y(item.low);
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(x, highY);
+        ctx.lineTo(x, lowY);
+        ctx.stroke();
+        const bodyY = Math.min(openY, closeY);
+        const bodyH = Math.max(2, Math.abs(openY - closeY));
+        if (rise) {
+          ctx.strokeRect(x - candleWidth / 2, bodyY, candleWidth, bodyH);
+          ctx.fillStyle = 'rgba(15, 159, 110, 0.16)';
+          ctx.fillRect(x - candleWidth / 2, bodyY, candleWidth, bodyH);
+        } else {
+          ctx.fillRect(x - candleWidth / 2, bodyY, candleWidth, bodyH);
+        }
+      });
+
+      const last = latest();
+      const lastY = y(last.close);
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = '#1769e0';
+      ctx.beginPath();
+      ctx.moveTo(pad.left, lastY);
+      ctx.lineTo(rect.width - pad.right, lastY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#1769e0';
+      ctx.fillRect(rect.width - pad.right + 4, lastY - 11, 54, 22);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(fmt.format(last.close), rect.width - pad.right + 8, lastY + 4);
+    }
+
+    function drawLevel(ctx, pad, rect, y, price, color, label) {
+      const yy = y(price);
+      ctx.setLineDash([8, 5]);
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, yy);
+      ctx.lineTo(rect.width - pad.right, yy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color;
+      ctx.fillRect(pad.left + 4, yy - 10, 32, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, pad.left + 12, yy + 4);
+    }
+
+    function updateMarket() {
+      const last = latest();
+      const open = last.close;
+      const close = Math.max(1, open + (Math.random() - 0.48) * 5.6);
+      const high = Math.max(open, close) + Math.random() * 3.8;
+      const low = Math.min(open, close) - Math.random() * 3.8;
+      candles.push({ time: new Date(), open, high, low, close, volume: 700 + Math.random() * 1000 });
+      if (candles.length > 120) candles.shift();
+      renderSignals();
+      drawChart();
+    }
+
+    function bind() {
+      $('periods').addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-period]');
+        if (!button) return;
+        period = button.dataset.period;
+        document.querySelectorAll('#periods button').forEach(item => {
+          item.classList.toggle('active', item === button);
+        });
+        drawChart();
+      });
+      window.addEventListener('resize', drawChart);
+    }
+
+    function init() {
+      setToday();
+      bind();
+      renderEvents();
+      renderFlashes();
+      renderSignals();
+      renderCountdown();
+      drawChart();
+      setInterval(updateMarket, 4000);
+      setInterval(() => {
+        flashCursor = Math.min(flashPool.length, flashCursor + 1);
+        renderFlashes();
+        renderSignals();
+      }, 7000);
+      setInterval(renderCountdown, 1000);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
