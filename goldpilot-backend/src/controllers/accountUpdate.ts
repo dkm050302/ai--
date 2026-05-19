@@ -29,11 +29,13 @@ export async function updateAccount(req: Request, res: Response) {
     }
 
     // 更新账号信息
-    if (balance !== undefined) user.accountInfo.balance = Number(balance);
-    if (equity !== undefined) user.accountInfo.equity = Number(equity);
-    if (margin !== undefined) user.accountInfo.margin = Number(margin);
-    if (freeMargin !== undefined) user.accountInfo.freeMargin = Number(freeMargin);
-    if (dailyPnl !== undefined) user.accountInfo.dailyPnl = Number(dailyPnl);
+    if (user.accountInfo) {
+      if (balance !== undefined) user.accountInfo.balance = Number(balance);
+      if (equity !== undefined) user.accountInfo.equity = Number(equity);
+      if (margin !== undefined) user.accountInfo.margin = Number(margin);
+      if (freeMargin !== undefined) user.accountInfo.freeMargin = Number(freeMargin);
+      if (dailyPnl !== undefined) user.accountInfo.dailyPnl = Number(dailyPnl);
+    }
 
     await user.save();
 

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { PriceCard } from '@/components/PriceCard';
 import { Chart } from '@/components/Chart';
+import { SignalPanel } from '@/components/SignalPanel';
 import { DecisionCard } from '@/components/DecisionCard';
 import { ProbCard } from '@/components/ProbCard';
 import { RiskCard } from '@/components/RiskCard';
@@ -9,21 +10,53 @@ import { MiniCard } from '@/components/MiniCard';
 import { ActionPanel } from '@/components/ActionPanel';
 import { EventList } from '@/components/EventList';
 import { createDefaultPriceData } from '@/types/price';
-import { createDefaultSignals, createDefaultDailyStats } from '@/types/signal';
+import { createDefaultDailyStats } from '@/types/signal';
 import { createDefaultEvents, createDefaultFlashes } from '@/types/event';
 import { createDefaultDecisionData } from '@/types/decision';
-import type { PriceData, Candle } from '@/types';
+import type { PriceData, Candle, Signal, DailyStats } from '@/types';
 import { fetchCandles, createRealtimeConnection } from '@/services/marketData';
+import { detectSignals } from '@/utils/signalCalculator';
 import type { Period } from '@/services/marketData';
+
+/**
+ * 计算信号统计数据
+ */
+function calculateSignalStats(signals: Signal[]): DailyStats {
+  // 获取今天的信号
+  const today = new Date().setHours(0, 0, 0, 0);
+  const todaySignals = signals.filter(s => new Date(s.timestamp).getTime() >= today);
+
+  // 计算统计数据
+  const signalCount = todaySignals.length;
+  const completedSignals = todaySignals.filter(s => s.status === 'profit' || s.status === 'loss');
+  const winSignals = completedSignals.filter(s => s.status === 'profit');
+  const winRate = completedSignals.length > 0 ? (winSignals.length / completedSignals.length) * 100 : 0;
+  const netProfit = todaySignals.reduce((sum, s) => sum + (s.profit || 0), 0);
+
+  return {
+    date: new Date().toISOString().split('T')[0],
+    signalCount,
+    winRate,
+    netProfit,
+    upProb: 50,
+    downProb: 50,
+    risk: 50,
+    riskLevel: 'medium',
+    positionAdvice: 50,
+    stopLoss: 2.5,
+  };
+}
 
 export function Home() {
   const [period, setPeriod] = useState<Period>('1m');
   const [priceData, setPriceData] = useState<PriceData>(createDefaultPriceData());
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
+
+  // 计算统计数据（基于真实信号）
+  const stats = useMemo(() => calculateSignalStats(signals), [signals]);
 
   // 静态数据
-  const signals = createDefaultSignals();
-  const stats = createDefaultDailyStats();
   const events = createDefaultEvents();
   const flashes = createDefaultFlashes();
   const decisionData = createDefaultDecisionData();
@@ -34,8 +67,22 @@ export function Home() {
       try {
         const data = await fetchCandles(period, 500);
         setCandles(data);
+
+        console.log(`📊 [信号检测] K线数据: ${data.length} 条`);
+        console.log(`📊 [信号检测] 前5条:`, data.slice(0, 5));
+        console.log(`📊 [信号检测] 后5条:`, data.slice(-5));
+
+        // 计算信号（需要至少233根K线）
+        if (data.length >= 233) {
+          console.log('🔍 [信号检测] 开始计算 EMA...');
+          const detectedSignals = detectSignals(data);
+          console.log(`✅ [信号检测] 检测到 ${detectedSignals.length} 个信号:`, detectedSignals);
+          setSignals(detectedSignals);
+        } else {
+          console.warn(`⚠️ K线数据不足（${data.length}条），需要至少233条`);
+        }
       } catch (error) {
-        console.error('Failed to load candles:', error);
+        console.error('❌ [信号检测] 失败:', error);
       }
     };
 
@@ -110,6 +157,9 @@ export function Home() {
 
         {/* 右侧区域：信息咨询与分析 */}
         <section className="right" aria-label="信息咨询与分析">
+          {/* 今日信号统计 */}
+          <SignalPanel signals={signals} stats={stats} />
+
           {/* 今日决策卡片 */}
           <DecisionCard
             headline={decisionData.headline}

@@ -26,129 +26,95 @@ interface Candle {
 
 /**
  * 获取实时报价
- * 使用多个数据源确保获取准确价格
+ * 通过后端 API 获取，避免 CORS 跨域问题
  */
 export async function fetchRealTimePrice(): Promise<PriceQuote> {
-  // 尝试直接从已知的可靠价格数据源获取
-  // 由于2026年5月金价在4500+范围，我们需要适配这个价格水平
+  console.log('🔍 [价格数据源] 正在从后端 API 获取实时报价...');
 
   try {
-    // 使用多个API并获取最新价格
-    const response = await fetch('https://api.metals.live/v1/spot/gold');
-    if (response.ok) {
-      const data = await response.json();
-      if (data && data.price) {
-        const price = data.price;
-        const prevClose = price / (1 + (data.change_percent || 0) / 100);
+    // 调用后端 API
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+    const response = await fetch(`${apiUrl}/api/price`);
 
-        return {
-          symbol: 'XAU/USD',
-          price: Number(price),
-          change: Number((price - prevClose).toFixed(2)),
-          changePct: Number((data.change_percent || 0).toFixed(2)),
-          high: Number((data.high || price + 10).toFixed(2)),
-          low: Number((data.low || price - 10).toFixed(2)),
-          timestamp: new Date(),
-        };
-      }
+    if (!response.ok) {
+      throw new Error(`后端 API 返回错误: ${response.status}`);
     }
+
+    const result = await response.json();
+
+    if (!result.success || !result.data) {
+      throw new Error('后端 API 返回数据格式无效');
+    }
+
+    const data = result.data;
+
+    console.log(
+      `✅ [价格数据源] 后端 API - $${data.price.toFixed(2)} (${data.change >= 0 ? '+' : ''}${data.change.toFixed(2)})`
+    );
+
+    return {
+      symbol: data.symbol || 'XAU/USD',
+      price: data.price,
+      change: data.change,
+      changePct: data.changePct,
+      high: data.high,
+      low: data.low,
+      timestamp: new Date(data.timestamp),
+    };
   } catch (e) {
-    console.warn('Primary API failed:', e);
+    console.warn('❌ [价格数据源] 后端 API 失败:', (e as Error).message);
+    console.warn('⚠️ [价格数据源] 使用备用估算');
+
+    // 备用方案：使用基于真实市场的价格估算
+    const basePrice = 4537 + (Math.random() - 0.5) * 20;
+    const change = (Math.random() - 0.5) * 30;
+    const prevClose = basePrice - change;
+    const changePct = (change / prevClose) * 100;
+
+    return {
+      symbol: 'XAU/USD (备用)',
+      price: Number(basePrice.toFixed(2)),
+      change: Number(change.toFixed(2)),
+      changePct: Number(changePct.toFixed(2)),
+      high: Number((basePrice + 15 + Math.random() * 10).toFixed(2)),
+      low: Number((basePrice - 15 - Math.random() * 10).toFixed(2)),
+      timestamp: new Date(),
+    };
   }
-
-  // 备用方案：使用基于真实市场的价格估算
-  // 根据2026年5月的实际金价水平
-  console.warn('Using fallback pricing based on current market levels');
-
-  // 基准价格：根据2026年5月实际金价约4537美元
-  const basePrice = 4537 + (Math.random() - 0.5) * 20; // 4527-4547波动范围
-  const change = (Math.random() - 0.5) * 30; // ±15美元波动
-  const prevClose = basePrice - change;
-  const changePct = (change / prevClose) * 100;
-
-  return {
-    symbol: 'XAU/USD (现货)',
-    price: Number(basePrice.toFixed(2)),
-    change: Number(change.toFixed(2)),
-    changePct: Number(changePct.toFixed(2)),
-    high: Number((basePrice + 15 + Math.random() * 10).toFixed(2)),
-    low: Number((basePrice - 15 - Math.random() * 10).toFixed(2)),
-    timestamp: new Date(),
-  };
 }
 
 /**
  * 获取历史K线数据
+ * 通过后端 API 获取，避免 CORS 跨域问题
  * @param period 周期
  * @param limit 获取数量
  */
 export async function fetchCandles(period: Period = '1m', limit: number = 500): Promise<Candle[]> {
+  console.log(`📊 [K线数据源] 正在从后端 API 获取 ${period} 周期数据...`);
+
   try {
-    // 映射周期到Yahoo Finance interval
-    const periodMap: Record<Period, string> = {
-      '1m': '1m',
-      '5m': '5m',
-      '15m': '15m',
-      '1h': '1h',
-      '4h': '1d', // Yahoo不支持4h，使用1d
-      '1d': '1d',
-    };
-
-    // 映射周期到范围
-    const rangeMap: Record<Period, string> = {
-      '1m': '1d',
-      '5m': '5d',
-      '15m': '15d',
-      '1h': '1mo',
-      '4h': '3mo',
-      '1d': '1y',
-    };
-
-    const interval = periodMap[period];
-    const range = rangeMap[period];
-
+    // 调用后端 API
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
     const response = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=${interval}&range=${range}`
+      `${apiUrl}/api/candles?period=${period}&limit=${limit}`
     );
 
-    if (!response.ok) throw new Error('Failed to fetch candles');
-
-    const data = await response.json();
-    const result = data.chart?.result?.[0];
-
-    if (!result) throw new Error('Invalid data format');
-
-    const timestamps = result.timestamp || [];
-    const quote = result.indicators?.quote?.[0];
-
-    if (!quote) throw new Error('No quote data');
-
-    const candles: Candle[] = [];
-
-    for (let i = 0; i < timestamps.length; i++) {
-      const open = quote.open[i];
-      const high = quote.high[i];
-      const low = quote.low[i];
-      const close = quote.close[i];
-      const volume = quote.volume[i];
-
-      // 跳过无效数据
-      if (open === null || high === null || low === null || close === null) continue;
-
-      candles.push({
-        time: new Date(timestamps[i] * 1000),
-        open,
-        high,
-        low,
-        close,
-        volume: volume || 0,
-      });
+    if (!response.ok) {
+      throw new Error(`后端 API 返回错误: ${response.status}`);
     }
 
-    // 返回最后limit条数据
-    return candles.slice(-limit);
+    const result = await response.json();
+
+    if (!result.success || !result.data?.candles) {
+      throw new Error('后端 API 返回数据格式无效');
+    }
+
+    const candles = result.data.candles;
+
+    console.log(`✅ [K线数据源] 后端 API - 获取 ${candles.length} 条数据`);
+    return candles;
   } catch (error) {
-    console.warn('Failed to fetch candles, generating mock data:', error);
+    console.warn('❌ [K线数据源] 后端 API 失败，使用模拟数据:', (error as Error).message);
 
     // 生成模拟数据（用于演示）
     return generateMockCandles(period, limit);
@@ -208,7 +174,7 @@ export function createRealtimeConnection(
   onPriceUpdate: (price: PriceQuote) => void,
   onError?: (error: Error) => void
 ): () => void {
-  const intervalMs = 5000; // 每5秒更新一次
+  const intervalMs = 300000; // 每5分钟更新一次（800次/天限制内）
 
   const updatePrice = async () => {
     try {

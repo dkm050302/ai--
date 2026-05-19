@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, type Time, CandlestickSeries } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, type Time } from 'lightweight-charts';
 import type { Candle, Signal } from '@/types';
 import { detectSignals, getSignalMarkerText } from '@/utils/signalCalculator';
 
@@ -77,13 +77,17 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       },
     });
 
-    const candlestickSeries = chart.addSeries(CandlestickSeries, {
+    const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#0f9f6e',
       downColor: '#e3342f',
       borderVisible: false,
       wickUpColor: '#0f9f6e',
       wickDownColor: '#e3342f',
     });
+
+    console.log('🔍 [Chart] chart 对象:', chart);
+    console.log('🔍 [Chart] chart 类型:', typeof chart);
+    console.log('🔍 [Chart] chart 方法列表:', Object.getOwnPropertyNames(Object.getPrototypeOf(chart)));
 
     chartRef.current = chart;
     seriesRef.current = candlestickSeries;
@@ -131,12 +135,17 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
   }, [candles]);
 
   useEffect(() => {
-    if (!seriesRef.current || signals.length === 0) return;
+    if (!seriesRef.current || signals.length === 0) {
+      console.log('⚠️ [Chart] 未设置series或无信号数据', { hasSeries: !!seriesRef.current, signalsLength: signals.length });
+      return;
+    }
 
     const currentPeriodSignals = signals.filter(s => s.period === period || period === '1m');
+    console.log(`📊 [Chart] 当前周期 ${period}, 筛选后信号数量: ${currentPeriodSignals.length}`, currentPeriodSignals);
 
     const markers = currentPeriodSignals.map(signal => {
       const time = (new Date(signal.timestamp).getTime() / 1000) as Time;
+      console.log(`📍 [Chart] 信号时间戳: ${time}, 日期: ${signal.timestamp}`);
 
       let position: 'aboveBar' | 'belowBar';
       let color: string;
@@ -148,30 +157,30 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       if (signal.direction === 'long') {
         position = 'belowBar';
         if (signal.status === 'profit') {
-          color = '#0f9f6e';
+          color = '#3b82f6'; // 蓝色止盈
           shape = 'arrowUp';
           text = markerText;
         } else if (signal.status === 'loss') {
-          color = '#e3342f';
+          color = '#dc2626'; // 红色止损
           shape = 'arrowUp';
           text = '止损';
         } else {
-          color = '#1769e0';
+          color = '#a855f7'; // 紫色做多信号
           shape = 'arrowUp';
           text = markerText;
         }
       } else {
         position = 'aboveBar';
         if (signal.status === 'profit') {
-          color = '#0f9f6e';
+          color = '#3b82f6'; // 蓝色止盈
           shape = 'arrowDown';
           text = markerText;
         } else if (signal.status === 'loss') {
-          color = '#e3342f';
+          color = '#dc2626'; // 红色止损
           shape = 'arrowDown';
           text = '止损';
         } else {
-          color = '#e3342f';
+          color = '#f59e0b'; // 橙色做空信号
           shape = 'arrowDown';
           text = markerText;
         }
@@ -180,12 +189,13 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       return { time, position, color, shape, text };
     });
 
+    console.log(`🎯 [Chart] 设置 ${markers.length} 个标记`);
+
     try {
-      if (typeof (seriesRef.current as any).setMarkers === 'function') {
-        (seriesRef.current as any).setMarkers(markers);
-      }
+      (seriesRef.current as any).setMarkers(markers);
+      console.log('✅ [Chart] 标记设置成功');
     } catch (error) {
-      console.warn('Markers not supported:', error);
+      console.warn('❌ [Chart] 标记设置失败:', error);
     }
   }, [signals, period]);
 

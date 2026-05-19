@@ -1,6 +1,6 @@
 import { formatMoney } from '@/utils/format';
 import type { Signal, DailyStats } from '@/types';
-import { motion } from 'framer-motion';
+import { Card, Statistic, Row, Col, List, Tag, Badge } from 'antd';
 
 interface SignalPanelProps {
   signals: Signal[];
@@ -8,91 +8,158 @@ interface SignalPanelProps {
 }
 
 /**
- * 信号面板组件 - 显示今日信号统计和历史
+ * 信号面板组件 - 使用 Ant Design 组件
  */
 export function SignalPanel({ signals, stats }: SignalPanelProps) {
   const { signalCount, winRate, netProfit } = stats;
 
+  // 获取今天的信号
+  const today = new Date().setHours(0, 0, 0, 0);
+  const todaySignals = signals.filter(s => new Date(s.timestamp).getTime() >= today);
+
+  // 获取信号状态标签
+  const getStatusTag = (signal: Signal) => {
+    if (signal.status === 'profit') {
+      return <Tag color="success">止盈</Tag>;
+    } else if (signal.status === 'loss') {
+      return <Tag color="error">亏损</Tag>;
+    } else {
+      return <Tag color="processing">持仓中</Tag>;
+    }
+  };
+
+  // 获取方向标签
+  const getDirectionTag = (signal: Signal) => {
+    if (signal.direction === 'long') {
+      return <Tag color="purple">做多</Tag>;
+    } else {
+      return <Tag color="orange">做空</Tag>;
+    }
+  };
+
   return (
-    <div className="bg-white rounded-xl shadow-soft p-4 border border-gray-100">
-      {/* 标题栏 */}
-      <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-gray-100">
-        <strong className="text-sm text-ink">今日信号表现</strong>
-      </div>
-
+    <Card
+      title="今日信号统计"
+      className="shadow-sm"
+      bordered={false}
+      styles={{
+        body: { padding: '16px' }
+      }}
+    >
       {/* 统计数据 */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        {/* 信号数 */}
-        <div className="flex flex-col items-center justify-center p-3 bg-gradient-to-br from-soft-blue to-white rounded-lg border border-gray-100">
-          <span className="text-2xl font-bold tabular-nums text-ink">{signalCount}</span>
-          <span className="text-xs text-muted">信号数</span>
-        </div>
-
-        {/* 胜率 */}
-        <div className="flex flex-col items-center justify-center p-3 bg-gradient-to-br from-soft-indigo to-white rounded-lg border border-gray-100">
-          <span className="text-2xl font-bold tabular-nums text-ink">{winRate.toFixed(0)}%</span>
-          <span className="text-xs text-muted">胜率</span>
-        </div>
-
-        {/* 盈利 */}
-        <div className="flex flex-col items-center justify-center p-3 bg-gradient-to-br from-soft-purple to-white rounded-lg border border-gray-100">
-          <span className={`text-2xl font-bold tabular-nums ${
-            netProfit >= 0 ? 'text-green-500' : 'text-red-500'
-          }`}>
-            {netProfit >= 0 ? '+' : ''}{formatMoney(netProfit)}
-          </span>
-          <span className="text-xs text-muted">盈利</span>
-        </div>
-      </div>
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={8}>
+          <Statistic
+            title="信号数"
+            value={signalCount}
+            valueStyle={{ color: '#3f8600', fontSize: 24, fontWeight: 600 }}
+          />
+        </Col>
+        <Col span={8}>
+          <Statistic
+            title="胜率"
+            value={winRate}
+            suffix="%"
+            precision={1}
+            valueStyle={{
+              color: winRate >= 60 ? '#3f8600' : winRate >= 40 ? '#faad14' : '#cf1322',
+              fontSize: 24,
+              fontWeight: 600
+            }}
+          />
+        </Col>
+        <Col span={8}>
+          <Statistic
+            title="净盈利"
+            value={netProfit}
+            precision={2}
+            prefix={netProfit >= 0 ? '+' : ''}
+            valueStyle={{
+              color: netProfit >= 0 ? '#3f8600' : '#cf1322',
+              fontSize: 24,
+              fontWeight: 600
+            }}
+          />
+        </Col>
+      </Row>
 
       {/* 信号记录 */}
-      <div className="border-t border-gray-100 pt-3">
-        <div className="text-xs text-muted mb-2">今日信号记录:</div>
-        <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-          {signals.length === 0 ? (
-            <div className="text-sm text-muted text-center py-4">暂无信号记录</div>
-          ) : (
-            signals.map((signal, index) => (
-              <motion.div
-                key={signal.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05, duration: 0.3 }}
-                whileHover={{ x: 2, backgroundColor: 'rgba(248, 250, 252, 1)' }}
-                className="grid grid-cols-[48px_1fr] gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-100 text-sm leading-relaxed cursor-pointer transition-colors hover:border-blue-200"
-              >
-                <div className="text-blue-600 font-bold tabular-nums">
-                  {new Date(signal.timestamp).toLocaleTimeString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </div>
-                <div>
-                  <span className={signal.direction === 'long' ? 'text-green-500' : 'text-red-500'}>
-                    {signal.direction === 'long' ? '做多' : '做空'}
-                  </span>
-                  {' → '}
-                  <span className={
-                    signal.status === 'profit' ? 'text-green-500' :
-                    signal.status === 'loss' ? 'text-red-500' :
-                    'text-blue-500'
-                  }>
-                    {signal.status === 'profit' ? '止盈' :
-                     signal.status === 'loss' ? '亏损' : '持仓中'}
-                  </span>
-                  {signal.profit !== undefined && (
-                    <span className={`ml-1 font-medium ${signal.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      ({signal.profit >= 0 ? '+' : ''}{formatMoney(signal.profit)})
-                    </span>
-                  )}
-                  {signal.status === 'profit' && <span className="ml-1">🟢</span>}
-                  {signal.status === 'loss' && <span className="ml-1">🔴</span>}
-                </div>
-              </motion.div>
-            ))
-          )}
+      <div style={{ marginTop: 16 }}>
+        <div style={{
+          fontSize: 14,
+          fontWeight: 500,
+          marginBottom: 12,
+          color: '#8c8c8c'
+        }}>
+          今日信号记录
         </div>
+        {todaySignals.length === 0 ? (
+          <div style={{
+            textAlign: 'center',
+            padding: '24px',
+            color: '#bfbfbf',
+            fontSize: 14
+          }}>
+            暂无信号记录
+          </div>
+        ) : (
+          <List
+            size="small"
+            dataSource={todaySignals}
+            renderItem={(signal, index) => (
+              <List.Item>
+                <div style={{ width: '100%' }}>
+                  {/* 第一行：时间和方向 */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 8
+                  }}>
+                    <span style={{
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: '#595959'
+                    }}>
+                      {new Date(signal.timestamp).toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    <span style={{ display: 'flex', gap: 4 }}>
+                      {getDirectionTag(signal)}
+                      {getStatusTag(signal)}
+                    </span>
+                  </div>
+
+                  {/* 第二行：价格和盈亏 */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: 13
+                  }}>
+                    <span style={{ color: '#8c8c8c' }}>
+                      入场: ${signal.entryPrice.toFixed(2)}
+                    </span>
+                    {signal.profit !== undefined && signal.profit !== 0 && (
+                      <span
+                        style={{
+                          fontWeight: 500,
+                          color: signal.profit >= 0 ? '#3f8600' : '#cf1322'
+                        }}
+                      >
+                        {signal.profit >= 0 ? '+' : ''}{signal.profit.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </List.Item>
+            )}
+          />
+        )}
       </div>
-    </div>
+    </Card>
   );
 }

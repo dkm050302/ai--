@@ -6,6 +6,11 @@ import { logger } from '../utils';
  * 支持多个数据源自动切换
  */
 class MarketDataService {
+  // 缓存机制，减少API调用
+  private priceCache: { price: number; timestamp: number } | null = null;
+  private candlesCache: Map<string, { candles: any[]; timestamp: number }> = new Map();
+  private readonly CACHE_DURATION = 60000; // 缓存60秒
+
   private sources = [
     {
       name: 'Twelve Data',
@@ -21,22 +26,108 @@ class MarketDataService {
 
   /**
    * 获取实时黄金价格（现货）
-   * 优先使用 Twelve Data，失败则使用备用源
+   * 使用多个免费数据源，带缓存机制
    */
   async getRealTimePrice(): Promise<number> {
-    // 方案1: 使用 Twelve Data
+    // 检查缓存
+    const now = Date.now();
+    if (this.priceCache && (now - this.priceCache.timestamp) < this.CACHE_DURATION) {
+      logger.info(`📦 [缓存] 使用缓存价格: ${this.priceCache.price}`);
+      return this.priceCache.price;
+    }
+
+    // 方案1: 使用 Twelve Data（如果有 API key）
     if (this.sources[0].apiKey && this.sources[0].apiKey !== 'your_token_here') {
       try {
         const price = await this.fetchFromTwelveData();
-        logger.info(`Price from Twelve Data: ${price}`);
+        logger.info(`✅ [Twelve Data] Price: ${price}`);
+
+        // 更新缓存
+        this.priceCache = { price, timestamp: Date.now() };
         return price;
       } catch (error: any) {
-        logger.warn('Twelve Data failed, trying fallback:', error.message);
+        logger.warn('⚠️ Twelve Data failed:', error.message);
       }
     }
 
-    // 方案2: 使用备用源
+    // 方案2: 使用 metals.live API（免费，无需注册）
+    try {
+      const price = await this.fetchFromMetalsLive();
+      logger.info(`✅ [metals.live] Price: ${price}`);
+      return price;
+    } catch (error: any) {
+      logger.warn('⚠️ metals.live failed:', error.message);
+    }
+
+    // 方案3: 使用基于市场水平的估算
     return this.getFallbackPrice();
+  }
+
+  /**
+   * 从 metals.live 获取黄金现货价格
+   * 免费，无需注册
+   */
+  private async fetchFromMetalsLive(): Promise<number> {
+    const response = await axios.get('https://api.metals.live/v1/spot/gold', {
+      timeout: 8000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+
+    if (!response.data || !response.data.price) {
+      throw new Error('Invalid response from metals.live');
+    }
+
+    return parseFloat(response.data.price);
+  }
+
+  /**
+   * 从 Yahoo Finance 获取实时价格
+   * 黄金期货代码：GC=F
+   */
+  private async fetchFromYahooFinance(): Promise<number> {
+    // 使用更完整的请求头模拟浏览器
+    const response = await axios.get(
+      'https://query2.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=5d&includePrePost=false',
+      {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Referer': 'https://finance.yahoo.com/',
+          'Origin': 'https://finance.yahoo.com',
+          'Connection': 'keep-alive',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-site',
+        },
+      }
+    );
+
+    const result = response.data.chart?.result?.[0];
+    if (!result) {
+      throw new Error('Invalid Yahoo Finance response');
+    }
+
+    const quote = result.indicators?.quote?.[0];
+    const timestamps = result.timestamp || [];
+
+    if (!quote || timestamps.length === 0) {
+      throw new Error('No quote data from Yahoo Finance');
+    }
+
+    // 获取最新收盘价
+    const lastIndex = timestamps.length - 1;
+    const currentPrice = quote.close[lastIndex];
+
+    if (currentPrice === null) {
+      throw new Error('Current price is null');
+    }
+
+    return currentPrice;
   }
 
   /**
@@ -93,25 +184,125 @@ class MarketDataService {
   }
 
   /**
-   * 获取K线数据
+   * 获取K线数据，带缓存机制
    * @param interval - 时间周期 (1m, 5m, 15m, 1h, 4h, 1d)
    * @param limit - 数据条数
    */
   async getCandles(interval: string = '1m', limit: number = 100): Promise<any[]> {
-    // 尝试从真实API获取
+    // 检查缓存
+    const cacheKey = `${interval}_${limit}`;
+    const cached = this.candlesCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && (now - cached.timestamp) < this.CACHE_DURATION) {
+      logger.info(`📦 [缓存] 使用缓存K线数据: ${interval} (${cached.candles.length}条)`);
+      return cached.candles;
+    }
+    // 方案1: 尝试 Twelve Data（如果有 API key）
     if (this.sources[0].apiKey && this.sources[0].apiKey !== 'your_token_here') {
       try {
         const candles = await this.fetchCandlesFromTwelveData(interval, limit);
         if (candles.length > 0) {
+          logger.info(`✅ [Twelve Data] Candles: ${candles.length} for ${interval}`);
+
+          // 更新缓存
+          this.candlesCache.set(cacheKey, { candles, timestamp: Date.now() });
           return candles;
         }
       } catch (error: any) {
-        logger.warn('Twelve Data candles failed, using fallback:', error.message);
+        logger.warn('⚠️ Twelve Data candles failed:', error.message);
       }
     }
 
-    // 使用降级方案
-    return this.generateRealisticCandles(interval, limit);
+    // 方案2: 使用基于真实价格的模拟K线（基于当前市场价）
+    logger.info(`📊 [数据源] 使用基于市场价的K线数据 (${interval})`);
+    const candles = this.generateRealisticCandles(interval, limit);
+
+    // 更新缓存
+    this.candlesCache.set(cacheKey, { candles, timestamp: Date.now() });
+    return candles;
+  }
+
+  /**
+   * 从 Yahoo Finance 获取K线数据
+   */
+  private async fetchCandlesFromYahooFinance(interval: string, limit: number): Promise<any[]> {
+    const intervalMap: Record<string, string> = {
+      '1m': '1m',
+      '5m': '5m',
+      '15m': '15m',
+      '1h': '1h',
+      '4h': '1d', // Yahoo 不支持 4h
+      '1d': '1d',
+    };
+
+    const rangeMap: Record<string, string> = {
+      '1m': '1d',
+      '5m': '5d',
+      '15m': '15d',
+      '1h': '1mo',
+      '4h': '3mo',
+      '1d': '1y',
+    };
+
+    const apiInterval = intervalMap[interval] || '1m';
+    const range = rangeMap[interval] || '1d';
+
+    const response = await axios.get(
+      `https://query2.finance.yahoo.com/v8/finance/chart/GC=F?interval=${apiInterval}&range=${range}`,
+      {
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Referer': 'https://finance.yahoo.com/',
+          'Origin': 'https://finance.yahoo.com',
+          'Connection': 'keep-alive',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-site',
+        },
+      }
+    );
+
+    const result = response.data.chart?.result?.[0];
+    if (!result) {
+      throw new Error('Invalid Yahoo Finance response');
+    }
+
+    const timestamps = result.timestamp || [];
+    const quote = result.indicators?.quote?.[0];
+
+    if (!quote || timestamps.length === 0) {
+      throw new Error('No quote data from Yahoo Finance');
+    }
+
+    const candles: any[] = [];
+
+    for (let i = 0; i < timestamps.length; i++) {
+      const open = quote.open[i];
+      const high = quote.high[i];
+      const low = quote.low[i];
+      const close = quote.close[i];
+      const volume = quote.volume[i];
+
+      // 跳过无效数据
+      if (open === null || high === null || low === null || close === null) continue;
+
+      candles.push({
+        time: new Date(timestamps[i] * 1000),
+        open,
+        high,
+        low,
+        close,
+        volume: volume || 0,
+      });
+    }
+
+    // 返回最后 limit 条数据
+    return candles.slice(-limit);
   }
 
   /**
@@ -148,7 +339,7 @@ class MarketDataService {
     }
 
     // 转换API响应格式
-    return response.data.values.map((item: any) => ({
+    const candles = response.data.values.map((item: any) => ({
       time: new Date(item.datetime),
       open: parseFloat(item.open),
       high: parseFloat(item.high),
@@ -156,6 +347,9 @@ class MarketDataService {
       close: parseFloat(item.close),
       volume: 0,
     }));
+
+    // Twelve Data 返回降序数据（最新在前），需要反转成升序
+    return candles.reverse();
   }
 
   /**
