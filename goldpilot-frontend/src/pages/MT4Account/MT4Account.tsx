@@ -76,8 +76,6 @@ export function MT4Account() {
       const values = await form.validateFields();
 
       setLoading(true);
-      const token = localStorage.getItem('token');
-
       const response = await authFetch('/api/account/update', {
         method: 'PUT',
         body: JSON.stringify(values),
