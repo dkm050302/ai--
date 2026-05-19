@@ -1,6 +1,5 @@
-import { formatMoney } from '@/utils/format';
 import type { Signal, DailyStats } from '@/types';
-import { Card, Statistic, Row, Col, List, Tag, Badge } from 'antd';
+import { Card, Statistic, Row, Col, List, Tag } from 'antd';
 
 interface SignalPanelProps {
   signals: Signal[];
@@ -106,7 +105,7 @@ export function SignalPanel({ signals, stats }: SignalPanelProps) {
           <List
             size="small"
             dataSource={todaySignals}
-            renderItem={(signal, index) => (
+            renderItem={(signal) => (
               <List.Item>
                 <div style={{ width: '100%' }}>
                   {/* 第一行：时间和方向 */}

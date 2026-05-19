@@ -10,7 +10,6 @@ import { MiniCard } from '@/components/MiniCard';
 import { ActionPanel } from '@/components/ActionPanel';
 import { EventList } from '@/components/EventList';
 import { createDefaultPriceData } from '@/types/price';
-import { createDefaultDailyStats } from '@/types/signal';
 import { createDefaultEvents, createDefaultFlashes } from '@/types/event';
 import { createDefaultDecisionData } from '@/types/decision';
 import type { PriceData, Candle, Signal, DailyStats } from '@/types';
@@ -34,7 +33,7 @@ function calculateSignalStats(signals: Signal[]): DailyStats {
   const netProfit = todaySignals.reduce((sum, s) => sum + (s.profit || 0), 0);
 
   return {
-    date: new Date().toISOString().split('T')[0],
+    date: new Date(),
     signalCount,
     winRate,
     netProfit,
