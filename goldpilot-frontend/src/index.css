@@ -25,6 +25,50 @@
   --panel-shadow: 0 14px 34px rgba(25, 44, 63, 0.08);
 }
 
+/* 自定义动画 */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 标题字体优化 */
+h1, h2, h3, h4, h5, h6 {
+  font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* 分割线优化 - 更自然的过渡 */
+.card::after,
+.market-card::after,
+.account-card::after,
+.feed::after,
+.decision-card::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--line) 10%, var(--line) 90%, transparent);
+  opacity: 0.6;
+}
+
+.card-title,
+.panel-title {
+  border-bottom: 1px solid;
+  border-image: linear-gradient(to right, transparent, var(--line) 20%, var(--line) 80%, transparent) 1;
+  padding-bottom: 8px;
+}
+
 /* 全局样式 */
 * {
   box-sizing: border-box;
@@ -112,8 +156,8 @@ body {
 .main {
   display: grid;
   grid-template-columns: minmax(720px, 1.1fr) minmax(500px, 0.9fr);
-  gap: 14px;
-  padding: 14px;
+  gap: 16px;
+  padding: 0;
   min-height: calc(100vh - 88px);
 }
 
@@ -144,18 +188,39 @@ body {
   display: grid;
   grid-template-columns: 1.2fr 0.9fr 0.9fr;
   gap: 10px;
-  padding: 13px;
-  background:
-    linear-gradient(120deg, rgba(23, 105, 224, 0.08), transparent 44%),
-    var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: var(--panel-shadow);
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(23, 105, 224, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%, var(--paper));
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 40px rgba(0, 0, 0, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.decision-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
 }
 
 .decision-main {
   padding-right: 10px;
-  border-right: 1px solid var(--line);
+  border-right: none;
+  position: relative;
+}
+
+.decision-main::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 10%;
+  bottom: 10%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(203, 213, 225, 0.4), transparent);
 }
 
 .decision-kicker {
@@ -181,9 +246,10 @@ body {
 
 .decision-box {
   padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.68);
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.9));
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .decision-box strong {
@@ -197,9 +263,29 @@ body {
 .market-card,
 .account-card {
   background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: var(--panel-shadow);
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 40px rgba(0, 0, 0, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 卡片渐变边框效果 */
+.card::before,
+.market-card::before,
+.account-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
+}
+
+.card {
+  min-height: 160px;
+  padding: 13px;
 }
 
 .card {
@@ -214,8 +300,20 @@ body {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  border-bottom: none;
+  position: relative;
+}
+
+.card-title::after,
+.panel-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(203, 213, 225, 0.5), transparent);
 }
 
 .card-title strong,
@@ -274,11 +372,22 @@ body {
   align-items: center;
   gap: 8px;
   min-height: 35px;
-  border-bottom: 1px dashed var(--line);
+  border-bottom: none;
+  position: relative;
 }
 
-.metric:last-child {
-  border-bottom: 0;
+.metric::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(203, 213, 225, 0.3), transparent);
+}
+
+.metric:last-child::after {
+  display: none;
 }
 
 .metric b {
@@ -336,10 +445,11 @@ body {
   grid-template-columns: 48px 1fr;
   gap: 8px;
   line-height: 1.45;
-  padding: 8px;
-  border-radius: 6px;
-  background: #f8fafc;
-  border: 1px solid var(--line);
+  padding: 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .mini-time {
@@ -359,8 +469,10 @@ body {
 
 .feed {
   min-height: 0;
-  padding: 13px;
+  padding: 16px;
   overflow: hidden;
+  border-radius: 12px;
+  border: none;
 }
 
 .scroll {
@@ -378,20 +490,26 @@ body {
   display: grid;
   grid-template-columns: 54px 1fr;
   gap: 10px;
-  padding: 9px;
-  border-radius: 7px;
-  border: 1px solid var(--line);
-  background: #fbfcfe;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #fbfcfe, #f8fafc);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.event-row:hover,
+.flash-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
 .event-row.important {
-  background: var(--amber-soft);
-  border-color: #f2d184;
+  background: linear-gradient(135deg, var(--amber-soft), #fffbeb);
 }
 
 .flash-row.hot {
-  background: var(--red-soft);
-  border-color: #ffc6c6;
+  background: linear-gradient(135deg, var(--red-soft), #fef2f2);
 }
 
 .flash-row.hot .flash-text {
@@ -429,10 +547,11 @@ body {
 
 .quote {
   min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fbfcfe;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #fbfcfe, #f8fafc);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .quote .sub {
@@ -466,10 +585,11 @@ body {
 
 .account {
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fbfcfe;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #fbfcfe, #f8fafc);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .account .sub {
@@ -489,14 +609,21 @@ body {
 /* 动作列表 */
 .action-list {
   display: grid;
-  gap: 9px;
+  gap: 10px;
 }
 
 .action-item {
-  padding: 10px;
-  border-radius: 7px;
-  border: 1px solid var(--line);
-  background: #fbfcfe;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #fbfcfe, #f8fafc);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.action-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
 .action-item strong {
@@ -542,13 +669,14 @@ body {
   min-height: 300px;
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  border: none;
+  border-radius: 10px;
   background:
     linear-gradient(#eef3f7 1px, transparent 1px),
     linear-gradient(90deg, #eef3f7 1px, transparent 1px),
-    #ffffff;
-  background-size: 100% 58px, 70px 100%;
+    linear-gradient(135deg, #ffffff, #f8fafc);
+  background-size: 100% 58px, 70px 100%, 100% 100%;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 /* Chart组件容器 */

@@ -17,8 +17,14 @@ import {
   updateSignalStatus,
   cleanupSignals,
 } from '../controllers/signalDetection';
+import authRouter from './auth';
+import { updateAccount } from '../controllers/accountUpdate';
+import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
+
+// 认证相关路由
+router.use('/auth', authRouter);
 
 // 价格相关路由
 router.get('/price', getPrice);
@@ -35,5 +41,6 @@ router.get('/stats/today', getTodayStats);
 
 // 账户相关路由
 router.get('/account', getAccount);
+router.put('/account/update', authMiddleware, updateAccount);
 
 export default router;
