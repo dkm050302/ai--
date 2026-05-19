@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, type Time, CandlestickSeries } from 'lightweight-charts';
 import type { Candle, Signal } from '@/types';
+import { detectSignals, getSignalMarkerText } from '@/utils/signalCalculator';
 
 interface ChartProps {
   candles: Candle[];
@@ -21,10 +22,21 @@ const periods = [
 /**
  * K线图组件 - 完全按照index.html设计
  */
-export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) {
+export function Chart({ candles, signals: externalSignals, period, onPeriodChange }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+
+  // 实时计算信号（仅在1分钟周期）
+  const calculatedSignals = useMemo(() => {
+    if (period === '1m' && candles.length > 233) {
+      return detectSignals(candles);
+    }
+    return [];
+  }, [candles, period]);
+
+  // 使用计算出的信号或外部传入的信号
+  const signals = calculatedSignals.length > 0 ? calculatedSignals : externalSignals;
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -34,7 +46,7 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
 
     const chart = createChart(container, {
       width: rect.width,
-      height: 330,
+      height: rect.height || 500,
       layout: {
         background: { color: '#ffffff' },
         textColor: '#667482',
@@ -81,13 +93,18 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
         const newRect = chartContainerRef.current.getBoundingClientRect();
         chartRef.current.applyOptions({
           width: newRect.width,
+          height: newRect.height,
         });
       }
     };
 
+    // 使用ResizeObserver监听容器大小变化
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
     window.addEventListener('resize', handleResize);
 
     return () => {
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
@@ -116,7 +133,7 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
   useEffect(() => {
     if (!seriesRef.current || signals.length === 0) return;
 
-    const currentPeriodSignals = signals.filter(s => s.period === period);
+    const currentPeriodSignals = signals.filter(s => s.period === period || period === '1m');
 
     const markers = currentPeriodSignals.map(signal => {
       const time = (new Date(signal.timestamp).getTime() / 1000) as Time;
@@ -126,35 +143,37 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
       let shape: 'arrowUp' | 'arrowDown';
       let text: string;
 
+      const markerText = getSignalMarkerText(signal);
+
       if (signal.direction === 'long') {
         position = 'belowBar';
         if (signal.status === 'profit') {
           color = '#0f9f6e';
           shape = 'arrowUp';
-          text = '买盈';
+          text = markerText;
         } else if (signal.status === 'loss') {
           color = '#e3342f';
           shape = 'arrowUp';
-          text = '买亏';
+          text = '止损';
         } else {
           color = '#1769e0';
           shape = 'arrowUp';
-          text = '买入';
+          text = markerText;
         }
       } else {
         position = 'aboveBar';
         if (signal.status === 'profit') {
           color = '#0f9f6e';
           shape = 'arrowDown';
-          text = '卖盈';
+          text = markerText;
         } else if (signal.status === 'loss') {
           color = '#e3342f';
           shape = 'arrowDown';
-          text = '卖亏';
+          text = '止损';
         } else {
           color = '#e3342f';
           shape = 'arrowDown';
-          text = '卖出';
+          text = markerText;
         }
       }
 
@@ -171,12 +190,12 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
   }, [signals, period]);
 
   return (
-    <div className="min-h-0 flex flex-col">
-      {/* K线图标题和周期切换 - 按照index.html */}
+    <>
+      {/* K线图标题和周期切换 */}
       <div className="chart-head">
         <div>
           <strong>现货黄金蜡烛图</strong>
-          <div className="sub">可切换不同周期，当前为前端模拟行情。</div>
+          <div className="sub">实时行情，信号提醒基于EMA/ATR技术分析</div>
         </div>
         <div className="periods" id="periods">
           {periods.map((p) => (
@@ -192,11 +211,11 @@ export function Chart({ candles, signals, period, onPeriodChange }: ChartProps) 
         </div>
       </div>
 
-      {/* 图表容器 - 按照index.html的chart-wrap样式 */}
+      {/* 图表容器 */}
       <div
         ref={chartContainerRef}
         className="chart-wrap"
       />
-    </div>
+    </>
   );
 }

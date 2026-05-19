@@ -5,6 +5,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import { connectDatabase } from './config';
 import apiRoutes from './routes/api';
+import metaApiRoutes from './routes/metaApi';
 import { setupWebSocket } from './websocket';
 import { errorHandler, notFoundHandler, requestLogger, detailedRequestLogger } from './middleware';
 import { logger } from './utils';
@@ -35,6 +36,7 @@ if (process.env.NODE_ENV === 'development') {
 
 // API路由
 app.use('/api', apiRoutes);
+app.use('/api/metaapi', metaApiRoutes);
 
 // 健康检查
 app.get('/health', (req, res) => {

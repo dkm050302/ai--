@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import { PriceCard } from '@/components/PriceCard';
 import { Chart } from '@/components/Chart';
-import { AccountCard } from '@/components/AccountCard';
 import { DecisionCard } from '@/components/DecisionCard';
 import { ProbCard } from '@/components/ProbCard';
 import { RiskCard } from '@/components/RiskCard';
@@ -11,34 +10,92 @@ import { MiniCard } from '@/components/MiniCard';
 import { ActionPanel } from '@/components/ActionPanel';
 import { EventList } from '@/components/EventList';
 import { createDefaultPriceData } from '@/types/price';
-import { createDefaultAccountData } from '@/types/account';
-import { createDefaultCandles } from '@/types/chart';
 import { createDefaultSignals, createDefaultDailyStats } from '@/types/signal';
 import { createDefaultEvents, createDefaultFlashes } from '@/types/event';
 import { createDefaultDecisionData } from '@/types/decision';
+import type { PriceData, Candle } from '@/types';
+import { fetchCandles, createRealtimeConnection } from '@/services/marketData';
+import type { Period } from '@/services/marketData';
 
 function App() {
-  const [period, setPeriod] = useState('1m');
+  const [period, setPeriod] = useState<Period>('1m');
+  const [priceData, setPriceData] = useState<PriceData>(createDefaultPriceData());
+  const [candles, setCandles] = useState<Candle[]>([]);
 
-  // 使用默认模拟数据
-  const priceData = createDefaultPriceData();
-  const accountData = createDefaultAccountData();
-  const candles = createDefaultCandles();
+  // 静态数据
   const signals = createDefaultSignals();
   const stats = createDefaultDailyStats();
   const events = createDefaultEvents();
   const flashes = createDefaultFlashes();
   const decisionData = createDefaultDecisionData();
 
+  // 获取K线数据
+  useEffect(() => {
+    const loadCandles = async () => {
+      try {
+        const data = await fetchCandles(period, 500);
+        setCandles(data);
+      } catch (error) {
+        console.error('Failed to load candles:', error);
+      }
+    };
+
+    loadCandles();
+  }, [period]);
+
+  // 实时价格更新
+  useEffect(() => {
+    const cleanup = createRealtimeConnection(
+      (price) => {
+        setPriceData({
+          symbol: price.symbol,
+          price: price.price,
+          change: price.change,
+          changePct: price.changePct,
+          high: price.high,
+          low: price.low,
+          support1: price.price * 0.995,
+          support2: price.price * 0.99,
+          resistance1: price.price * 1.005,
+          timestamp: price.timestamp,
+        });
+      },
+      (error) => {
+        console.error('Real-time price error:', error);
+      }
+    );
+
+    return cleanup;
+  }, []);
+
   return (
     <div className="page">
       {/* 顶部导航栏 */}
       <Header />
 
-      {/* 主内容区 - 完全按照index.html布局 */}
+      {/* 主内容区 - 左边K线，右边信息 */}
       <main className="main">
-        {/* 左侧区域：技术面与基本面 */}
-        <section className="left" aria-label="技术面与基本面">
+        {/* 左侧区域：实时行情K线图 */}
+        <section className="left" aria-label="实时行情K线图">
+          {/* 市场卡片 - 报价条 + K线图 */}
+          <article className="market-card">
+            {/* 报价条 */}
+            <div className="quote-strip">
+              <PriceCard priceData={priceData} />
+            </div>
+
+            {/* K线图 */}
+            <Chart
+              candles={candles}
+              signals={signals}
+              period={period}
+              onPeriodChange={(p) => setPeriod(p as Period)}
+            />
+          </article>
+        </section>
+
+        {/* 右侧区域：信息咨询与分析 */}
+        <section className="right" aria-label="信息咨询与分析">
           {/* 今日决策卡片 */}
           <DecisionCard
             headline={decisionData.headline}
@@ -48,7 +105,7 @@ function App() {
           />
 
           {/* 六卡片网格 */}
-          <div className="left-grid">
+          <div className="info-grid">
             {/* 上涨/下跌概率 */}
             <ProbCard
               upProb={stats.upProb || 55}
@@ -115,7 +172,7 @@ function App() {
             {/* 市场快讯流 */}
             <EventList events={[]} flashes={flashes} />
 
-            {/* 客户服务动作 */}
+            {/* AI智能交易分析建议 */}
             <ActionPanel
               actions={[
                 { title: '客户提醒', text: '黄金短线偏多，但临近美国事件窗口，建议客户避免追涨满仓。' },
@@ -124,28 +181,6 @@ function App() {
               ]}
             />
           </div>
-        </section>
-
-        {/* 右侧区域：实时行情与账号交易情况 */}
-        <section className="right" aria-label="实时行情与账号交易情况">
-          {/* 市场卡片 - 报价条 + K线图 */}
-          <article className="market-card">
-            {/* 报价条 */}
-            <div className="quote-strip">
-              <PriceCard priceData={priceData} />
-            </div>
-
-            {/* K线图 */}
-            <Chart
-              candles={candles}
-              signals={signals}
-              period={period}
-              onPeriodChange={setPeriod}
-            />
-          </article>
-
-          {/* 账户卡片 */}
-          <AccountCard accountData={accountData} />
         </section>
       </main>
     </div>

@@ -45,7 +45,7 @@ export function detailedRequestLogger(req: Request, res: Response, next: NextFun
   if (Object.keys(req.query).length > 0) {
     console.log('Query:', req.query);
   }
-  if (Object.keys(req.body).length > 0) {
+  if (req.body && Object.keys(req.body).length > 0) {
     console.log('Body:', JSON.stringify(req.body, null, 2));
   }
   console.log('IP:', req.ip);

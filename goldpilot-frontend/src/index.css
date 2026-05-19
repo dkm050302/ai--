@@ -111,10 +111,10 @@ body {
 /* 主内容区 */
 .main {
   display: grid;
-  grid-template-columns: minmax(720px, 1.05fr) minmax(500px, 0.95fr);
+  grid-template-columns: minmax(720px, 1.1fr) minmax(500px, 0.9fr);
   gap: 14px;
   padding: 14px;
-  min-height: 0;
+  min-height: calc(100vh - 88px);
 }
 
 .left,
@@ -126,8 +126,14 @@ body {
   gap: 12px;
 }
 
+/* 左侧K线图区域 */
+.left {
+  flex: 1;
+}
+
 /* 左侧网格 */
-.left-grid {
+.left-grid,
+.info-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
@@ -408,17 +414,17 @@ body {
 /* 市场卡片 */
 .market-card {
   flex: 1;
-  min-height: 460px;
+  display: flex;
+  flex-direction: column;
   padding: 13px;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  min-height: 0;
 }
 
 .quote-strip {
   display: grid;
   grid-template-columns: 1.2fr repeat(4, 1fr);
   gap: 8px;
-  margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .quote {
@@ -532,7 +538,8 @@ body {
 }
 
 .chart-wrap {
-  min-height: 330px;
+  flex: 1;
+  min-height: 300px;
   position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -542,6 +549,11 @@ body {
     linear-gradient(90deg, #eef3f7 1px, transparent 1px),
     #ffffff;
   background-size: 100% 58px, 70px 100%;
+}
+
+/* Chart组件容器 */
+.market-card > .chart-head {
+  flex-shrink: 0;
 }
 
 /* 自定义滚动条 */
