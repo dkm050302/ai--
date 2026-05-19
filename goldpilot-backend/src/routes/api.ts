@@ -17,12 +17,28 @@ import {
   updateSignalStatus,
   cleanupSignals,
 } from '../controllers/signalDetection';
+import {
+  getGoldNews,
+  getEconNews,
+  getFedNews,
+} from '../controllers/news';
+import {
+  getYahooPrice,
+} from '../controllers/yahooPrice';
 
 const router = Router();
 
 // 价格相关路由
 router.get('/price', getPrice);
 router.get('/candles', getCandles);
+
+// Yahoo 实时金价代理
+router.get('/yahoo-price', getYahooPrice);
+
+// 新闻代理路由
+router.get('/news/gold', getGoldNews);
+router.get('/news/economic', getEconNews);
+router.get('/news/fed', getFedNews);
 
 // 信号相关路由
 router.get('/signals', getSignals);

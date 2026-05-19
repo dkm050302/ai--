@@ -2,16 +2,25 @@ import { SignalModel } from '../models';
 import { calculateEMA, calculateATR, detectSignal, calculateTakeProfit, calculateStopLoss } from './indicator';
 import { logger } from '../utils';
 import type { Candle, Signal } from '../types';
+import mongoose from 'mongoose';
 
 /**
  * 信号服务类
  */
 export class SignalService {
+  private isDatabaseReady(): boolean {
+    if (mongoose.connection.readyState === 1) return true;
+    logger.warn('MongoDB is not connected; skipping signal database operation');
+    return false;
+  }
+
   /**
    * 分析K线数据并检测信号
    */
   async analyzeAndDetect(candles: Candle[], period: string): Promise<Signal | null> {
     try {
+      if (!this.isDatabaseReady()) return null;
+
       // 检测信号
       const detected = detectSignal(candles);
 
@@ -73,6 +82,8 @@ export class SignalService {
    */
   async updateSignalStatus(signalId: string, status: 'profit' | 'loss', exitPrice?: number): Promise<Signal | null> {
     try {
+      if (!this.isDatabaseReady()) return null;
+
       const signal = await SignalModel.findById(signalId);
 
       if (!signal) {
@@ -107,6 +118,8 @@ export class SignalService {
    */
   async checkPendingSignals(currentPrice: number): Promise<void> {
     try {
+      if (!this.isDatabaseReady()) return;
+
       const pendingSignals = await SignalModel.find({ status: 'pending' });
 
       for (const signal of pendingSignals) {
@@ -165,6 +178,8 @@ export class SignalService {
    */
   async getLatestSignals(limit: number = 10): Promise<Signal[]> {
     try {
+      if (!this.isDatabaseReady()) return [];
+
       return await SignalModel.find()
         .sort({ timestamp: -1 })
         .limit(limit)
@@ -180,6 +195,8 @@ export class SignalService {
    */
   async getSignalsByPeriod(period: string, limit: number = 50): Promise<Signal[]> {
     try {
+      if (!this.isDatabaseReady()) return [];
+
       return await SignalModel.find({ period: period as any })
         .sort({ timestamp: -1 })
         .limit(limit)
@@ -195,6 +212,8 @@ export class SignalService {
    */
   async getPendingSignals(): Promise<Signal[]> {
     try {
+      if (!this.isDatabaseReady()) return [];
+
       return await SignalModel.find({ status: 'pending' })
         .sort({ timestamp: -1 })
         .lean();
@@ -209,6 +228,8 @@ export class SignalService {
    */
   async cleanupOldSignals(): Promise<void> {
     try {
+      if (!this.isDatabaseReady()) return;
+
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 

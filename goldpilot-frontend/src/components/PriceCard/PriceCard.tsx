@@ -7,53 +7,46 @@ interface PriceCardProps {
     changePct: number;
     high: number;
     low: number;
+    timestamp?: Date;
   };
 }
 
-/**
- * 价格卡片组件 - 完全按照index.html设计
- */
 export function PriceCard({ priceData }: PriceCardProps) {
-  const { price, change, changePct, high, low } = priceData;
-
-  const getColorClass = (value: number) => {
-    return value >= 0 ? 'green' : 'red';
-  };
+  const { price, change, changePct, high, low, timestamp } = priceData;
+  const colorClass = change >= 0 ? 'green' : 'red';
+  const updatedAt = timestamp
+    ? new Date(timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : '--:--';
 
   return (
     <>
-      {/* 现货黄金价格 */}
       <div className="quote">
         <span className="sub">现货黄金 XAU/USD</span>
-        <div className={`value ${getColorClass(change)}`}>{formatNumber(price)}</div>
+        <div className={`value ${colorClass}`}>{formatNumber(price)}</div>
       </div>
 
-      {/* 涨跌额 */}
       <div className="quote">
         <span className="sub">涨跌额</span>
-        <div className={`value ${getColorClass(change)}`}>
+        <div className={`value ${colorClass}`}>
           {change >= 0 ? '+' : ''}{formatNumber(change)}
         </div>
       </div>
 
-      {/* 涨跌幅 */}
       <div className="quote">
         <span className="sub">涨跌幅</span>
-        <div className={`value ${getColorClass(change)}`}>
+        <div className={`value ${colorClass}`}>
           {changePct >= 0 ? '+' : ''}{formatNumber(changePct)}%
         </div>
       </div>
 
-      {/* 最高价 */}
       <div className="quote">
         <span className="sub">最高</span>
         <div className="value">{formatNumber(high)}</div>
       </div>
 
-      {/* 最低价 */}
       <div className="quote">
-        <span className="sub">最低</span>
-        <div className="value">{formatNumber(low)}</div>
+        <span className="sub">最低 / 更新</span>
+        <div className="value">{formatNumber(low)} <span className="sub">{updatedAt}</span></div>
       </div>
     </>
   );

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-/**
- * 顶部导航栏组件 - 完全按照index.html设计
- */
-export function Header() {
+interface HeaderProps {
+  modeText?: string;
+}
+
+export function Header({ modeText = '演示模式' }: HeaderProps) {
   const [currentDate, setCurrentDate] = useState('');
 
   useEffect(() => {
@@ -16,8 +17,8 @@ export function Header() {
     };
 
     updateDate();
-    const timer = setInterval(updateDate, 1000);
-    return () => clearInterval(timer);
+    const timer = window.setInterval(updateDate, 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   return (
@@ -27,7 +28,7 @@ export function Header() {
         <div className="brand-sub">面向金融客户服务团队的事件驱动型交易辅助首页</div>
       </div>
       <div className="date-meta">
-        <span className="pill green">演示模式</span>
+        <span className="pill green">{modeText}</span>
         <span className="status-dot" aria-hidden="true"></span>
         <span className="date-text">{currentDate || '----/--/--'}</span>
       </div>

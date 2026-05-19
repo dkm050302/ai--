@@ -39,17 +39,24 @@ body {
   font-size: 14px;
 }
 
-#root {
-  min-height: 100vh;
-  display: grid;
-  grid-template-rows: auto 1fr;
+/* 页面布局 */
+/* 页面加载动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-/* 页面布局 - 完全按照index.html */
 .page {
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
+  animation: fadeInUp 0.4s ease-out;
 }
 
 /* 顶部导航栏 */
@@ -580,6 +587,9 @@ body {
 @media (max-width: 1220px) {
   .main {
     grid-template-columns: 1fr;
+  }
+  .left-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .scroll {
     max-height: 360px;

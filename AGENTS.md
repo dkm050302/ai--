@@ -1,6 +1,6 @@
-# GoldPilot 项目 - Claude Code 工作指引
+# GoldPilot 项目 - Codex 工作指引
 
-> 本文件为 Claude Code AI 助手提供项目上下文和工作指引
+> 本文件为 Codex AI 助手提供项目上下文和工作指引
 
 ---
 
@@ -33,7 +33,7 @@ G:\_ai交易/
 │   ├── 开发指导文档.txt
 │   └── ai开发计划.txt
 ├── .gitignore               # Git忽略配置
-├── CLAUDE.md                # 本文件 - Claude工作指引
+├── AGENTS.md                # 本文件 - Codex工作指引
 └── index.html               # 原始HTML参考文件
 ```
 
@@ -72,7 +72,7 @@ G:\_ai交易/
 
 **进行中**：
 - 🔄 配置.gitignore
-- 🔄 配置CLAUDE.md
+- 🔄 配置AGENTS.md
 
 **待办**：
 - ⏳ 推送到GitHub
@@ -261,7 +261,7 @@ pm2 start ecosystem.config.js  # 生产环境启动
 - ❌ `.env` 文件（环境变量）
 - ❌ `node_modules/` 目录
 - ❌ `ai开发计划/` 目录（内部文档）
-- ❌ `.claude/` 目录（Claude配置）
+- ❌ `.Codex/` 目录（Codex配置）
 - ❌ `dist/` 或 `build/` 目录
 
 ### 必须提交到Git

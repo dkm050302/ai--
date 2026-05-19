@@ -24,7 +24,7 @@ class Logger {
   /**
    * 格式化日志消息
    */
-  private format(level: LogLevelType, message: string, meta?: any): string {
+  private format(level: LogLevelType, message: string, meta?: unknown): string {
     const timestamp = this.getTimestamp();
     const metaStr = meta ? ` ${JSON.stringify(meta)}` : '';
     return `[${timestamp}] [${level}] ${message}${metaStr}`;
@@ -33,7 +33,7 @@ class Logger {
   /**
    * 错误日志
    */
-  error(message: string, error?: Error | any): void {
+  error(message: string, error?: unknown): void {
     console.error(this.format(LogLevel.ERROR, message));
     if (error) {
       if (error instanceof Error) {
@@ -48,21 +48,21 @@ class Logger {
   /**
    * 警告日志
    */
-  warn(message: string, meta?: any): void {
+  warn(message: string, meta?: unknown): void {
     console.warn(this.format(LogLevel.WARN, message, meta));
   }
 
   /**
    * 信息日志
    */
-  info(message: string, meta?: any): void {
+  info(message: string, meta?: unknown): void {
     console.log(this.format(LogLevel.INFO, message, meta));
   }
 
   /**
    * 调试日志（仅在开发环境输出）
    */
-  debug(message: string, meta?: any): void {
+  debug(message: string, meta?: unknown): void {
     if (this.isDevelopment) {
       console.log(this.format(LogLevel.DEBUG, message, meta));
     }

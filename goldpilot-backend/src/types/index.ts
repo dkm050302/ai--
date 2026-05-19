@@ -87,3 +87,34 @@ export interface Flash {
   hot: boolean;
   text: string;
 }
+
+// 新闻条目类型 (Google News RSS 解析结果)
+export interface NewsItem {
+  time: string;     // UTC+8 格式 "MM/DD HH:mm"
+  title: string;
+  url: string;
+  source: string;
+  hot: boolean;
+}
+
+// Yahoo Finance 行情数据
+export interface YahooPriceData {
+  price: number;
+  open: number;
+  high: number;
+  low: number;
+  prevClose: number;
+  change: number;
+  changePct: number;
+  timestamp: number; // Unix 秒
+  candles: YahooCandle[];
+}
+
+export interface YahooCandle {
+  time: number;     // Unix 毫秒
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
