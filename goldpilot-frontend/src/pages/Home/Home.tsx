@@ -29,13 +29,22 @@ function calculateSignalStats(signals: Signal[]): DailyStats {
   const signalCount = todaySignals.length;
   const completedSignals = todaySignals.filter(s => s.status === 'profit' || s.status === 'loss');
   const winSignals = completedSignals.filter(s => s.status === 'profit');
+  const lossSignals = completedSignals.filter(s => s.status === 'loss');
+  const winCount = winSignals.length;
+  const lossCount = lossSignals.length;
   const winRate = completedSignals.length > 0 ? (winSignals.length / completedSignals.length) * 100 : 0;
+  const totalProfit = winSignals.reduce((sum, s) => sum + (s.profit || 0), 0);
+  const totalLoss = Math.abs(lossSignals.reduce((sum, s) => sum + (s.profit || 0), 0));
   const netProfit = todaySignals.reduce((sum, s) => sum + (s.profit || 0), 0);
 
   return {
     date: new Date(),
     signalCount,
+    winCount,
+    lossCount,
     winRate,
+    totalProfit,
+    totalLoss,
     netProfit,
     upProb: 50,
     downProb: 50,
