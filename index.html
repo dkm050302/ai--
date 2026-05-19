@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GoldPilot 黄金交易决策驾驶舱 - 实时行情与交易信号展示">
+  <meta name="theme-color" content="#1769e0">
   <title>现货黄金客户服务首页</title>
   <style>
     :root {
@@ -801,13 +803,13 @@
     ];
 
     const flashPool = [
-      { time: '20:52', hot: true, text: '现货黄金短线拉升，突破4880美元/盎司，日内涨幅扩大。' },
+      { time: '20:52', hot: true, text: '现货黄金短线拉升，突破4540美元/盎司，日内波动放大。' },
       { time: '20:48', hot: true, text: '美国零售销售数据公布后，美元指数回落，黄金买盘增强。' },
       { time: '20:41', hot: false, text: '美债收益率小幅震荡，市场等待美联储官员讲话。' },
       { time: '20:30', hot: true, text: '美国初请失业金人数与零售销售数据同步公布，贵金属波动放大。' },
       { time: '19:58', hot: false, text: '欧洲盘尾段，现货黄金维持高位整理。' },
       { time: '19:35', hot: true, text: '交易员提示：纽约盘开盘前后注意控制追涨仓位。' },
-      { time: '19:10', hot: false, text: 'COMEX黄金成交活跃，短线资金关注4885附近压力。' }
+      { time: '19:10', hot: false, text: 'COMEX黄金成交活跃，短线资金关注4545附近压力。' }
     ];
 
     const serviceActions = {
@@ -828,9 +830,64 @@
       ]
     };
 
+    // --- 实时行情配置 ---
+    const GOLD_API_URL = 'https://www.goldapi.io/api/XAU/USD';
+    const GOLD_API_KEY = 'goldapi-a9eecb56e05d32c2cf54a19013a9c3a6-io';
+    const API_FETCH_INTERVAL = 60000; // 60秒调用一次，300次/月够用
+
+    let livePrice = null; // 实时价格数据（来自API）
+    let apiConnected = false;
+
     let period = '1m';
-    let candles = buildCandles(86, 4866);
+    let candles = buildCandles(86, 4539);
     let flashCursor = 5;
+    let cachedSignals = calculateSignals();
+    let rafId = 0;
+
+    // --- 从 goldapi.io 获取实时行情 ---
+    async function fetchGoldPrice() {
+      try {
+        const resp = await fetch(GOLD_API_URL, {
+          headers: { 'x-access-token': GOLD_API_KEY }
+        });
+        if (!resp.ok) throw new Error(`API ${resp.status}`);
+        const data = await resp.json();
+        livePrice = {
+          price: data.price,
+          high: data.high_price,
+          low: data.low_price,
+          prevClose: data.prev_close_price,
+          open: data.open_price,
+          change: data.ch,
+          changePct: data.chp,
+          ask: data.ask,
+          bid: data.bid,
+          time: new Date(data.timestamp * 1000)
+        };
+        if (!apiConnected) {
+          apiConnected = true;
+          // 首次连接成功，用真实价格重建K线
+          candles = buildCandles(86, livePrice.price);
+          cachedSignals = calculateSignals();
+          updateStatusBar();
+        }
+        console.log('[GoldAPI] 实时价格:', livePrice.price);
+      } catch (err) {
+        console.warn('[GoldAPI] 获取失败:', err.message);
+        if (!apiConnected) updateStatusBar();
+      }
+    }
+
+    function updateStatusBar() {
+      const pill = document.querySelector('.date-meta .pill');
+      if (apiConnected) {
+        pill.textContent = '实时行情';
+        pill.className = 'pill green';
+      } else {
+        pill.textContent = '演示模式';
+        pill.className = 'pill amber';
+      }
+    }
 
     function setToday() {
       const now = new Date();
@@ -841,7 +898,7 @@
     }
 
     function buildCandles(count, seed) {
-      const list = [];
+      const list = new Array(count);
       let close = seed;
       const now = Date.now();
       for (let i = count - 1; i >= 0; i -= 1) {
@@ -849,14 +906,14 @@
         close = open + (Math.random() - 0.48) * 10;
         const high = Math.max(open, close) + Math.random() * 7;
         const low = Math.min(open, close) - Math.random() * 7;
-        list.push({
+        list[i] = {
           time: new Date(now - i * 60000),
           open,
           high,
           low,
           close,
           volume: 800 + Math.random() * 900
-        });
+        };
       }
       return list;
     }
@@ -898,7 +955,8 @@
     }
 
     function renderSignals() {
-      const sig = calculateSignals();
+      cachedSignals = calculateSignals();
+      const sig = cachedSignals;
       $('upProb').textContent = `${sig.up.toFixed(1)}%`;
       $('downProb').textContent = `${sig.down.toFixed(1)}%`;
       $('upBar').style.width = `${sig.up.toFixed(0)}%`;
@@ -971,15 +1029,27 @@
     }
 
     function renderQuote(sig) {
-      const last = latest();
-      $('lastPrice').textContent = fmt.format(last.close);
-      $('changeValue').textContent = `${sig.change >= 0 ? '+' : ''}${fmt.format(sig.change)}`;
-      $('changePct').textContent = `${sig.changePct >= 0 ? '+' : ''}${sig.changePct.toFixed(2)}%`;
-      $('highPrice').textContent = fmt.format(sig.high);
-      $('lowPrice').textContent = fmt.format(sig.low);
-      tone($('lastPrice'), sig.change);
-      tone($('changeValue'), sig.change);
-      tone($('changePct'), sig.change);
+      if (livePrice) {
+        // 用真实API数据渲染报价栏
+        $('lastPrice').textContent = fmt.format(livePrice.price);
+        $('changeValue').textContent = `${livePrice.change >= 0 ? '+' : ''}${fmt.format(livePrice.change)}`;
+        $('changePct').textContent = `${livePrice.changePct >= 0 ? '+' : ''}${livePrice.changePct.toFixed(2)}%`;
+        $('highPrice').textContent = fmt.format(livePrice.high);
+        $('lowPrice').textContent = fmt.format(livePrice.low);
+        tone($('lastPrice'), livePrice.change);
+        tone($('changeValue'), livePrice.change);
+        tone($('changePct'), livePrice.changePct);
+      } else {
+        const last = latest();
+        $('lastPrice').textContent = fmt.format(last.close);
+        $('changeValue').textContent = `${sig.change >= 0 ? '+' : ''}${fmt.format(sig.change)}`;
+        $('changePct').textContent = `${sig.changePct >= 0 ? '+' : ''}${sig.changePct.toFixed(2)}%`;
+        $('highPrice').textContent = fmt.format(sig.high);
+        $('lowPrice').textContent = fmt.format(sig.low);
+        tone($('lastPrice'), sig.change);
+        tone($('changeValue'), sig.change);
+        tone($('changePct'), sig.change);
+      }
     }
 
     function renderAccount(sig) {
@@ -1074,7 +1144,7 @@
       const y = (price) => pad.top + (top - price) / (top - bottom) * height;
       const step = width / data.length;
       const candleWidth = Math.max(4, Math.min(12, step * 0.58));
-      const levels = calculateSignals();
+      const levels = cachedSignals;
 
       ctx.font = '12px "Avenir Next", sans-serif';
       ctx.lineWidth = 1;
@@ -1151,13 +1221,28 @@
     function updateMarket() {
       const last = latest();
       const open = last.close;
-      const close = Math.max(1, open + (Math.random() - 0.48) * 5.6);
-      const high = Math.max(open, close) + Math.random() * 3.8;
-      const low = Math.min(open, close) - Math.random() * 3.8;
-      candles.push({ time: new Date(), open, high, low, close, volume: 700 + Math.random() * 1000 });
+      if (livePrice) {
+        // 用真实价格作为新K线收盘价，加上微小随机波动模拟盘中tick
+        const noise = (Math.random() - 0.5) * 1.2;
+        const close = livePrice.price + noise;
+        const high = Math.max(open, close, livePrice.ask || close) + Math.random() * 1.5;
+        const low = Math.min(open, close, livePrice.bid || close) - Math.random() * 1.5;
+        candles.push({ time: new Date(), open, high, low, close, volume: 700 + Math.random() * 1000 });
+      } else {
+        // 无API数据时回退到模拟
+        const close = Math.max(1, open + (Math.random() - 0.48) * 5.6);
+        const high = Math.max(open, close) + Math.random() * 3.8;
+        const low = Math.min(open, close) - Math.random() * 3.8;
+        candles.push({ time: new Date(), open, high, low, close, volume: 700 + Math.random() * 1000 });
+      }
       if (candles.length > 120) candles.shift();
       renderSignals();
-      drawChart();
+      scheduleRedraw();
+    }
+
+    function scheduleRedraw() {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(drawChart);
     }
 
     function bind() {
@@ -1168,19 +1253,30 @@
         document.querySelectorAll('#periods button').forEach(item => {
           item.classList.toggle('active', item === button);
         });
-        drawChart();
+        scheduleRedraw();
       });
-      window.addEventListener('resize', drawChart);
+      let resizeTimer = 0;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(scheduleRedraw, 120);
+      });
     }
 
     function init() {
       setToday();
+      updateStatusBar();
       bind();
       renderEvents();
       renderFlashes();
       renderSignals();
       renderCountdown();
       drawChart();
+
+      // 获取实时行情（首次立即调用，之后每60秒）
+      fetchGoldPrice();
+      setInterval(fetchGoldPrice, API_FETCH_INTERVAL);
+
+      // 每4秒更新K线（微波动）
       setInterval(updateMarket, 4000);
       setInterval(() => {
         flashCursor = Math.min(flashPool.length, flashCursor + 1);
