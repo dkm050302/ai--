@@ -22,6 +22,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       return res.status(401).json({
         success: false,
         message: '未提供认证令牌',
+        code: 'NO_TOKEN',
       });
     }
 
@@ -36,7 +37,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     if (!decoded) {
       return res.status(401).json({
         success: false,
-        message: '认证令牌无效或已过期',
+        message: '认证令牌无效，请清除浏览器缓存后重新登录',
+        code: 'INVALID_TOKEN',
       });
     }
 
@@ -48,7 +50,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     console.error('Auth middleware error:', error);
     return res.status(401).json({
       success: false,
-      message: '认证失败',
+      message: '认证失败，请重新登录',
+      code: 'AUTH_ERROR',
     });
   }
 }

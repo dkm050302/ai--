@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { MainLayout } from '@/layouts/MainLayout';
 import { Home } from '@/pages/Home/Home';
 import { MT4Account } from '@/pages/MT4Account/MT4Account';
+import { AIAccount } from '@/pages/AIAccount/AIAccount';
 import { Login } from '@/pages/Login/Login';
 
 // 受保护的路由组件
@@ -48,6 +49,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <MT4Account />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'ai-account',
+        element: (
+          <ProtectedRoute>
+            <AIAccount />
           </ProtectedRoute>
         ),
       },

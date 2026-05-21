@@ -1,4 +1,5 @@
 import { signalService } from './signal';
+import { scraperService } from './scraper';
 import { logger } from '../utils';
 
 /**
@@ -97,6 +98,31 @@ class SchedulerService {
   }
 
   /**
+   * 启动事件数据刷新定时任务
+   */
+  startEventDataRefresh(): void {
+    // 每5分钟刷新一次经济日历和快讯数据（预热缓存）
+    this.schedule('event-data-refresh', 5 * 60 * 1000, async () => {
+      try {
+        logger.debug('Refreshing event data cache');
+
+        // 刷新经济日历
+        const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        await scraperService.getEconomicCalendar(today);
+
+        // 刷新市场快讯
+        await scraperService.getMarketNews();
+
+        logger.debug('Event data cache refreshed');
+      } catch (error) {
+        logger.error('Error in event data refresh:', error);
+      }
+    });
+
+    logger.info('Event data refresh scheduler started');
+  }
+
+  /**
    * 启动所有定时任务
    */
   startAll(): void {
@@ -105,6 +131,7 @@ class SchedulerService {
     this.startSignalDetection();
     this.startPendingSignalCheck();
     this.startCleanupTask();
+    this.startEventDataRefresh();
 
     logger.info('All schedulers started');
   }

@@ -1,7 +1,7 @@
 import { Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, LineChartOutlined, SettingOutlined } from '@ant-design/icons';
+import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons';
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -11,6 +11,9 @@ export function Sidebar() {
   const getSelectedKey = () => {
     if (location.pathname === '/mt4-account') {
       return ['mt4-account'];
+    }
+    if (location.pathname === '/ai-account') {
+      return ['ai-account'];
     }
     return ['home'];
   };
@@ -27,6 +30,12 @@ export function Sidebar() {
       icon: <LineChartOutlined className="text-lg" />,
       label: <span className="ml-2 font-medium">MT4账号管理</span>,
       onClick: () => navigate('/mt4-account'),
+    },
+    {
+      key: 'ai-account',
+      icon: <RobotOutlined className="text-lg" />,
+      label: <span className="ml-2 font-medium">AI账号</span>,
+      onClick: () => navigate('/ai-account'),
     },
     {
       type: 'divider' as const,
@@ -49,8 +58,8 @@ export function Sidebar() {
             <LineChartOutlined className="text-xl text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white tracking-wide">GoldPilot</h1>
-            <p className="text-xs text-white/80 mt-0.5">黄金交易决策系统</p>
+            <h1 className="text-xl font-bold tracking-wide" style={{ color: 'rgba(255, 255, 255, 0.95)', fontSize: '20px' }}>GoldPilot</h1>
+            <p className="mt-0.5" style={{ color: 'rgba(255, 255, 255, 0.75)', fontSize: '13px', fontWeight: 500 }}>黄金交易决策系统</p>
           </div>
         </div>
       </div>
@@ -62,10 +71,13 @@ export function Sidebar() {
           mode="inline"
           selectedKeys={getSelectedKey()}
           items={menuItems}
-          className="bg-transparent border-0"
-          style={{
-            background: 'transparent',
-            color: 'rgba(255, 255, 255, 0.85)',
+          className="bg-transparent border-0 text-white"
+          styles={{
+            itemSelectedColor: '#ffffff',
+            itemSelectedBg: 'rgba(59, 130, 246, 0.2)',
+            itemColor: 'rgba(255, 255, 255, 0.75)',
+            itemHoverColor: '#ffffff',
+            itemHoverBg: 'rgba(255, 255, 255, 0.1)',
           }}
         />
       </div>
@@ -73,11 +85,11 @@ export function Sidebar() {
       {/* 底部信息 */}
       <div className="p-4 border-t border-slate-700/50">
         <div className="bg-slate-800/50 rounded-lg p-3 backdrop-blur-sm border border-slate-700/30">
-          <div className="flex items-center gap-2 text-xs text-white/80 mb-1">
+          <div className="flex items-center gap-2 text-xs mb-1">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span>系统运行正常</span>
+            <span style={{ color: 'rgba(255, 255, 255, 0.85)', fontWeight: 500 }}>系统运行正常</span>
           </div>
-          <p className="text-xs text-blue-400 font-medium">v1.0.0</p>
+          <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontWeight: 500, fontSize: '12px' }}>v1.0.0</p>
         </div>
       </div>
     </div>

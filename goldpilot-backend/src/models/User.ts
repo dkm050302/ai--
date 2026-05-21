@@ -16,11 +16,19 @@ export interface AccountInfo {
   dailyPnl: number;
 }
 
+export interface AIConfig {
+  provider: string;
+  apiKey: string;
+  status: 'connected' | 'disconnected';
+  lastUsed?: Date;
+}
+
 export interface IUser extends Document {
   accountId: string;
   password: string;
   server: string;
   accountInfo?: AccountInfo;
+  aiConfig?: AIConfig;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +53,13 @@ const AccountInfoSchema = new Schema({
   dailyPnl: { type: Number, default: 0 },
 }, { _id: false });
 
+const AIConfigSchema = new Schema({
+  provider: { type: String, default: 'deepseek' },
+  apiKey: { type: String },
+  status: { type: String, enum: ['connected', 'disconnected'], default: 'disconnected' },
+  lastUsed: { type: Date },
+}, { _id: false });
+
 const UserSchema = new Schema<IUser, IUserModel>({
   accountId: {
     type: String,
@@ -63,6 +78,10 @@ const UserSchema = new Schema<IUser, IUserModel>({
   accountInfo: {
     type: AccountInfoSchema,
     default: {},
+  },
+  aiConfig: {
+    type: AIConfigSchema,
+    default: undefined,
   },
 }, {
   timestamps: true,

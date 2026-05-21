@@ -78,9 +78,86 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-  background: var(--bg);
+  background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 50%, #f8fafc 100%);
   font-family: "PingFang SC", "Microsoft YaHei", "Avenir Next", sans-serif;
   font-size: 14px;
+}
+
+/* 高端科技风标题样式 */
+.title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px;
+  margin: 0 -24px 0 -24px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 50%, #f8fafc 100%);
+  border-left: 3px solid #3b82f6;
+}
+
+.title-container {
+  padding: 0;
+  margin: 0;
+}
+
+.main-title {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #0f172a;
+  margin: 0 0 12px 0;
+}
+
+.divider {
+  width: 60px;
+  height: 3px;
+  background-color: #3b82f6;
+  margin-bottom: 12px;
+}
+
+.sub-title {
+  font-size: 13px;
+  font-weight: 400;
+  color: #64748b;
+  letter-spacing: 1px;
+  margin: 0;
+}
+
+/* 右侧日期元信息 */
+.date-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.date-meta .pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-dark);
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.date-meta .date-text {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.date-meta .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 5px rgba(15, 159, 110, 0.1);
 }
 
 #root {

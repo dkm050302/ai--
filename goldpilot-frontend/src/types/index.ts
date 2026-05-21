@@ -93,6 +93,40 @@ export interface Flash {
   text: string;
 }
 
+// AI配置类型
+export interface AIConfig {
+  provider: string;
+  apiKey: string;
+  status: 'connected' | 'disconnected';
+  lastUsed?: string;
+}
+
+// AI分析结果类型
+export interface AIAnalysisResult {
+  decision: {
+    headline: string;
+    summary: string;
+    eventCountdown: string;
+    aiReason: string;
+  };
+  probability: {
+    upProb: number;
+    downProb: number;
+    reason: string;
+  };
+  risk: {
+    risk: number;
+    riskLevel: 'low' | 'medium' | 'high';
+    positionAdvice: number;
+    stopLoss: number;
+    reason: string;
+  };
+  actions: Array<{
+    title: string;
+    text: string;
+  }>;
+}
+
 // API响应类型
 export interface ApiResponse<T> {
   success: boolean;
