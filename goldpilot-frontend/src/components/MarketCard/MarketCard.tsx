@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Chart } from '@/components/Chart';
 import type { PriceData, Candle, Signal } from '@/types';
-import { fetchCandles, createRealtimeConnection } from '@/services/marketData';
+import { fetchCandles } from '@/services/marketData';
 import { detectSignals } from '@/utils/signalCalculator';
 import type { Period } from '@/services/marketData';
 
