@@ -11,7 +11,6 @@ interface AIConfig {
 }
 
 export function AIAccount() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [configModalVisible, setConfigModalVisible] = useState(false);
   const [aiConfig, setAiConfig] = useState<AIConfig | null>(null);
