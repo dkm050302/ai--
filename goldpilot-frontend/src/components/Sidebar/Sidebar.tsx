@@ -81,11 +81,6 @@ export function Sidebar() {
           selectedKeys={getSelectedKey()}
           items={menuItems}
           className="bg-transparent border-0 text-white"
-          styles={{
-            itemColor: 'rgba(255, 255, 255, 0.75)',
-            itemHoverColor: '#ffffff',
-            itemHoverBg: 'rgba(255, 255, 255, 0.1)',
-          }}
         />
       </div>
 
