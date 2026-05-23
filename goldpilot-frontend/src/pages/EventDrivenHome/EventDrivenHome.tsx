@@ -35,12 +35,10 @@ interface ActionItem {
   text: string;
 }
 
-const ACTION_TITLES = ['客户提醒', '交易动作', '风险控制'];
-
 export function EventDrivenHome() {
   const [priceData, setPriceData] = useState<PriceData>(createDefaultPriceData());
-  const [events, setEvents] = useState<Event[]>(createDefaultEvents());
-  const [flashes, setFlashes] = useState<Flash[]>(createDefaultFlashes());
+  const events = useState<Event[]>(createDefaultEvents())[0];
+  const flashes = useState<Flash[]>(createDefaultFlashes())[0];
   const [today] = useState(() => {
     const now = new Date();
     const y = now.getFullYear();

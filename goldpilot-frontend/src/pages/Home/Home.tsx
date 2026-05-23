@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Button, Spin, message } from 'antd';
+import { Button, message } from 'antd';
 import { RobotOutlined, LoadingOutlined } from '@ant-design/icons';
 import { PriceCard } from '@/components/PriceCard';
 import { Chart } from '@/components/Chart';
@@ -12,13 +12,13 @@ import { MiniCard } from '@/components/MiniCard';
 import { ActionPanel } from '@/components/ActionPanel';
 import { EventList } from '@/components/EventList';
 import { createDefaultPriceData } from '@/types/price';
-import { createDefaultEvents, createDefaultFlashes, type Event, type Flash } from '@/types/event';
+import { createDefaultEvents, createDefaultFlashes } from '@/types/event';
 import { createDefaultDecisionData } from '@/types/decision';
-import type { PriceData, Candle, Signal, DailyStats } from '@/types';
+import type { PriceData, Candle, Signal, DailyStats, Event, Flash } from '@/types';
 import { fetchCandles, createRealtimeConnection } from '@/services/marketData';
 import { detectSignals } from '@/utils/signalCalculator';
 import type { Period } from '@/services/marketData';
-import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
+import { dataApi } from '@/services/data';
 import { aiService, type AIAnalysisResult } from '@/services/ai';
 
 /**
