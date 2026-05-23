@@ -1,0 +1,1 @@
+export { WidePanel } from './WidePanel';

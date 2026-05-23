@@ -102,61 +102,63 @@ export function SignalPanel({ signals, stats }: SignalPanelProps) {
             暂无信号记录
           </div>
         ) : (
-          <List
-            size="small"
-            dataSource={todaySignals}
-            renderItem={(signal) => (
-              <List.Item>
-                <div style={{ width: '100%' }}>
-                  {/* 第一行：时间和方向 */}
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 8
-                  }}>
-                    <span style={{
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: '#595959'
+          <div className="signal-list-scroll">
+            <List
+              size="small"
+              dataSource={todaySignals}
+              renderItem={(signal) => (
+                <List.Item>
+                  <div style={{ width: '100%' }}>
+                    {/* 第一行：时间和方向 */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 8
                     }}>
-                      {new Date(signal.timestamp).toLocaleTimeString('zh-CN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    <span style={{ display: 'flex', gap: 4 }}>
-                      {getDirectionTag(signal)}
-                      {getStatusTag(signal)}
-                    </span>
-                  </div>
-
-                  {/* 第二行：价格和盈亏 */}
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    fontSize: 13
-                  }}>
-                    <span style={{ color: '#8c8c8c' }}>
-                      入场: ${signal.entryPrice.toFixed(2)}
-                    </span>
-                    {signal.profit !== undefined && signal.profit !== 0 && (
-                      <span
-                        style={{
-                          fontWeight: 500,
-                          color: signal.profit >= 0 ? '#3f8600' : '#cf1322'
-                        }}
-                      >
-                        {signal.profit >= 0 ? '+' : ''}{signal.profit.toFixed(2)}
+                      <span style={{
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: '#595959'
+                      }}>
+                        {new Date(signal.timestamp).toLocaleTimeString('zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </span>
-                    )}
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        {getDirectionTag(signal)}
+                        {getStatusTag(signal)}
+                      </span>
+                    </div>
+
+                    {/* 第二行：价格和盈亏 */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: 13
+                    }}>
+                      <span style={{ color: '#8c8c8c' }}>
+                        入场: ${signal.entryPrice.toFixed(2)}
+                      </span>
+                      {signal.profit !== undefined && signal.profit !== 0 && (
+                        <span
+                          style={{
+                            fontWeight: 500,
+                            color: signal.profit >= 0 ? '#3f8600' : '#cf1322'
+                          }}
+                        >
+                          {signal.profit >= 0 ? '+' : ''}{signal.profit.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </List.Item>
-            )}
-          />
+                </List.Item>
+              )}
+            />
+          </div>
         )}
       </div>
     </Card>

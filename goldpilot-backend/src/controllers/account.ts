@@ -1,14 +1,35 @@
 import type { Request, Response } from 'express';
 import { AccountModel } from '../models';
 import type { Account } from '../types';
+import { metaApiService } from '../services/metaApi';
+import { logger } from '../utils/logger';
 
 /**
  * 获取账户信息
  */
 export async function getAccount(req: Request, res: Response): Promise<void> {
   try {
-    // TODO: 从MetaAPI获取真实账户数据
-    // 当前返回模拟数据
+    // 尝试从 MetaAPI 获取真实账户数据
+    if (metaApiService.isMetaApiConnected()) {
+      logger.info('Fetching account data from MetaAPI...');
+      const accountData = await metaApiService.getAccountInfo();
+
+      if (accountData) {
+        logger.info('✅ Account data fetched from MetaAPI successfully');
+        res.json({
+          success: true,
+          data: {
+            ...accountData,
+            updatedAt: new Date(),
+          },
+        });
+        return;
+      }
+    }
+
+    // MetaAPI 未连接或获取失败，返回模拟数据
+    logger.warn('MetaAPI not connected, using fallback data');
+
     const accountData: Account = {
       accountId: '27238218',
       server: 'VTMarkets-Live 8',
@@ -32,9 +53,10 @@ export async function getAccount(req: Request, res: Response): Promise<void> {
     res.json({
       success: true,
       data: accountData,
+      isDemo: true, // 标记为模拟数据
     });
   } catch (error) {
-    console.error('Error fetching account:', error);
+    logger.error('Error fetching account:', error);
     res.status(500).json({
       success: false,
       error: {

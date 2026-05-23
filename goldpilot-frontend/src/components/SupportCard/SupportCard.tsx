@@ -1,13 +1,13 @@
 interface SupportCardProps {
-  support1: number;
-  support2: number;
-  resistance1: number;
+  support1?: number;
+  support2?: number;
+  resistance1?: number;
 }
 
 /**
  * 支撑压力卡片组件 - 完全按照index.html设计
  */
-export function SupportCard({ support1, support2, resistance1 }: SupportCardProps) {
+export function SupportCard({ support1 = 4800, support2 = 4750, resistance1 = 4900 }: SupportCardProps) {
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('zh-CN', {
       minimumFractionDigits: 2,

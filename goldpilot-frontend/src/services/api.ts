@@ -153,6 +153,22 @@ class ApiService {
 
     throw new Error(response.data.error?.message || '获取账户信息失败');
   }
+
+  /**
+   * 通用 GET 请求 - 用于其他 API 调用
+   */
+  async get<T = any>(url: string, config?: InternalAxiosRequestConfig): Promise<T> {
+    const response = await this.client.get<T>(url, config);
+    return response.data;
+  }
+
+  /**
+   * 通用 POST 请求
+   */
+  async post<T = any>(url: string, data?: any, config?: InternalAxiosRequestConfig): Promise<T> {
+    const response = await this.client.post<T>(url, data, config);
+    return response.data;
+  }
 }
 
 // 导出单例

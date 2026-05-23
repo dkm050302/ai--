@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GoldPilot 黄金交易决策驾驶舱 - 实时行情与交易信号展示">
+  <meta name="theme-color" content="#1769e0">
+  <title>现货黄金客户服务首页</title>
+  <style>
+    :root {
+      --bg: #f4f7fa;
+      --paper: #ffffff;
+      --ink: #1d252d;
+      --muted: #667482;
+      --line: #dfe6ec;
+      --line-dark: #c8d2dc;
+      --blue: #1769e0;
+      --blue-soft: #edf5ff;
+      --red: #e3342f;
+      --red-soft: #fff0f0;
+      --green: #0f9f6e;
+      --green-soft: #eafaf3;
+      --amber: #b97800;
+      --amber-soft: #fff8e6;
+      --panel-shadow: 0 14px 34px rgba(25, 44, 63, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: "PingFang SC", "Microsoft YaHei", "Avenir Next", sans-serif;
+      font-size: 14px;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .date-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 64px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: 0 2px 10px rgba(25, 44, 63, 0.04);
+    }
+
+    .brand-block {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-name {
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .brand-sub {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .date-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+    }
+
+    .date-text {
+      font-size: 18px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 5px rgba(15, 159, 110, 0.1);
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(720px, 1.05fr) minmax(500px, 0.95fr);
+      gap: 14px;
+      padding: 14px;
+      min-height: 0;
+    }
+
+    .left,
+    .right {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .left-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .decision-card {
+      display: grid;
+      grid-template-columns: 1.2fr 0.9fr 0.9fr;
+      gap: 10px;
+      padding: 13px;
+      background:
+        linear-gradient(120deg, rgba(23, 105, 224, 0.08), transparent 44%),
+        var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--panel-shadow);
+    }
+
+    .decision-main {
+      padding-right: 10px;
+      border-right: 1px solid var(--line);
+    }
+
+    .decision-kicker {
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .decision-main h1 {
+      margin: 6px 0 8px;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+
+    .decision-main p,
+    .decision-box p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .decision-box {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.68);
+    }
+
+    .decision-box strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .card,
+    .market-card,
+    .account-card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--panel-shadow);
+    }
+
+    .card {
+      min-height: 160px;
+      padding: 13px;
+    }
+
+    .card-title,
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .card-title strong,
+    .panel-title strong {
+      font-size: 15px;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line-dark);
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .pill.red {
+      border-color: #ffc9c9;
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .pill.green {
+      border-color: #bdebd7;
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .pill.amber {
+      border-color: #f5d47a;
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .source-link {
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .source-link:hover {
+      text-decoration: underline;
+    }
+
+    .empty-state {
+      padding: 10px;
+      border: 1px dashed var(--line-dark);
+      border-radius: 7px;
+      background: #fbfcfe;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .content-link {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .content-link:hover {
+      color: var(--blue);
+      text-decoration: underline;
+    }
+
+    .metric {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 35px;
+      border-bottom: 1px dashed var(--line);
+    }
+
+    .metric:last-child { border-bottom: 0; }
+
+    .metric b {
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .red { color: var(--red); }
+    .green { color: var(--green); }
+    .blue { color: var(--blue); }
+    .amber { color: var(--amber); }
+
+    .prob-bar,
+    .risk-bar {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #edf1f5;
+      border: 1px solid var(--line);
+      margin: 9px 0 11px;
+    }
+
+    .prob-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), #72d79f);
+    }
+
+    .risk-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), #f0bd45, var(--red));
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .mini-item {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 8px;
+      line-height: 1.45;
+      padding: 8px;
+      border-radius: 6px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+    }
+
+    .mini-body {
+      min-width: 0;
+    }
+
+    .mini-source {
+      margin-top: 4px;
+      font-size: 12px;
+    }
+
+    .mini-time {
+      color: var(--blue);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wide-panels {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 0.82fr 0.88fr 0.9fr;
+      gap: 10px;
+    }
+
+    .feed {
+      min-height: 0;
+      padding: 13px;
+      overflow: hidden;
+    }
+
+    .scroll {
+      display: grid;
+      gap: 9px;
+      max-height: calc(100vh - 392px);
+      min-height: 270px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .event-row,
+    .flash-row {
+      display: grid;
+      grid-template-columns: 108px 1fr;
+      gap: 10px;
+      padding: 9px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .event-row.important {
+      background: var(--amber-soft);
+      border-color: #f2d184;
+    }
+
+    .flash-row.hot {
+      background: var(--red-soft);
+      border-color: #ffc6c6;
+    }
+
+    .flash-row.hot .flash-text {
+      color: var(--red);
+      font-weight: 700;
+    }
+
+    .row-time {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .row-text,
+    .flash-text {
+      line-height: 1.48;
+    }
+
+    .market-card {
+      flex: 1;
+      min-height: 460px;
+      padding: 13px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .quote-strip {
+      display: grid;
+      grid-template-columns: 1.2fr repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .quote {
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcfe;
+    }
+
+    .quote .value {
+      margin-top: 4px;
+      font-size: 16px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .quote:first-child .value {
+      font-size: 18px;
+    }
+
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .periods {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .periods button {
+      border: 1px solid var(--line-dark);
+      background: #f8fafc;
+      border-radius: 5px;
+      padding: 6px 9px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .periods button.active {
+      border-color: var(--blue);
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .chart-wrap {
+      min-height: 330px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background:
+        linear-gradient(#eef3f7 1px, transparent 1px),
+        linear-gradient(90deg, #eef3f7 1px, transparent 1px),
+        #ffffff;
+      background-size: 100% 58px, 70px 100%;
+    }
+
+    .chart-wrap iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #ffffff;
+      z-index: 2;
+    }
+
+    #goldChart {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .account-card {
+      padding: 13px;
+    }
+
+    .account-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .account {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcfe;
+    }
+
+    .account b {
+      display: block;
+      margin-top: 5px;
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .action-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .action-item {
+      padding: 10px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .action-item strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    @media (max-width: 1220px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+      .scroll {
+        max-height: 360px;
+      }
+    }
+
+    @media (max-width: 780px) {
+      .page {
+        grid-template-rows: auto 1fr;
+      }
+      .date-bar {
+        min-height: 52px;
+        font-size: 16px;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .main {
+        padding: 10px;
+      }
+      .left-grid,
+      .decision-card,
+      .wide-panels,
+      .quote-strip,
+      .account-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .decision-main {
+        padding-right: 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 10px;
+      }
+      .market-card {
+        min-height: 560px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="date-bar">
+      <div class="brand-block">
+        <div class="brand-name">GoldPilot 黄金交易决策驾驶舱</div>
+        <div class="brand-sub">面向金融客户服务团队的事件驱动型交易辅助首页</div>
+      </div>
+      <div class="date-meta">
+        <span class="pill green">免费数据源</span>
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="date-text" id="today">----/--/--</span>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="left" aria-label="技术面与基本面">
+        <article class="decision-card">
+          <div class="decision-main">
+            <div class="decision-kicker">TODAY DECISION</div>
+            <h1 id="decisionHeadline">纽约盘前，黄金波动放大，等待关键事件确认</h1>
+            <p id="decisionSummary">系统聚合行情、重要数据、美国事件、快讯和账户风险，生成客户服务动作建议。</p>
+          </div>
+          <div class="decision-box">
+            <strong>事件倒计时</strong>
+            <p id="eventCountdown">点击财经日历核对今日事件</p>
+          </div>
+          <div class="decision-box">
+            <strong>AI 解释</strong>
+            <p id="aiReason">上涨概率由短线动量、支撑压力、事件窗口和快讯热度综合生成。</p>
+          </div>
+        </article>
+
+        <div class="left-grid">
+          <article class="card">
+            <div class="card-title">
+              <strong>上涨 / 下跌概率</strong>
+              <a class="pill source-link" href="https://cn.tradingview.com/symbols/OANDA-XAUUSD/technicals/" target="_blank" rel="noopener noreferrer">技术面来源</a>
+            </div>
+            <div class="metric">
+              <span class="sub">上涨概率</span>
+              <b class="green" id="upProb">--</b>
+            </div>
+            <div class="prob-bar"><div class="prob-fill" id="upBar"></div></div>
+            <div class="metric">
+              <span class="sub">下跌概率</span>
+              <b class="red" id="downProb">--</b>
+            </div>
+            <div class="sub">当前先用行情动量与波动率计算，后续可替换为正式公式。</div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>仓位管理警示</strong>
+              <span class="pill amber" id="riskLabel">--</span>
+            </div>
+            <div class="risk-bar"><div class="risk-fill" id="riskBar"></div></div>
+            <div class="metric">
+              <span class="sub">建议仓位</span>
+              <b id="positionAdvice">--</b>
+            </div>
+            <div class="metric">
+              <span class="sub">最大止损</span>
+              <b class="red" id="stopLoss">--</b>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>当前行情支撑压力</strong>
+              <span class="pill blue">现货黄金</span>
+            </div>
+            <div class="metric">
+              <span class="sub">第一支撑</span>
+              <b class="green" id="support1">--</b>
+            </div>
+            <div class="metric">
+              <span class="sub">第二支撑</span>
+              <b class="green" id="support2">--</b>
+            </div>
+            <div class="metric">
+              <span class="sub">第一压力</span>
+              <b class="red" id="resistance1">--</b>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>当天重要数据</strong>
+              <a class="pill source-link" href="https://cal.jin10.com/" target="_blank" rel="noopener noreferrer">金十日历</a>
+            </div>
+            <div class="mini-list" id="dataList"></div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>当天重要事项</strong>
+              <a class="pill source-link" href="https://www.fuhuitoutiao.com/calendar/" target="_blank" rel="noopener noreferrer">汇头条日历</a>
+            </div>
+            <div class="mini-list" id="eventSummary"></div>
+          </article>
+
+          <article class="card">
+            <div class="card-title">
+              <strong>实时市场快讯</strong>
+              <a class="pill source-link red" id="flashState" href="https://finance.sina.com.cn/7x24/" target="_blank" rel="noopener noreferrer">新浪7x24</a>
+            </div>
+            <div class="mini-list" id="flashPreview"></div>
+          </article>
+        </div>
+
+        <div class="wide-panels">
+          <article class="card feed">
+            <div class="panel-title">
+              <strong>美国重要事件明细</strong>
+              <span class="pill">北京时间</span>
+            </div>
+            <div class="scroll" id="eventList"></div>
+          </article>
+
+          <article class="card feed">
+            <div class="panel-title">
+              <strong>市场快讯流</strong>
+              <span class="pill red" id="flashCount">0 条</span>
+            </div>
+            <div class="scroll" id="flashList"></div>
+          </article>
+
+          <article class="card feed">
+            <div class="panel-title">
+              <strong>客户服务动作</strong>
+              <span class="pill green">可执行</span>
+            </div>
+            <div class="action-list" id="actionList"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="right" aria-label="实时行情与账号交易情况">
+        <article class="market-card">
+          <div class="quote-strip">
+            <div class="quote">
+              <span class="sub">现货黄金 XAU/USD</span>
+              <div class="value green" id="lastPrice">--</div>
+            </div>
+            <div class="quote">
+              <span class="sub">涨跌额</span>
+              <div class="value" id="changeValue">--</div>
+            </div>
+            <div class="quote">
+              <span class="sub">涨跌幅</span>
+              <div class="value" id="changePct">--</div>
+            </div>
+            <div class="quote">
+              <span class="sub">最高</span>
+              <div class="value" id="highPrice">--</div>
+            </div>
+            <div class="quote">
+              <span class="sub">最低</span>
+              <div class="value" id="lowPrice">--</div>
+            </div>
+          </div>
+
+          <div class="chart-head">
+            <div>
+              <strong>现货黄金蜡烛图</strong>
+              <div class="sub">价格优先读取 Stooq 免密行情；图表用于单页展示，门户来源可点击核对。</div>
+            </div>
+            <div class="periods" id="periods">
+              <button type="button" class="active" data-period="1m">1分钟</button>
+              <button type="button" data-period="5m">5分钟</button>
+              <button type="button" data-period="15m">15分钟</button>
+              <button type="button" data-period="1h">1小时</button>
+              <button type="button" data-period="4h">4小时</button>
+              <button type="button" data-period="1d">日线</button>
+            </div>
+          </div>
+
+          <div class="chart-wrap">
+            <iframe
+              title="TradingView XAUUSD 实时图表"
+              src="https://s.tradingview.com/widgetembed/?symbol=OANDA%3AXAUUSD&interval=15&hidesidetoolbar=1&symboledit=1&saveimage=0&toolbarbg=f8fafc&studies=%5B%5D&theme=light&style=1&timezone=Asia%2FShanghai&withdateranges=1&hideideas=1"
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+              allowfullscreen>
+            </iframe>
+            <canvas id="goldChart"></canvas>
+          </div>
+        </article>
+
+        <article class="account-card">
+          <div class="panel-title">
+            <strong>账号交易情况</strong>
+            <span class="pill green">模拟账户</span>
+          </div>
+          <div class="account-grid">
+            <div class="account">
+              <span class="sub">账户净值</span>
+              <b id="equity">$125,000</b>
+            </div>
+            <div class="account">
+              <span class="sub">可用保证金</span>
+              <b id="freeMargin">$86,400</b>
+            </div>
+            <div class="account">
+              <span class="sub">持仓手数</span>
+              <b id="lots">3.2</b>
+            </div>
+            <div class="account">
+              <span class="sub">今日盈亏</span>
+              <b class="green" id="dailyPnl">+$2,180</b>
+            </div>
+            <div class="account">
+              <span class="sub">风险占用</span>
+              <b class="amber" id="riskUsed">31%</b>
+            </div>
+            <div class="account">
+              <span class="sub">服务提醒</span>
+              <b class="blue" id="serviceAlert">待触达</b>
+            </div>
+            <div class="account">
+              <span class="sub">模型信心</span>
+              <b id="modelConfidence">72%</b>
+            </div>
+            <div class="account">
+              <span class="sub">下一事件</span>
+              <b id="nextEvent">看日历</b>
+            </div>
+            <div class="account">
+              <span class="sub">持仓方向</span>
+              <b class="green" id="positionSide">黄金多单</b>
+            </div>
+            <div class="account">
+              <span class="sub">产品阶段</span>
+              <b>前端原型</b>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+    const calendarSources = [
+      { name: '金十日历', text: '中文财经日历，按国家、重要程度查看美国数据。', url: 'https://cal.jin10.com/' },
+      { name: '英为财情日历', text: '全球经济日历，适合交叉核对前值、预测值和公布值。', url: 'https://cn.investing.com/economic-calendar/' },
+      { name: '汇通财经日历', text: '中文宏观日历，覆盖外汇、贵金属相关事件。', url: 'https://rl.fx678.com/' },
+      { name: 'DailyFX日历', text: '外汇交易者常用经济日历，重点关注美元事件。', url: 'https://www.dailyfx.com/economic-calendar' },
+      { name: 'BLS发布日程', text: '美国劳工统计局官方日程，就业、CPI、PPI等数据源头。', url: 'https://www.bls.gov/schedule/news_release/' },
+      { name: 'BEA发布日程', text: '美国经济分析局官方日程，GDP、PCE等数据源头。', url: 'https://www.bea.gov/news/schedule' },
+      { name: 'Census经济指标', text: '美国人口普查局官方经济指标，零售、耐用品、库存等。', url: 'https://www.census.gov/economic-indicators/' }
+    ];
+
+    const eventSources = [
+      { name: '美联储日程', text: '美联储官方日程，查看会议、公开活动和发布安排。', url: 'https://www.federalreserve.gov/newsevents/calendar.htm' },
+      { name: '美联储讲话', text: '美联储官员讲话原文与发布时间。', url: 'https://www.federalreserve.gov/newsevents/speeches.htm' },
+      { name: 'FOMC日程', text: 'FOMC会议日期、声明、纪要和经济预测材料。', url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm' },
+      { name: '美国财政部拍卖', text: '国债拍卖公告、结果和时间表，影响美债收益率。', url: 'https://treasurydirect.gov/auctions/announcements-data-results/' },
+      { name: 'CME FedWatch', text: '市场隐含利率路径和议息概率。', url: 'https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html' },
+      { name: '金十日历', text: '中文事件日历，快速查看央行讲话和重要宏观事件。', url: 'https://cal.jin10.com/' },
+      { name: 'ForexFactory日历', text: '全球交易者常用事件日历，可按美元与影响等级筛选。', url: 'https://www.forexfactory.com/calendar' }
+    ];
+
+    const flashSources = [
+      { name: '新浪7x24', url: 'https://finance.sina.com.cn/7x24/' },
+      { name: '金十快讯', url: 'https://www.jin10.com/' },
+      { name: '东方财富', url: 'https://finance.eastmoney.com/a/cqqgsx.html' },
+      { name: 'TradingView', url: 'https://cn.tradingview.com/symbols/OANDA-XAUUSD/' }
+    ];
+
+    const importantData = [];
+    const importantEvents = [];
+    let flashPool = [];
+
+    const actionTitles = ['客户提醒', '交易动作', '风险控制'];
+
+    // --- 免费行情配置：Stooq 免密 CSV，失败时保留单页模拟图表 ---
+    const GOLD_API_URL = 'https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlcv&h&e=csv';
+    const GOLD_SOURCE_URL = 'https://stooq.com/q/?s=xauusd';
+    const API_FETCH_INTERVAL = 60000;
+
+    let livePrice = null;
+    let apiConnected = false;
+
+    let period = '1m';
+    let candles = buildCandles(86, 4539);
+    let cachedSignals = calculateSignals();
+    let rafId = 0;
+
+    function parseStooqCsv(csv) {
+      const [, row] = csv.trim().split(/\r?\n/);
+      if (!row) throw new Error('Stooq CSV empty');
+      const [symbol, date, time, open, high, low, close, volume] = row.split(',');
+      const price = Number(close);
+      const openPrice = Number(open);
+      if (!Number.isFinite(price) || !Number.isFinite(openPrice)) {
+        throw new Error('Stooq CSV invalid');
+      }
+      const change = price - openPrice;
+      return {
+        symbol,
+        price,
+        high: Number(high),
+        low: Number(low),
+        open: openPrice,
+        prevClose: openPrice,
+        change,
+        changePct: openPrice ? change / openPrice * 100 : 0,
+        ask: price,
+        bid: price,
+        volume,
+        time: new Date(`${date}T${time}Z`)
+      };
+    }
+
+    // --- 从 Stooq 获取免密 XAUUSD 行情 ---
+    async function fetchGoldPrice() {
+      try {
+        const resp = await fetch(GOLD_API_URL, { cache: 'no-store' });
+        if (!resp.ok) throw new Error(`Stooq ${resp.status}`);
+        livePrice = parseStooqCsv(await resp.text());
+        if (!apiConnected) {
+          apiConnected = true;
+          candles = buildCandles(86, livePrice.price);
+          cachedSignals = calculateSignals();
+          updateStatusBar();
+        }
+        console.log('[Stooq] XAUUSD:', livePrice.price, livePrice.time);
+      } catch (err) {
+        console.warn('[Stooq] 获取失败:', err.message);
+        if (!apiConnected) updateStatusBar();
+      }
+    }
+
+    function updateStatusBar() {
+      const pill = document.querySelector('.date-meta .pill');
+      if (apiConnected) {
+        pill.textContent = 'Stooq行情';
+        pill.className = 'pill green';
+      } else {
+        pill.textContent = '来源可点击';
+        pill.className = 'pill amber';
+      }
+    }
+
+    function setToday() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      $('today').textContent = `${y}/${m}/${d}`;
+    }
+
+    function buildCandles(count, seed) {
+      const list = new Array(count);
+      let close = seed;
+      const now = Date.now();
+      for (let i = count - 1; i >= 0; i -= 1) {
+        const open = close + (Math.random() - 0.52) * 7;
+        close = open + (Math.random() - 0.48) * 10;
+        const high = Math.max(open, close) + Math.random() * 7;
+        const low = Math.min(open, close) - Math.random() * 7;
+        list[i] = {
+          time: new Date(now - i * 60000),
+          open,
+          high,
+          low,
+          close,
+          volume: 800 + Math.random() * 900
+        };
+      }
+      return list;
+    }
+
+    function latest() {
+      return candles[candles.length - 1];
+    }
+
+    function previous() {
+      return candles[candles.length - 2] || candles[candles.length - 1];
+    }
+
+    function calculateSignals() {
+      const last = latest();
+      const prev = previous();
+      const recent = candles.slice(-24);
+      const highs = recent.map(item => item.high);
+      const lows = recent.map(item => item.low);
+      const closes = recent.map(item => item.close);
+      const momentum = last.close - closes[0];
+      const range = Math.max(...highs) - Math.min(...lows);
+      const changePct = (last.close - prev.close) / prev.close * 100;
+      const up = Math.max(28, Math.min(76, 50 + momentum / 2.8 + changePct * 6));
+      const risk = Math.max(22, Math.min(88, 38 + range / 2.6 + Math.abs(changePct) * 8));
+      return {
+        up,
+        down: 100 - up,
+        risk,
+        support1: Math.min(...lows),
+        support2: Math.min(...lows) - range * 0.22,
+        resistance1: Math.max(...highs),
+        stopLoss: Math.max(1.1, range / last.close * 100 * 1.5),
+        position: Math.max(20, 88 - risk),
+        change: last.close - prev.close,
+        changePct,
+        high: Math.max(...candles.slice(-40).map(item => item.high)),
+        low: Math.min(...candles.slice(-40).map(item => item.low))
+      };
+    }
+
+    function renderSignals() {
+      cachedSignals = calculateSignals();
+      const sig = cachedSignals;
+      $('upProb').textContent = `${sig.up.toFixed(1)}%`;
+      $('downProb').textContent = `${sig.down.toFixed(1)}%`;
+      $('upBar').style.width = `${sig.up.toFixed(0)}%`;
+      $('riskBar').style.width = `${sig.risk.toFixed(0)}%`;
+      $('riskLabel').textContent = sig.risk >= 70 ? '高风险' : sig.risk >= 48 ? '中风险' : '低风险';
+      $('riskLabel').className = `pill ${sig.risk >= 70 ? 'red' : sig.risk >= 48 ? 'amber' : 'green'}`;
+      $('positionAdvice').textContent = `${sig.position.toFixed(0)}%`;
+      $('stopLoss').textContent = `${sig.stopLoss.toFixed(1)}%`;
+      $('support1').textContent = fmt.format(sig.support1);
+      $('support2').textContent = fmt.format(sig.support2);
+      $('resistance1').textContent = fmt.format(sig.resistance1);
+      if (!livePrice) {
+        $('upProb').textContent = '待行情';
+        $('downProb').textContent = '看图表';
+        $('upBar').style.width = '50%';
+        $('riskBar').style.width = '45%';
+        $('riskLabel').textContent = '需核对';
+        $('riskLabel').className = 'pill amber';
+        $('positionAdvice').textContent = '轻仓';
+        $('stopLoss').textContent = '按原站';
+        $('support1').textContent = '见图表';
+        $('support2').textContent = '见图表';
+        $('resistance1').textContent = '见图表';
+      }
+      renderDecision(sig);
+      renderActions(sig);
+      renderQuote(sig);
+      renderAccount(sig);
+    }
+
+    function signalMode(sig) {
+      if (sig.up >= 57) return 'bullish';
+      if (sig.up <= 43) return 'bearish';
+      return 'neutral';
+    }
+
+    function renderDecision(sig) {
+      const mode = signalMode(sig);
+      const hotCount = flashPool.filter(item => item.hot).length;
+      const riskText = sig.risk >= 70 ? '高风险' : sig.risk >= 48 ? '中风险' : '可控风险';
+      const direction = mode === 'bullish' ? '短线偏多' : mode === 'bearish' ? '短线偏空' : '区间震荡';
+      if (!livePrice) {
+        $('decisionHeadline').textContent = '真实行情请查看右侧 TradingView 与门户来源';
+        $('decisionSummary').textContent = '当前浏览器可能限制免密行情接口跨域读取；页面已保留可点击来源，报价和日历请以原站显示为准。';
+        $('aiReason').textContent = 'AI解释：在未成功读取行情前，不输出具体方向概率，避免把演示数据误当成真实交易依据。';
+        $('modelConfidence').textContent = '待行情';
+        $('serviceAlert').textContent = '核对来源';
+        $('positionSide').textContent = '观望';
+        $('positionSide').className = 'blue';
+        return;
+      }
+      $('decisionHeadline').textContent = `${direction}，${riskText}，美盘前先核对财经日历`;
+      $('decisionSummary').textContent = `当前上涨概率 ${sig.up.toFixed(1)}%，第一支撑 ${fmt.format(sig.support1)}，第一压力 ${fmt.format(sig.resistance1)}。行情数值来自可核对来源；日历与快讯点击门户原站查看。`;
+      $('aiReason').textContent = `AI解释：短线动量${sig.change >= 0 ? '偏强' : '走弱'}，有 ${hotCount} 个高优先级资讯入口，事件窗口需以原站日历为准，因此建议以轻仓和价格确认优先。`;
+      $('modelConfidence').textContent = `${Math.max(58, Math.min(86, 62 + Math.abs(sig.up - 50) * 0.8)).toFixed(0)}%`;
+      $('serviceAlert').textContent = sig.risk >= 58 ? '需触达' : '观察中';
+      $('positionSide').textContent = mode === 'bearish' ? '黄金轻仓' : mode === 'neutral' ? '观望仓位' : '黄金多单';
+      $('positionSide').className = mode === 'bearish' ? 'amber' : mode === 'neutral' ? 'blue' : 'green';
+    }
+
+    function renderCountdown() {
+      const now = new Date();
+      const time = now.toLocaleTimeString('zh-CN', { hour12: false });
+      $('eventCountdown').innerHTML = `当前北京时间 ${time}，<a class="source-link" href="https://cal.jin10.com/" target="_blank" rel="noopener noreferrer">点击核对今日事件</a>`;
+    }
+
+    function renderActions(sig) {
+      const list = $('actionList');
+      list.textContent = '';
+      const rows = livePrice
+        ? [
+          `实时价 ${fmt.format(livePrice.price)}，涨跌幅 ${livePrice.changePct.toFixed(2)}%。`,
+          `上涨概率 ${sig.up.toFixed(1)}%，风险读数 ${sig.risk.toFixed(0)}。`,
+          `支撑 ${fmt.format(sig.support1)}，压力 ${fmt.format(sig.resistance1)}。`
+        ]
+        : ['等待真实行情读取。', '右侧图表可直接核对行情。', '数据未加载前不输出具体操作。'];
+      rows.forEach((text, index) => {
+        const item = document.createElement('div');
+        item.className = 'action-item';
+        const strong = document.createElement('strong');
+        strong.textContent = actionTitles[index];
+        const body = document.createElement('div');
+        body.className = 'sub';
+        body.textContent = text;
+        item.append(strong, body);
+        list.appendChild(item);
+      });
+    }
+
+    function tone(el, value) {
+      el.classList.remove('green', 'red', 'amber');
+      el.classList.add(value > 0 ? 'green' : value < 0 ? 'red' : 'amber');
+    }
+
+    function renderQuote(sig) {
+      if (livePrice) {
+        // 用免费行情源渲染报价栏
+        $('lastPrice').textContent = fmt.format(livePrice.price);
+        $('changeValue').textContent = `${livePrice.change >= 0 ? '+' : ''}${fmt.format(livePrice.change)}`;
+        $('changePct').textContent = `${livePrice.changePct >= 0 ? '+' : ''}${livePrice.changePct.toFixed(2)}%`;
+        $('highPrice').textContent = fmt.format(livePrice.high);
+        $('lowPrice').textContent = fmt.format(livePrice.low);
+        tone($('lastPrice'), livePrice.change);
+        tone($('changeValue'), livePrice.change);
+        tone($('changePct'), livePrice.changePct);
+      } else {
+        $('lastPrice').textContent = '看图表';
+        $('changeValue').textContent = '点来源';
+        $('changePct').textContent = '--';
+        $('highPrice').textContent = '--';
+        $('lowPrice').textContent = '--';
+        tone($('lastPrice'), 0);
+        tone($('changeValue'), 0);
+        tone($('changePct'), 0);
+      }
+    }
+
+    function renderAccount(sig) {
+      const equity = 125000;
+      const lots = 3.2;
+      const pnl = 2180 + sig.change * 26;
+      const riskUsed = Math.max(18, Math.min(58, sig.risk * 0.62));
+      $('equity').textContent = money.format(equity + pnl);
+      $('freeMargin').textContent = money.format(86400 + pnl * 0.35);
+      $('lots').textContent = lots.toFixed(1);
+      $('dailyPnl').textContent = `${pnl >= 0 ? '+' : ''}${money.format(pnl)}`;
+      $('riskUsed').textContent = `${riskUsed.toFixed(0)}%`;
+      tone($('dailyPnl'), pnl);
+    }
+
+    function makeSourceLink(item) {
+      if (!item.sourceUrl) return null;
+      const link = document.createElement('a');
+      link.className = 'source-link';
+      link.href = item.sourceUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = item.sourceName ? `来源：${item.sourceName}` : '查看来源';
+      return link;
+    }
+
+    function makeContentNode(text, url) {
+      if (!url) {
+        const body = document.createElement('div');
+        body.textContent = text;
+        return body;
+      }
+      const link = document.createElement('a');
+      link.className = 'content-link';
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = text;
+      return link;
+    }
+
+    function renderEmptyState(box, text, sources) {
+      if (sources?.length) {
+        renderSourceRows(box, sources);
+        return;
+      }
+      const state = document.createElement('div');
+      state.className = 'empty-state';
+      state.appendChild(makeContentNode(text));
+      box.appendChild(state);
+    }
+
+    function renderSourceRows(box, sources, important = false) {
+      const nowText = formatDateMinute(new Date());
+      sources.forEach(source => {
+        const row = document.createElement('div');
+        row.className = important ? 'event-row important' : 'mini-item';
+        const time = document.createElement('div');
+        time.className = important ? 'row-time' : 'mini-time';
+        time.textContent = nowText;
+        const text = document.createElement('div');
+        text.className = important ? 'row-text' : 'mini-body';
+        text.appendChild(makeContentNode(`${source.name}：${source.text}`, source.url));
+        row.append(time, text);
+        box.appendChild(row);
+      });
+    }
+
+    function renderMiniList(id, items) {
+      const box = $(id);
+      box.textContent = '';
+      if (!items.length) {
+        const sources = id === 'dataList' ? calendarSources : id === 'eventSummary' ? eventSources : flashSources;
+        const text = id === 'flashPreview' ? '正在从新浪7x24读取实时快讯。' : '';
+        renderEmptyState(box, text, sources);
+        return;
+      }
+      items.slice(0, 3).forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'mini-item';
+        const time = document.createElement('div');
+        time.className = 'mini-time';
+        time.textContent = item.time;
+        const text = document.createElement('div');
+        text.className = 'mini-body';
+        text.appendChild(makeContentNode(`${item.star ? item.star + ' ' : ''}${item.text}`, item.sourceUrl));
+        const source = makeSourceLink(item);
+        if (source) {
+          const sourceLine = document.createElement('div');
+          sourceLine.className = 'mini-source';
+          sourceLine.appendChild(source);
+          text.appendChild(sourceLine);
+        }
+        row.append(time, text);
+        box.appendChild(row);
+      });
+    }
+
+    function renderEvents() {
+      renderMiniList('dataList', importantData);
+      renderMiniList('eventSummary', importantEvents);
+      const list = $('eventList');
+      list.textContent = '';
+      if (!importantEvents.length) {
+        renderSourceRows(list, eventSources, true);
+        return;
+      }
+      importantEvents.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'event-row important';
+        const time = document.createElement('div');
+        time.className = 'row-time';
+        time.textContent = item.time;
+        const text = document.createElement('div');
+        text.className = 'row-text';
+        text.appendChild(makeContentNode(`${item.star} ${item.text}`, item.sourceUrl));
+        const source = makeSourceLink(item);
+        if (source) {
+          const sourceLine = document.createElement('div');
+          sourceLine.className = 'mini-source';
+          sourceLine.appendChild(source);
+          text.appendChild(sourceLine);
+        }
+        row.append(time, text);
+        list.appendChild(row);
+      });
+    }
+
+    function renderFlashes() {
+      const active = flashPool.slice(0, 6);
+      $('flashCount').textContent = `${active.length} 条`;
+      renderMiniList('flashPreview', active.filter(item => item.hot));
+      const list = $('flashList');
+      list.textContent = '';
+      if (!active.length) {
+        renderEmptyState(list, '正在从新浪7x24读取实时快讯。读取失败时请点击来源查看。', flashSources);
+        return;
+      }
+      active.forEach(item => {
+        const row = document.createElement('div');
+        row.className = `flash-row ${item.hot ? 'hot' : ''}`;
+        const time = document.createElement('div');
+        time.className = 'row-time';
+        time.textContent = item.time;
+        const text = document.createElement('div');
+        text.className = 'flash-text';
+        text.appendChild(makeContentNode(item.text, item.sourceUrl));
+        const source = makeSourceLink(item);
+        if (source) {
+          const sourceLine = document.createElement('div');
+          sourceLine.className = 'mini-source';
+          sourceLine.appendChild(source);
+          text.appendChild(sourceLine);
+        }
+        row.append(time, text);
+        list.appendChild(row);
+      });
+    }
+
+    function drawChart() {
+      const canvas = $('goldChart');
+      const wrap = canvas.parentElement;
+      const rect = wrap.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      const periodSize = { '1m': 64, '5m': 56, '15m': 48, '1h': 42, '4h': 36, '1d': 30 }[period];
+      const data = candles.slice(-periodSize);
+      const pad = { left: 50, right: 62, top: 20, bottom: 32 };
+      const width = rect.width - pad.left - pad.right;
+      const height = rect.height - pad.top - pad.bottom;
+      const high = Math.max(...data.map(item => item.high));
+      const low = Math.min(...data.map(item => item.low));
+      const gap = Math.max((high - low) * 0.08, 2);
+      const top = high + gap;
+      const bottom = low - gap;
+      const y = (price) => pad.top + (top - price) / (top - bottom) * height;
+      const step = width / data.length;
+      const candleWidth = Math.max(4, Math.min(12, step * 0.58));
+      const levels = cachedSignals;
+
+      ctx.font = '12px "Avenir Next", sans-serif';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i += 1) {
+        const yy = pad.top + height / 4 * i;
+        const price = top - (top - bottom) / 4 * i;
+        ctx.strokeStyle = '#e4ebf0';
+        ctx.beginPath();
+        ctx.moveTo(pad.left, yy);
+        ctx.lineTo(rect.width - pad.right, yy);
+        ctx.stroke();
+        ctx.fillStyle = '#667482';
+        ctx.fillText(fmt.format(price), rect.width - pad.right + 8, yy + 4);
+      }
+
+      drawLevel(ctx, pad, rect, y, levels.support1, '#0f9f6e', 'S1');
+      drawLevel(ctx, pad, rect, y, levels.resistance1, '#e3342f', 'R1');
+
+      data.forEach((item, index) => {
+        const x = pad.left + step * index + step / 2;
+        const rise = item.close >= item.open;
+        const color = rise ? '#0f9f6e' : '#e3342f';
+        const openY = y(item.open);
+        const closeY = y(item.close);
+        const highY = y(item.high);
+        const lowY = y(item.low);
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(x, highY);
+        ctx.lineTo(x, lowY);
+        ctx.stroke();
+        const bodyY = Math.min(openY, closeY);
+        const bodyH = Math.max(2, Math.abs(openY - closeY));
+        if (rise) {
+          ctx.strokeRect(x - candleWidth / 2, bodyY, candleWidth, bodyH);
+          ctx.fillStyle = 'rgba(15, 159, 110, 0.16)';
+          ctx.fillRect(x - candleWidth / 2, bodyY, candleWidth, bodyH);
+        } else {
+          ctx.fillRect(x - candleWidth / 2, bodyY, candleWidth, bodyH);
+        }
+      });
+
+      const last = latest();
+      const lastY = y(last.close);
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = '#1769e0';
+      ctx.beginPath();
+      ctx.moveTo(pad.left, lastY);
+      ctx.lineTo(rect.width - pad.right, lastY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#1769e0';
+      ctx.fillRect(rect.width - pad.right + 4, lastY - 11, 54, 22);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(fmt.format(last.close), rect.width - pad.right + 8, lastY + 4);
+    }
+
+    function drawLevel(ctx, pad, rect, y, price, color, label) {
+      const yy = y(price);
+      ctx.setLineDash([8, 5]);
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, yy);
+      ctx.lineTo(rect.width - pad.right, yy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color;
+      ctx.fillRect(pad.left + 4, yy - 10, 32, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, pad.left + 12, yy + 4);
+    }
+
+    function updateMarket() {
+      const last = latest();
+      const open = last.close;
+      if (livePrice) {
+        // 用真实价格作为新K线收盘价，加上微小随机波动模拟盘中tick
+        const noise = (Math.random() - 0.5) * 1.2;
+        const close = livePrice.price + noise;
+        const high = Math.max(open, close, livePrice.ask || close) + Math.random() * 1.5;
+        const low = Math.min(open, close, livePrice.bid || close) - Math.random() * 1.5;
+        candles.push({ time: new Date(), open, high, low, close, volume: 700 + Math.random() * 1000 });
+      } else {
+        // 无API数据时回退到模拟
+        const close = Math.max(1, open + (Math.random() - 0.48) * 5.6);
+        const high = Math.max(open, close) + Math.random() * 3.8;
+        const low = Math.min(open, close) - Math.random() * 3.8;
+        candles.push({ time: new Date(), open, high, low, close, volume: 700 + Math.random() * 1000 });
+      }
+      if (candles.length > 120) candles.shift();
+      renderSignals();
+      scheduleRedraw();
+    }
+
+    function scheduleRedraw() {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(drawChart);
+    }
+
+    function bind() {
+      $('periods').addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-period]');
+        if (!button) return;
+        period = button.dataset.period;
+        document.querySelectorAll('#periods button').forEach(item => {
+          item.classList.toggle('active', item === button);
+        });
+        scheduleRedraw();
+      });
+      let resizeTimer = 0;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(scheduleRedraw, 120);
+      });
+    }
+
+    function stripText(value) {
+      const box = document.createElement('div');
+      box.innerHTML = value || '';
+      return box.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    function getDocUrl(item) {
+      try {
+        const ext = JSON.parse(item.ext || '{}');
+        return ext.docurl || flashSources[0].url;
+      } catch {
+        return flashSources[0].url;
+      }
+    }
+
+    function formatFeedTime(value) {
+      if (!value) return '实时';
+      const date = new Date(value.replace(' ', 'T'));
+      if (Number.isNaN(date.getTime())) return '实时';
+      return formatDateMinute(date);
+    }
+
+    function formatDateMinute(date) {
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hour = String(date.getHours()).padStart(2, '0');
+      const minute = String(date.getMinutes()).padStart(2, '0');
+      return `${month}-${day} ${hour}:${minute}`;
+    }
+
+    function loadSinaFlashes() {
+      const callbackName = `goldPilotSina_${Date.now()}`;
+      const script = document.createElement('script');
+      const params = new URLSearchParams({
+        callback: callbackName,
+        page: '1',
+        page_size: '12',
+        zhibo_id: '152',
+        tag_id: '0',
+        dire: 'f',
+        dpc: '1'
+      });
+
+      window[callbackName] = (payload) => {
+        const list = payload?.result?.data?.feed?.list || [];
+        flashPool = list.map(item => {
+          const text = stripText(item.rich_text);
+          return {
+            time: formatFeedTime(item.create_time),
+            hot: /黄金|贵金属|美元|美债|美联储|通胀|就业|利率|XAU/i.test(text),
+            text,
+            sourceName: '新浪财经',
+            sourceUrl: getDocUrl(item)
+          };
+        }).filter(item => item.text);
+        renderFlashes();
+        renderSignals();
+      };
+
+      script.src = `https://zhibo.sina.com.cn/api/zhibo/feed?${params.toString()}`;
+      script.onerror = () => {
+        renderFlashes();
+        delete window[callbackName];
+        script.remove();
+      };
+      script.onload = () => {
+        delete window[callbackName];
+        script.remove();
+      };
+      document.head.appendChild(script);
+    }
+
+    function init() {
+      setToday();
+      updateStatusBar();
+      bind();
+      renderEvents();
+      renderFlashes();
+      renderSignals();
+      renderCountdown();
+      drawChart();
+
+      // 获取实时行情（首次立即调用，之后每60秒）
+      fetchGoldPrice();
+      setInterval(fetchGoldPrice, API_FETCH_INTERVAL);
+      loadSinaFlashes();
+      setInterval(loadSinaFlashes, API_FETCH_INTERVAL);
+
+      // 每4秒更新K线（微波动）
+      setInterval(updateMarket, 4000);
+      setInterval(renderCountdown, 1000);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>

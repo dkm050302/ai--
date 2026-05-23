@@ -10,6 +10,7 @@ import { setupWebSocket } from './websocket';
 import { errorHandler, notFoundHandler, requestLogger, detailedRequestLogger } from './middleware';
 import { logger } from './utils';
 import { schedulerService } from './services/scheduler';
+import { metaApiService } from './services/metaApi';
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,6 +63,15 @@ async function startServer() {
     logger.info('📡 Connecting to database...');
     await connectDatabase();
     logger.info('✅ Database connection completed');
+
+    // 初始化 MetaAPI
+    logger.info('📡 Connecting to MetaAPI...');
+    await metaApiService.initialize();
+    if (metaApiService.isMetaApiConnected()) {
+      logger.info('✅ MetaAPI connected successfully');
+    } else {
+      logger.warn('⚠️  MetaAPI not connected, using fallback data');
+    }
 
     // 设置WebSocket
     logger.info('🔌 Setting up WebSocket...');

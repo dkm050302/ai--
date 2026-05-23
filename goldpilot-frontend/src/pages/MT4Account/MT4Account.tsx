@@ -225,6 +225,43 @@ export function MT4Account() {
         )}
       </Card>
 
+      {/* MT4 网页交易界面 */}
+      <Card
+        className="shadow-lg border-0"
+        title={
+          <div className="flex items-center gap-3">
+            <GlobalOutlined className="text-xl text-blue-600" />
+            <div>
+              <div className="text-lg font-bold text-slate-900">MT4 网页交易端</div>
+              <div className="text-sm text-slate-500">直接在网页上进行交易操作</div>
+            </div>
+          </div>
+        }
+      >
+        <div className="w-full" style={{ height: '600px', background: '#f8fafc', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="text-center">
+            <div className="text-6xl mb-4">📈</div>
+            <div className="text-xl font-semibold text-slate-700 mb-2">MT4 WebTrader</div>
+            <div className="text-sm text-slate-500 mb-6 max-w-md">
+              由于安全限制，无法在页面内直接嵌入交易界面
+            </div>
+            <div className="space-y-3">
+              <Button
+                type="primary"
+                size="large"
+                icon={<GlobalOutlined />}
+                onClick={() => window.open('https://www.metatrader4.com', '_blank')}
+              >
+                打开 MT4 官方网站
+              </Button>
+              <div className="text-xs text-slate-400 mt-4">
+                提示：您可以通过经纪商提供的 WebTrader 链接访问网页交易端
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
       {/* 编辑数据弹窗 */}
       <Modal
         title="更新账号数据"

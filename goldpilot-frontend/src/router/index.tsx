@@ -3,6 +3,7 @@ import { MainLayout } from '@/layouts/MainLayout';
 import { Home } from '@/pages/Home/Home';
 import { MT4Account } from '@/pages/MT4Account/MT4Account';
 import { AIAccount } from '@/pages/AIAccount/AIAccount';
+import { EventDrivenHome } from '@/pages/EventDrivenHome/EventDrivenHome';
 import { Login } from '@/pages/Login/Login';
 
 // 受保护的路由组件
@@ -41,6 +42,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <Home />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'event-driven',
+        element: (
+          <ProtectedRoute>
+            <EventDrivenHome />
           </ProtectedRoute>
         ),
       },

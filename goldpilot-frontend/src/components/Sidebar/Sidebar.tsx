@@ -1,7 +1,7 @@
 import { Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons';
+import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, BellOutlined } from '@ant-design/icons';
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -15,6 +15,9 @@ export function Sidebar() {
     if (location.pathname === '/ai-account') {
       return ['ai-account'];
     }
+    if (location.pathname === '/event-driven') {
+      return ['event-driven'];
+    }
     return ['home'];
   };
 
@@ -24,6 +27,12 @@ export function Sidebar() {
       icon: <HomeOutlined className="text-lg" />,
       label: <span className="ml-2 font-medium">首页</span>,
       onClick: () => navigate('/'),
+    },
+    {
+      key: 'event-driven',
+      icon: <BellOutlined className="text-lg" />,
+      label: <span className="ml-2 font-medium">事件驱动首页</span>,
+      onClick: () => navigate('/event-driven'),
     },
     {
       key: 'mt4-account',

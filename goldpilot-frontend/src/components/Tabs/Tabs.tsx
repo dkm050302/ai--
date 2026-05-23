@@ -33,6 +33,8 @@ export function Tabs() {
       let label = '新页面';
       if (path === '/mt4-account') {
         label = 'MT4账号管理';
+      } else if (path === '/event-driven') {
+        label = '事件驱动首页';
       }
 
       setItems([...items, { key: path, label, closable: true }]);

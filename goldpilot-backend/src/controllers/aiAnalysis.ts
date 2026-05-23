@@ -110,8 +110,8 @@ function buildAnalysisPrompt(data: any): string {
   // 格式化K线数据摘要
   const candleSummary = candles
     ? `最近${candles.length}根K线，开盘${candles[0]?.close?.toFixed(2)}，当前${price.toFixed(2)}，` +
-      `最高${Math.max(...candles.map(c => c.high)).toFixed(2)}，` +
-      `最低${Math.min(...candles.map(c => c.low)).toFixed(2)}`
+      `最高${Math.max(...candles.map((c: any) => c.high)).toFixed(2)}，` +
+      `最低${Math.min(...candles.map((c: any) => c.low)).toFixed(2)}`
     : '无K线数据';
 
   // 格式化事件
@@ -209,11 +209,11 @@ async function callDeepSeekAPI(apiKey: string, prompt: string): Promise<Analysis
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData: any = await response.json().catch(() => ({}));
     throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
   const content = data.choices[0]?.message?.content || '';
 
   // 提取JSON内容

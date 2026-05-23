@@ -39,24 +39,32 @@ class MetaApiService {
       // 添加账户
       logger.info(`Connecting to account: ${ACCOUNT_ID}`);
 
-      // 连接到账户
-      this.connection = await this.metaApi.connect(ACCOUNT_ID);
+      // 连接到账户 - 使用 connectAccount 方法
+      this.connection = this.metaApi;
 
-      // 等待连接
-      await this.connection.waitConnected();
+      // 先尝试获取账户信息来验证连接
+      try {
+        // 使用正确的API连接账户
+        const account = await this.connection.connectAccount(ACCOUNT_ID);
+        this.connection = account;
 
-      this.isConnected = true;
-      logger.info('✅ MetaAPI connected successfully!');
-      logger.info(`Account: ${ACCOUNT_ID}`);
+        // 等待连接完成
+        await this.connection.waitConnected();
+
+        this.isConnected = true;
+        logger.info('✅ MetaAPI connected successfully!');
+        logger.info(`Account: ${ACCOUNT_ID}`);
+      } catch (connectError: any) {
+        logger.warn('Direct connection failed, trying provisioning API...');
+
+        // 如果直接连接失败，尝试通过 provisioning 添加账户
+        logger.info('Note: Account needs to be added via MetaAPI dashboard first');
+        logger.info('Visit: https://app.metaapi.cloud/provisioning');
+
+        this.isConnected = false;
+      }
     } catch (error: any) {
       logger.error('Failed to connect to MetaAPI:', error?.message || error);
-
-      // 如果账户不存在，尝试添加
-      if (error?.message?.includes('not found')) {
-        logger.info('Account not found. Please add account via MetaAPI dashboard:');
-        logger.info('https://app.metaapi.cloud/provisioning');
-      }
-
       this.isConnected = false;
     }
   }

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { logger } from '../utils';
+import { sinaFinanceScraper } from './sinaFinance';
 
 /**
  * 市场数据服务 - 获取真实黄金行情数据
@@ -36,7 +37,22 @@ class MarketDataService {
       return this.priceCache.price;
     }
 
-    // 方案1: 使用 Twelve Data（如果有 API key）
+    // 方案1: 使用新浪财经数据（优先）
+    try {
+      const sinaData = await sinaFinanceScraper.getGoldData();
+      if (sinaData && sinaData.currentPrice > 0) {
+        logger.info(`✅ [新浪财经] Price: ${sinaData.currentPrice}`);
+
+        // 更新缓存
+        this.priceCache = { price: sinaData.currentPrice, timestamp: Date.now() };
+        return sinaData.currentPrice;
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn('⚠️ 新浪财经失败:', message);
+    }
+
+    // 方案2: 使用 Twelve Data（如果有 API key）
     if (this.sources[0].apiKey && this.sources[0].apiKey !== 'your_token_here') {
       try {
         const price = await this.fetchFromTwelveData();
@@ -45,22 +61,29 @@ class MarketDataService {
         // 更新缓存
         this.priceCache = { price, timestamp: Date.now() };
         return price;
-      } catch (error: any) {
-        logger.warn('⚠️ Twelve Data failed:', error.message);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.warn('⚠️ Twelve Data failed:', message);
       }
     }
 
-    // 方案2: 使用 metals.live API（免费，无需注册）
+    // 方案3: 使用 metals.live API（免费，无需注册）
     try {
       const price = await this.fetchFromMetalsLive();
       logger.info(`✅ [metals.live] Price: ${price}`);
+
+      // 更新缓存
+      this.priceCache = { price, timestamp: Date.now() };
       return price;
-    } catch (error: any) {
-      logger.warn('⚠️ metals.live failed:', error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn('⚠️ metals.live failed:', message);
     }
 
-    // 方案3: 使用基于市场水平的估算
-    return this.getFallbackPrice();
+    // 方案4: 使用基于市场水平的估算
+    const fallbackPrice = await this.getFallbackPrice();
+    this.priceCache = { price: fallbackPrice, timestamp: Date.now() };
+    return fallbackPrice;
   }
 
   /**
@@ -198,7 +221,23 @@ class MarketDataService {
       logger.info(`📦 [缓存] 使用缓存K线数据: ${interval} (${cached.candles.length}条)`);
       return cached.candles;
     }
-    // 方案1: 尝试 Twelve Data（如果有 API key）
+
+    // 方案1: 尝试新浪财经K线数据（优先）
+    try {
+      const sinaCandles = await sinaFinanceScraper.getKlineData(interval, limit);
+      if (sinaCandles.length > 0) {
+        logger.info(`✅ [新浪财经] K线: ${sinaCandles.length}条 for ${interval}`);
+
+        // 更新缓存
+        this.candlesCache.set(cacheKey, { candles: sinaCandles, timestamp: Date.now() });
+        return sinaCandles;
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn('⚠️ 新浪财经K线失败:', message);
+    }
+
+    // 方案2: 尝试 Twelve Data（如果有 API key）
     if (this.sources[0].apiKey && this.sources[0].apiKey !== 'your_token_here') {
       try {
         const candles = await this.fetchCandlesFromTwelveData(interval, limit);
@@ -214,7 +253,7 @@ class MarketDataService {
       }
     }
 
-    // 方案2: 使用基于真实价格的模拟K线（基于当前市场价）
+    // 方案3: 使用基于真实价格的模拟K线（基于当前市场价）
     logger.info(`📊 [数据源] 使用基于市场价的K线数据 (${interval})`);
     const candles = this.generateRealisticCandles(interval, limit);
 

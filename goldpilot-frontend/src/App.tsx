@@ -1,5 +1,5 @@
 import { RouterProvider } from 'react-router-dom';
-import { ConfigProvider, App, theme } from 'antd';
+import { ConfigProvider, App as AntdApp, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { router } from '@/router';
 import './index.css';
@@ -19,9 +19,9 @@ function App() {
         },
       }}
     >
-      <App>
+      <AntdApp>
         <Root />
-      </App>
+      </AntdApp>
     </ConfigProvider>
   );
 }
