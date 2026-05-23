@@ -154,8 +154,6 @@ export function Home() {
   useEffect(() => {
     const loadEventData = async () => {
       try {
-        setEventsLoading(true);
-
         // 格式化今天日期
         const today = new Date().toISOString().split('T')[0];
 
@@ -195,8 +193,6 @@ export function Home() {
         // 失败时使用默认数据
         setEvents(createDefaultEvents());
         setFlashes(createDefaultFlashes());
-      } finally {
-        setEventsLoading(false);
       }
     };
 
