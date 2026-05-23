@@ -18,7 +18,7 @@ import type { PriceData, Candle, Signal, DailyStats, Event, Flash } from '@/type
 import { fetchCandles, createRealtimeConnection } from '@/services/marketData';
 import { detectSignals } from '@/utils/signalCalculator';
 import type { Period } from '@/services/marketData';
-import { dataApi } from '@/services/data';
+import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
 import { aiService, type AIAnalysisResult } from '@/services/ai';
 
 /**
@@ -68,7 +68,6 @@ export function Home() {
   // 真实数据状态
   const [events, setEvents] = useState<Event[]>(createDefaultEvents());
   const [flashes, setFlashes] = useState<Flash[]>(createDefaultFlashes());
-  const [eventsLoading, setEventsLoading] = useState(false);
 
   // AI分析相关状态
   const [analyzing, setAnalyzing] = useState(false);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Form, Input, Modal, message, Descriptions, Tag, Space } from 'antd';
 import { EditOutlined, SaveOutlined, LogoutOutlined, ApiOutlined, KeyOutlined, RobotOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { authFetch } from '@/utils/apiConfig';
 
 interface AIConfig {
