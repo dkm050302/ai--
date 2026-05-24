@@ -20,6 +20,7 @@
     "cheerio": "^1.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "dukascopy-node": "^1.46.4",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "metaapi.cloud-sdk": "^29.3.3",

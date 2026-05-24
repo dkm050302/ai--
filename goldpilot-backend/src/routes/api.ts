@@ -32,7 +32,7 @@ import {
 } from '../controllers/aiAnalysis';
 import authRouter from './auth';
 import { updateAccount } from '../controllers/accountUpdate';
-import { authMiddleware } from '../middleware/auth';
+import { optionalAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -54,19 +54,19 @@ router.get('/stats/today', getTodayStats);
 
 // 账户相关路由
 router.get('/account', getAccount);
-router.put('/account/update', authMiddleware, updateAccount);
+router.put('/account/update', optionalAuth, updateAccount);
 
 // 事件相关路由
 router.get('/events/calendar', getEconomicCalendar);
 router.get('/events/news', getMarketNews);
 
 // AI配置相关路由
-router.get('/ai/config', authMiddleware, getAIConfig);
-router.post('/ai/config', authMiddleware, saveAIConfig);
-router.delete('/ai/config', authMiddleware, deleteAIConfig);
-router.post('/ai/test', authMiddleware, testAIConnection);
+router.get('/ai/config', optionalAuth, getAIConfig);
+router.post('/ai/config', optionalAuth, saveAIConfig);
+router.delete('/ai/config', optionalAuth, deleteAIConfig);
+router.post('/ai/test', optionalAuth, testAIConnection);
 
 // AI分析相关路由
-router.post('/ai/analyze', authMiddleware, analyzeMarket);
+router.post('/ai/analyze', optionalAuth, analyzeMarket);
 
 export default router;

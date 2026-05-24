@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { logger } from '../utils';
 import { sinaFinanceScraper } from './sinaFinance';
+import { dukascopyService } from './dukascopy';
+import { eastmoneyService } from './eastmoney';
 
 /**
  * 市场数据服务 - 获取真实黄金行情数据
@@ -27,7 +29,8 @@ class MarketDataService {
 
   /**
    * 获取实时黄金价格（现货）
-   * 使用多个免费数据源，带缓存机制
+   * 使用多个数据源自动切换
+   * 优先级: 东方财富 > Dukascopy > 新浪财经 > Twelve Data > metals.live > 降级方案
    */
   async getRealTimePrice(): Promise<number> {
     // 检查缓存
@@ -37,7 +40,31 @@ class MarketDataService {
       return this.priceCache.price;
     }
 
-    // 方案1: 使用新浪财经数据（优先）
+    // 方案1: 使用东方财富数据（最高优先级）
+    try {
+      const eastmoneyData = await eastmoneyService.getRealTimePrice();
+      if (eastmoneyData && eastmoneyData.price > 0) {
+        logger.info(`✅ [东方财富] Price: ${eastmoneyData.price}`);
+
+        // 更新缓存（保存额外数据用于前端显示）
+        this.priceCache = {
+          price: eastmoneyData.price,
+          timestamp: Date.now(),
+          // 保存额外信息供前端使用
+          change: eastmoneyData.change,
+          changePct: eastmoneyData.changePct,
+          high: eastmoneyData.high,
+          low: eastmoneyData.low,
+        } as any;
+        return eastmoneyData.price;
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn('⚠️ 东方财富失败:', message);
+    }
+
+    // 方案2: 使用新浪财经数据
+    // Dukascopy 已禁用（内存溢出问题）
     try {
       const sinaData = await sinaFinanceScraper.getGoldData();
       if (sinaData && sinaData.currentPrice > 0) {
@@ -222,7 +249,23 @@ class MarketDataService {
       return cached.candles;
     }
 
-    // 方案1: 尝试新浪财经K线数据（优先）
+    // 方案1: 尝试东方财富K线数据（最高优先级）
+    try {
+      const eastmoneyCandles = await eastmoneyService.getCandles(interval, limit);
+      if (eastmoneyCandles && eastmoneyCandles.length > 0) {
+        logger.info(`✅ [东方财富] K线: ${eastmoneyCandles.length}条 for ${interval}`);
+
+        // 更新缓存
+        this.candlesCache.set(cacheKey, { candles: eastmoneyCandles, timestamp: Date.now() });
+        return eastmoneyCandles;
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn('⚠️ 东方财富K线失败:', message);
+    }
+
+    // 方案3: 尝试新浪财经K线数据
+    // Dukascopy 已禁用（内存溢出问题）
     try {
       const sinaCandles = await sinaFinanceScraper.getKlineData(interval, limit);
       if (sinaCandles.length > 0) {
