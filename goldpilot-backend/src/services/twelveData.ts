@@ -5,6 +5,8 @@
  */
 
 import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 import { logger } from '../utils';
 
 class TwelveDataService {
@@ -25,11 +27,29 @@ class TwelveDataService {
   private readonly RATE_LIMIT_MAX_REQUESTS = 4; // 每分钟最大请求数
   private readonly RATE_LIMIT_WINDOW = 60000; // 时间窗口：60秒
 
+  // API Key 文件路径
+  private readonly API_KEY_FILE = path.join(process.cwd(), '.twelvedata-apikey');
+
   constructor() {
     // 从环境变量获取API密钥（支持两种命名方式）
     this.apiKey = process.env.TWELVEDATA_API_KEY || process.env.TWELVE_DATA_API_KEY || '';
+
+    // 如果环境变量没有，尝试从文件读取
     if (!this.apiKey) {
-      logger.warn('[Twelve Data] 未配置 TWELVEDATA_API_KEY 环境变量');
+      try {
+        if (fs.existsSync(this.API_KEY_FILE)) {
+          this.apiKey = fs.readFileSync(this.API_KEY_FILE, 'utf-8').trim();
+          logger.info('[Twelve Data] 从文件加载 API Key');
+        }
+      } catch (error) {
+        logger.warn('[Twelve Data] 读取 API Key 文件失败:', error);
+      }
+    }
+
+    if (!this.apiKey) {
+      logger.warn('[Twelve Data] 未配置 TWELVEDATA_API_KEY');
+    } else {
+      logger.info('[Twelve Data] API Key 已配置');
     }
   }
 
