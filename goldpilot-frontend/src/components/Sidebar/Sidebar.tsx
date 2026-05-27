@@ -9,9 +9,6 @@ export function Sidebar() {
 
   // 根据当前路径确定选中的菜单项
   const getSelectedKey = () => {
-    if (location.pathname === '/mt4-account') {
-      return ['mt4-account'];
-    }
     if (location.pathname === '/ai-account') {
       return ['ai-account'];
     }
@@ -36,12 +33,6 @@ export function Sidebar() {
       icon: <BellOutlined className="text-lg" />,
       label: <span className="ml-2 font-medium">事件驱动首页</span>,
       onClick: () => navigate('/event-driven'),
-    },
-    {
-      key: 'mt4-account',
-      icon: <LineChartOutlined className="text-lg" />,
-      label: <span className="ml-2 font-medium">MT4账号管理</span>,
-      onClick: () => navigate('/mt4-account'),
     },
     {
       key: 'ai-account',
