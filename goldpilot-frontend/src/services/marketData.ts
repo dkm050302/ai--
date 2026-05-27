@@ -62,24 +62,10 @@ export async function fetchRealTimePrice(): Promise<PriceQuote> {
       timestamp: new Date(data.timestamp),
     };
   } catch (e) {
-    console.warn('❌ [价格数据源] 后端 API 失败:', (e as Error).message);
-    console.warn('⚠️ [价格数据源] 使用备用估算');
+    console.error('❌ [价格数据源] 后端 API 失败:', (e as Error).message);
 
-    // 备用方案：使用基于真实市场的价格估算
-    const basePrice = 4537 + (Math.random() - 0.5) * 20;
-    const change = (Math.random() - 0.5) * 30;
-    const prevClose = basePrice - change;
-    const changePct = (change / prevClose) * 100;
-
-    return {
-      symbol: 'XAU/USD (备用)',
-      price: Number(basePrice.toFixed(2)),
-      change: Number(change.toFixed(2)),
-      changePct: Number(changePct.toFixed(2)),
-      high: Number((basePrice + 15 + Math.random() * 10).toFixed(2)),
-      low: Number((basePrice - 15 - Math.random() * 10).toFixed(2)),
-      timestamp: new Date(),
-    };
+    // 直接抛出错误，不使用模拟数据
+    throw e;
   }
 }
 
@@ -114,56 +100,11 @@ export async function fetchCandles(period: Period = '1m', limit: number = 500): 
     console.log(`✅ [K线数据源] 后端 API - 获取 ${candles.length} 条数据`);
     return candles;
   } catch (error) {
-    console.warn('❌ [K线数据源] 后端 API 失败，使用模拟数据:', (error as Error).message);
+    console.error('❌ [K线数据源] 后端 API 失败:', (error as Error).message);
 
-    // 生成模拟数据（用于演示）
-    return generateMockCandles(period, limit);
+    // 直接抛出错误，不使用模拟数据
+    throw error;
   }
-}
-
-/**
- * 生成模拟K线数据（备用方案）
- */
-function generateMockCandles(period: Period, limit: number): Candle[] {
-  const candles: Candle[] = [];
-  const now = Date.now();
-
-  // 根据周期确定时间间隔
-  const intervalMap: Record<Period, number> = {
-    '1m': 60 * 1000,
-    '5m': 5 * 60 * 1000,
-    '15m': 15 * 60 * 1000,
-    '1h': 60 * 60 * 1000,
-    '4h': 4 * 60 * 60 * 1000,
-    '1d': 24 * 60 * 60 * 1000,
-  };
-
-  const interval = intervalMap[period];
-  let price = 2380;
-
-  for (let i = limit - 1; i >= 0; i--) {
-    const time = new Date(now - i * interval);
-    const volatility = period === '1m' ? 2 : period === '5m' ? 3 : 5;
-
-    const open = price;
-    const change = (Math.random() - 0.5) * volatility;
-    const close = open + change;
-    const high = Math.max(open, close) + Math.random() * volatility * 0.5;
-    const low = Math.min(open, close) - Math.random() * volatility * 0.5;
-
-    candles.push({
-      time,
-      open,
-      high,
-      low,
-      close,
-      volume: Math.floor(Math.random() * 10000) + 1000,
-    });
-
-    price = close;
-  }
-
-  return candles;
 }
 
 /**
