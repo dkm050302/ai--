@@ -64,6 +64,7 @@ export function Home() {
   const [priceData, setPriceData] = useState<PriceData>(createDefaultPriceData());
   const [candles, setCandles] = useState<Candle[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [candlesError, setCandlesError] = useState<string | null>(null);
 
   // 真实数据状态
   const [events, setEvents] = useState<Event[]>(createDefaultEvents());
@@ -156,6 +157,10 @@ export function Home() {
         }
       } catch (error) {
         console.error('❌ [信号检测] 失败:', error);
+        const errorMessage = error instanceof Error ? error.message : 'K线数据获取失败';
+        setCandlesError(errorMessage);
+        setCandles([]); // 清空K线数据
+        setSignals([]); // 清空信号数据
       }
     };
 
@@ -345,12 +350,31 @@ export function Home() {
             </div>
 
             {/* K线图 */}
-            <Chart
-              candles={candles}
-              signals={signals}
-              period={period}
-              onPeriodChange={(p) => setPeriod(p as Period)}
-            />
+            {candlesError ? (
+              <div style={{
+                height: '500px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ef4444',
+                fontSize: '16px'
+              }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' }}>K线数据获取失败</div>
+                <div style={{ color: '#666' }}>{candlesError}</div>
+                <div style={{ marginTop: '16px', fontSize: '14px', color: '#888' }}>
+                  请检查数据源设置或稍后重试
+                </div>
+              </div>
+            ) : (
+              <Chart
+                candles={candles}
+                signals={signals}
+                period={period}
+                onPeriodChange={(p) => setPeriod(p as Period)}
+              />
+            )}
           </article>
         </section>
 

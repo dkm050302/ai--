@@ -40,49 +40,6 @@ export async function getPrice(req: Request, res: Response): Promise<void> {
         break;
       }
 
-      case 'metalslive': {
-        const { metalsLiveService } = await import('../services/metalsLive.js');
-        const metalsData = await metalsLiveService.getRealTimePrice();
-
-        if (!metalsData || metalsData.price <= 0) {
-          // 如果metalslive失败，尝试获取最新K线的收盘价作为备用
-          logger.warn('Metals.live价格获取失败，尝试使用K线数据作为备用');
-          try {
-            const candles = await marketDataService.getCandles('1m', 1);
-            if (candles && candles.length > 0) {
-              const latestCandle = candles[candles.length - 1];
-              priceData = {
-                symbol: 'XAU/USD',
-                price: latestCandle.close,
-                change: 0,
-                changePct: 0,
-                high: latestCandle.high,
-                low: latestCandle.low,
-                timestamp: new Date(),
-              };
-              logger.info(`Price data sent (K线备用): ${latestCandle.close}`);
-              break;
-            }
-          } catch (e) {
-            logger.error('K线数据获取也失败:', e);
-          }
-          throw new Error('Metals.live API返回数据无效，且备用数据源失败');
-        }
-
-        priceData = {
-          symbol: 'XAU/USD',
-          price: metalsData.price,
-          change: metalsData.change,
-          changePct: metalsData.changePct,
-          high: metalsData.high,
-          low: metalsData.low,
-          timestamp: new Date(),
-        };
-
-        logger.info(`Price data sent (Metals.live): ${metalsData.price}`);
-        break;
-      }
-
       case 'mock': {
         const mockHigh = price + Math.abs(Math.random() * 15);
         const mockLow = price - Math.abs(Math.random() * 15);
