@@ -127,7 +127,7 @@ export function Home() {
   useEffect(() => {
     const loadCandles = async () => {
       try {
-        const data = await fetchCandles(period, 500);
+        const data = await fetchCandles(period, 1440);
         setCandles(data);
 
         console.log(`📊 [信号检测] K线数据: ${data.length} 条`);

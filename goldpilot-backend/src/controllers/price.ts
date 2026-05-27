@@ -5,107 +5,30 @@ import { logger } from '../utils';
 
 /**
  * 获取实时价格
+ * 注意：价格固定使用新浪黄金数据源，不受数据源切换影响
+ * K线数据可以通过数据源设置切换
  */
 export async function getPrice(req: Request, res: Response): Promise<void> {
   try {
-    // 使用当前选择的数据源获取价格
-    const price = await marketDataService.getRealTimePrice();
+    // 价格固定使用新浪黄金数据源
+    const { sinaGoldService } = await import('../services/sinaGold.js');
+    const sinaData = await sinaGoldService.getRealTimePrice();
 
-    // 获取当前数据源信息
-    const currentSource = marketDataService.getDataSource();
-
-    // 根据数据源获取完整的价格数据（包括高低价）
-    let priceData: PriceData;
-
-    switch (currentSource) {
-      case 'sina': {
-        const { sinaGoldService } = await import('../services/sinaGold.js');
-        const sinaData = await sinaGoldService.getRealTimePrice();
-
-        if (!sinaData || sinaData.price <= 0) {
-          throw new Error('新浪黄金API返回数据无效');
-        }
-
-        priceData = {
-          symbol: 'XAU/USD',
-          price: sinaData.price,
-          change: sinaData.change,
-          changePct: sinaData.changePct,
-          high: sinaData.high,
-          low: sinaData.low,
-          timestamp: new Date(),
-        };
-
-        logger.info(`Price data sent (新浪黄金): ${sinaData.price}`);
-        break;
-      }
-
-      case 'mock': {
-        const mockHigh = price + Math.abs(Math.random() * 15);
-        const mockLow = price - Math.abs(Math.random() * 15);
-        const mockChange = (Math.random() - 0.5) * 10;
-        const mockPrevClose = price - mockChange;
-        const mockChangePct = (mockChange / mockPrevClose) * 100;
-
-        priceData = {
-          symbol: 'XAU/USD',
-          price,
-          change: mockChange,
-          changePct: mockChangePct,
-          high: mockHigh,
-          low: mockLow,
-          timestamp: new Date(),
-        };
-
-        logger.info(`Price data sent (模拟数据): ${price}`);
-        break;
-      }
-
-      case 'stocksdk': {
-        const { stockSdkService } = await import('../services/stockSdk.js');
-        const stockSdkData = await stockSdkService.getRealTimePrice();
-
-        if (!stockSdkData || stockSdkData.price <= 0) {
-          throw new Error('Stock-sdk API返回数据无效');
-        }
-
-        priceData = {
-          symbol: 'XAU/USD',
-          price: stockSdkData.price,
-          change: stockSdkData.change,
-          changePct: stockSdkData.changePct,
-          high: stockSdkData.high,
-          low: stockSdkData.low,
-          timestamp: new Date(),
-        };
-
-        logger.info(`Price data sent (Stock-sdk): ${stockSdkData.price}`);
-        break;
-      }
-
-      case 'eastmoney':
-      default: {
-        const { eastmoneyService } = await import('../services/eastmoney.js');
-        const eastmoneyData = await eastmoneyService.getRealTimePrice();
-
-        if (!eastmoneyData || eastmoneyData.price <= 0) {
-          throw new Error('东方财富API返回数据无效');
-        }
-
-        priceData = {
-          symbol: 'XAU/USD',
-          price: eastmoneyData.price,
-          change: eastmoneyData.change,
-          changePct: eastmoneyData.changePct,
-          high: eastmoneyData.high,
-          low: eastmoneyData.low,
-          timestamp: new Date(),
-        };
-
-        logger.info(`Price data sent (东方财富): ${eastmoneyData.price}`);
-        break;
-      }
+    if (!sinaData || sinaData.price <= 0) {
+      throw new Error('新浪黄金API返回数据无效');
     }
+
+    const priceData: PriceData = {
+      symbol: 'XAU/USD',
+      price: sinaData.price,
+      change: sinaData.change,
+      changePct: sinaData.changePct,
+      high: sinaData.high,
+      low: sinaData.low,
+      timestamp: new Date(),
+    };
+
+    logger.info(`Price data sent (新浪黄金): ${sinaData.price}`);
 
     res.json({
       success: true,
