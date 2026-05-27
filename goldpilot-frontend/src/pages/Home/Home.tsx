@@ -133,6 +133,18 @@ export function Home() {
         console.log(`📊 [信号检测] 前5条:`, data.slice(0, 5));
         console.log(`📊 [信号检测] 后5条:`, data.slice(-5));
 
+        // 调试：打印最新K线时间
+        if (data.length > 0) {
+          const latest = data[data.length - 1];
+          const latestTime = typeof latest.time === 'number'
+            ? new Date(latest.time * 1000)
+            : new Date(latest.time);
+          const now = new Date();
+          console.log('🕐 [K线时间] 最新K线:', latestTime.toLocaleString('zh-CN', { hour12: false }));
+          console.log('🕐 [K线时间] 当前时间:', now.toLocaleString('zh-CN', { hour12: false }));
+          console.log('🕐 [K线时间] 时间差:', Math.floor((now.getTime() - latestTime.getTime()) / 1000), '秒');
+        }
+
         // 计算信号（需要至少233根K线）
         if (data.length >= 233) {
           console.log('🔍 [信号检测] 开始计算 EMA...');

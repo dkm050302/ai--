@@ -88,9 +88,22 @@ class MarketDataService {
       case 'metalslive':
         const metalsData = await metalsLiveService.getRealTimePrice();
         if (!metalsData || metalsData.price <= 0) {
-          throw new Error('Metals.live API返回数据无效');
+          // 备用方案：使用K线数据的最新收盘价
+          logger.warn('Metals.live价格获取失败，使用K线数据备用');
+          try {
+            const candles = await this.getCandles('1m', 1);
+            if (candles && candles.length > 0) {
+              price = candles[candles.length - 1].close;
+              logger.info(`✅ [Metals.live备用] K线价格: ${price}`);
+            } else {
+              throw new Error('K线数据也获取失败');
+            }
+          } catch (e) {
+            throw new Error('Metals.live API返回数据无效，且备用数据源失败');
+          }
+        } else {
+          price = metalsData.price;
         }
-        price = metalsData.price;
         break;
       case 'eastmoney':
       default:

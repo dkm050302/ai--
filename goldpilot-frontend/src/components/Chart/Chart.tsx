@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, type Time } from 'lightweight-charts';
 import type { Candle, Signal } from '@/types';
 import { detectSignals, getSignalMarkerText } from '@/utils/signalCalculator';
@@ -61,7 +61,7 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       timeScale: {
         borderColor: '#eef3f7',
         timeVisible: true,
-        secondsVisible: true,
+        secondsVisible: false,
         rightOffset: 10,
       },
       rightPriceScale: {
@@ -122,28 +122,34 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
     if (!seriesRef.current || candles.length === 0) return;
 
     const candlestickData: CandlestickData[] = candles.map((candle, index) => {
-      // time可能是数字（Unix时间戳秒）或Date对象或字符串
+      // 将Unix时间戳转换为业务日时间格式，确保正确显示本地时间
       let timestamp: number;
       if (typeof candle.time === 'number') {
-        // 如果已经是数字（Unix时间戳秒），直接使用
         timestamp = candle.time;
-        // 调试：打印第一条数据
-        if (index === candles.length - 1) {
-          const date = new Date(timestamp * 1000);
-          console.log('📊 [Chart] 最新K线:', {
-            时间戳: timestamp,
-            UTC时间: date.toUTCString(),
-            本地时间: date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
-          });
-        }
       } else if (candle.time instanceof Date) {
         timestamp = candle.time.getTime() / 1000;
       } else {
         timestamp = new Date(candle.time).getTime() / 1000;
       }
 
+      // 转换为UTC时间并加上8小时（北京时间 UTC+8）
+      // 这样图表会正确显示北京时间
+      const adjustedTimestamp = timestamp + 8 * 3600;
+
+      // 调试：打印第一条数据
+      if (index === candles.length - 1) {
+        const date = new Date(timestamp * 1000);
+        const adjustedDate = new Date(adjustedTimestamp * 1000);
+        console.log('📊 [Chart] 最新K线:', {
+          原始时间戳: timestamp,
+          北京时间: date.toLocaleString('zh-CN', { hour12: false }),
+          调整后时间戳: adjustedTimestamp,
+          图表显示时间: adjustedDate.toLocaleString('zh-CN', { hour12: false }),
+        });
+      }
+
       return {
-        time: timestamp as Time,
+        time: adjustedTimestamp as Time,
         open: candle.open,
         high: candle.high,
         low: candle.low,
@@ -152,6 +158,12 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
     });
 
     seriesRef.current.setData(candlestickData);
+
+    // 自动滚动到最新数据
+    if (chartRef.current) {
+      chartRef.current.timeScale().fitContent();
+      chartRef.current.timeScale().scrollToPosition(0, false);
+    }
   }, [candles]);
 
   useEffect(() => {
@@ -219,13 +231,25 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
     }
   }, [signals, period]);
 
+  // 当前本地时间
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <>
       {/* K线图标题和周期切换 */}
       <div className="chart-head">
         <div>
           <strong>现货黄金蜡烛图</strong>
-          <div className="sub">实时行情，信号提醒基于EMA/ATR技术分析</div>
+          <div className="sub">
+            实时行情，信号提醒基于EMA/ATR技术分析
+            <span style={{ marginLeft: '10px', color: '#3b82f6', fontWeight: 'bold' }}>
+              北京时间: {currentTime.toLocaleString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          </div>
         </div>
         <div className="periods" id="periods">
           {periods.map((p) => (
