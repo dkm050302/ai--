@@ -51,6 +51,9 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
         background: { color: '#ffffff' },
         textColor: '#667482',
       },
+      localization: {
+        timeZone: 'Asia/Shanghai',
+      },
       grid: {
         vertLines: { color: '#eef3f7' },
         horzLines: { color: '#eef3f7' },
