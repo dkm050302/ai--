@@ -1,27 +1,32 @@
 import type { Request, Response } from 'express';
 import type { PriceData } from '../types';
+import { sinaGoldService } from '../services/sinaGold';
 import { marketDataService } from '../services/marketData';
 import { logger } from '../utils';
 
 /**
  * 获取实时价格
- * 使用当前数据源获取价格
+ * 使用新浪黄金数据源获取完整价格信息
  */
 export async function getPrice(req: Request, res: Response): Promise<void> {
   try {
-    const price = await marketDataService.getPrice();
+    const sinaData = await sinaGoldService.getRealTimePrice();
+
+    if (!sinaData) {
+      throw new Error('新浪黄金数据获取失败');
+    }
 
     const priceData: PriceData = {
       symbol: 'XAU/USD',
-      price,
-      change: 0,
-      changePct: 0,
-      high: price,
-      low: price,
+      price: sinaData.price,
+      change: sinaData.change,
+      changePct: sinaData.changePct,
+      high: sinaData.high,
+      low: sinaData.low,
       timestamp: new Date(),
     };
 
-    logger.info(`Price sent: ${price}`);
+    logger.info(`Price sent: ${sinaData.price}, 涨跌: ${sinaData.change}, 涨跌幅: ${sinaData.changePct}%`);
 
     res.json({
       success: true,
