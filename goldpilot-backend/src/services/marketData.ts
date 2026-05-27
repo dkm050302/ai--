@@ -1,5 +1,6 @@
 import { logger } from '../utils';
 import { twelveDataService } from './twelveData';
+import { sinaGoldService } from './sinaGold';
 
 /**
  * 数据源类型
@@ -57,7 +58,7 @@ class MarketDataService {
   }
 
   /**
-   * 获取实时价格
+   * 获取实时价格（始终使用新浪黄金）
    */
   async getPrice(): Promise<number> {
     // 检查缓存
@@ -68,31 +69,22 @@ class MarketDataService {
 
     let price = 0;
 
-    switch (this.currentSource) {
-      case 'mock':
-        price = this.getMockPrice();
-        break;
-      case 'twelvedata':
-        const twelveDataData = await twelveDataService.getRealTimePrice();
-        if (!twelveDataData || twelveDataData.price <= 0) {
-          logger.warn('[Twelve Data] 价格数据获取失败或为空，使用模拟数据');
-          price = this.getMockPrice();
-        } else {
-          price = twelveDataData.price;
-        }
-        break;
-      default:
-        price = this.getMockPrice();
-        break;
+    // 始终使用新浪黄金获取价格
+    const sinaData = await sinaGoldService.getRealTimePrice();
+    if (!sinaData || sinaData.price <= 0) {
+      logger.warn('[新浪黄金] 价格数据获取失败或为空，使用模拟数据');
+      price = this.getMockPrice();
+    } else {
+      price = sinaData.price;
     }
 
-    logger.info(`✅ [${this.getSourceName(this.currentSource)}] Price: ${price}`);
+    logger.info(`✅ [新浪黄金] Price: ${price}`);
 
     // 更新缓存
     this.priceCache = {
       price,
       timestamp: Date.now(),
-      source: this.getSourceName(this.currentSource),
+      source: '新浪黄金',
     };
 
     return price;
