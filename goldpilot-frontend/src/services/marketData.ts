@@ -33,8 +33,7 @@ export async function fetchRealTimePrice(): Promise<PriceQuote> {
 
   try {
     // 调用后端 API
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
-    const response = await fetch(`${apiUrl}/api/price`);
+    const response = await fetch(getApiUrl('/api/price'));
 
     if (!response.ok) {
       throw new Error(`后端 API 返回错误: ${response.status}`);
