@@ -116,7 +116,7 @@ class MetalsLiveService {
       logger.info(`[Metals.live] 生成K线数据: ${interval}, limit=${limit}`);
 
       // 生成基于当前时间的K线数据
-      const candles = this.generateCurrentTimeCandles(interval, limit);
+      const candles = await this.generateCurrentTimeCandles(interval, limit);
 
       // 更新缓存
       this.candlesCache.set(cacheKey, { candles, timestamp: Date.now() });
