@@ -21,6 +21,15 @@ interface DataSource {
 type RefreshInterval = '1m' | '5m' | '10m' | 'never';
 
 /**
+ * 获取 API 基础 URL
+ */
+const getApiUrl = (): string => {
+  const apiUrl = getApiUrl();
+  // 处理相对路径：如果是 '/'，则返回空字符串避免双斜杠
+  return apiUrl === '/' ? '' : apiUrl;
+};
+
+/**
  * 数据源设置组件
  */
 export function DataSourceSettings() {
@@ -63,7 +72,7 @@ export function DataSourceSettings() {
   // 加载配额信息
   const loadQuota = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/datasource/twelvedata/quota`);
       if (response.ok) {
         const data = await response.json();
@@ -117,7 +126,7 @@ export function DataSourceSettings() {
 
   const loadRefreshInterval = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/datasource/refresh-interval`);
       if (response.ok) {
         const data = await response.json();
@@ -136,7 +145,7 @@ export function DataSourceSettings() {
 
   const handleRefreshIntervalChange = async (interval: RefreshInterval) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/datasource/refresh-interval`, {
         method: 'PUT',
         headers: {
@@ -166,7 +175,7 @@ export function DataSourceSettings() {
       setRefreshing(true);
       setError(null);
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
 
       // 触发后端刷新数据源缓存
       const response = await fetch(`${apiUrl}/api/datasource/refresh`, {
@@ -196,7 +205,7 @@ export function DataSourceSettings() {
 
   const loadApiKey = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/datasource/twelvedata/apikey`);
 
       if (response.ok) {
@@ -220,7 +229,7 @@ export function DataSourceSettings() {
       setSavingKey(true);
       setError(null);
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/datasource/twelvedata/apikey`, {
         method: 'PUT',
         headers: {
@@ -257,7 +266,7 @@ export function DataSourceSettings() {
       setSavingKey(true);
       setError(null);
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/datasource/twelvedata/test`, {
         method: 'POST',
         headers: {
@@ -283,12 +292,15 @@ export function DataSourceSettings() {
   const loadDataSources = async () => {
     try {
       setLoading(true);
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
+
+      // 处理相对路径：如果是 '/'，则去掉前面的斜杠避免双斜杠
+      const baseUrl = apiUrl === '/' ? '' : apiUrl;
 
       // 并行获取当前数据源和可用数据源列表
       const [currentRes, sourcesRes] = await Promise.all([
-        fetch(`${apiUrl}/api/datasource`),
-        fetch(`${apiUrl}/api/datasources`),
+        fetch(`${baseUrl}/api/datasource`),
+        fetch(`${baseUrl}/api/datasources`),
       ]);
 
       if (!currentRes.ok || !sourcesRes.ok) {
@@ -318,7 +330,7 @@ export function DataSourceSettings() {
       setError(null);
       setSuccess(null);
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
 
       const response = await fetch(`${apiUrl}/api/datasource`, {
         method: 'PUT',
