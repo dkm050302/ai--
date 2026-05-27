@@ -33,7 +33,7 @@ interface SinaKlineData {
 class SinaGoldService {
   private readonly BASE_URL = 'http://hq.sinajs.cn/list=hf_XAU';
   private readonly KLINE_DAILY_URL = 'http://stock2.finance.sina.com.cn/futures/api/jsonp.php/var_XAU=/GlobalFuturesService.getGlobalFuturesDailyKLine';
-  private readonly KLINE_MIN_URL = 'http://vip.stock.finance.sina.com.cn/forex/api/jsonp.php/var_XAU_1=/NewForexService.getOldMinKline';
+  private readonly KLINE_MIN_URL = 'http://vip.stock.finance.sina.com.cn/forex/api/jsonp.php/var_XAU_1min=/NewForexService.getOldMinKline';
 
   // 缓存
   private priceCache: { data: SinaGoldPriceData | null; timestamp: number } | null = null;
@@ -186,43 +186,63 @@ class SinaGoldService {
     try {
       logger.info(`[新浪黄金] 获取${interval}分钟K线数据...`);
 
+      // 使用新的API格式
+      // scale: 1=1分钟, 5=5分钟, 15=15分钟, 30=30分钟, 60=1小时
+      // datalen: 获取数据条数
       const response = await axios.get(this.KLINE_MIN_URL, {
         params: {
           symbol: 'XAU',
-          type: interval, // 1=1分钟, 5=5分钟, 15=15分钟, 30=30分钟, 60=1小时
+          scale: interval,
+          datalen: limit.toString(),
         },
         timeout: 15000,
         headers: {
-          'User-Agent': 'Mozilla/5.0',
-          'Referer': 'http://finance.sina.com.cn/',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'http://vip.stock.finance.sina.com.cn/',
         },
       });
 
       // 解析JSONP响应
-      const jsonpMatch = response.data.match(/var _XAU_\d+=\s*(\[[\s\S]*\]);/);
+      const jsonpMatch = response.data.match(/var_XAU_1min=\s*(\[[\s\S]*\]);/);
 
       if (!jsonpMatch || !jsonpMatch[1]) {
-        throw new Error('无法解析新浪分钟K线数据');
+        // 尝试另一种解析方式
+        const altMatch = response.data.match(/var _XAU_1min=\s*(\[[\s\S]*\]);/);
+        if (!altMatch || !altMatch[1]) {
+          throw new Error('无法解析新浪分钟K线数据');
+        }
       }
 
-      const klineData = JSON.parse(jsonpMatch[1]);
+      let klineData;
+      try {
+        klineData = JSON.parse(jsonpMatch[1]);
+      } catch {
+        throw new Error('新浪K线数据JSON解析失败');
+      }
 
       if (!Array.isArray(klineData) || klineData.length === 0) {
         throw new Error('新浪分钟K线数据为空');
       }
 
       // 转换数据格式
-      const candles: any[] = klineData
-        .slice(-limit)
-        .map((item: any) => ({
-          time: new Date(item.d || item.date),
-          open: parseFloat(item.o || item.open),
-          high: parseFloat(item.h || item.high),
-          low: parseFloat(item.l || item.low),
-          close: parseFloat(item.c || item.close),
-          volume: 0,
-        }))
-        .filter((c: any) => !isNaN(c.close) && c.close > 0);
+      const candles: any[] = klineData.map((item: any) => {
+        // 格式可能是一个数组或对象
+        const timeStr = item[0] || item.d || item.date;
+        const open = parseFloat(item[1] || item.o || item.open);
+        const high = parseFloat(item[2] || item.h || item.high);
+        const low = parseFloat(item[3] || item.l || item.low);
+        const close = parseFloat(item[4] || item.c || item.close);
+        const volume = parseFloat(item[5] || item.v || item.volume) || 0;
+
+        return {
+          time: new Date(timeStr),
+          open,
+          high,
+          low,
+          close,
+          volume,
+        };
+      }).filter((c: any) => !isNaN(c.close) && c.close > 0);
 
       logger.info(`✅ [新浪黄金] ${interval}分钟K线数据: ${candles.length}条`);
 

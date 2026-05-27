@@ -35,7 +35,7 @@ export async function setDataSource(req: Request, res: Response): Promise<void> 
     const { source } = req.body;
 
     // 验证数据源
-    const validSources: DataSource[] = ['mock', 'eastmoney', 'sina'];
+    const validSources: DataSource[] = ['mock', 'eastmoney', 'sina', 'stocksdk'];
     if (!validSources.includes(source)) {
       res.status(400).json({
         success: false,
@@ -92,6 +92,12 @@ export async function getDataSources(req: Request, res: Response): Promise<void>
         id: 'sina',
         name: '新浪黄金',
         description: '来自新浪财经的实时黄金数据',
+        enabled: true,
+      },
+      {
+        id: 'stocksdk',
+        name: 'Stock-sdk',
+        description: '使用stock-sdk库获取的K线数据',
         enabled: true,
       },
     ];

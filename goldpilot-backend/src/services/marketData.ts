@@ -1,19 +1,20 @@
 import { logger } from '../utils';
 import { eastmoneyService } from './eastmoney';
 import { sinaGoldService } from './sinaGold';
+import { stockSdkService } from './stockSdk';
 
 /**
  * 数据源类型
  */
-export type DataSource = 'mock' | 'eastmoney' | 'sina';
+export type DataSource = 'mock' | 'eastmoney' | 'sina' | 'stocksdk';
 
 /**
  * 市场数据服务 - 获取真实黄金行情数据
  * 支持多数据源切换
  */
 class MarketDataService {
-  // 当前数据源（默认使用 eastmoney）
-  private currentSource: DataSource = 'eastmoney';
+  // 当前数据源（默认使用 stocksdk）
+  private currentSource: DataSource = 'stocksdk';
 
   // 缓存机制，减少API调用
   private priceCache: { price: number; timestamp: number; source: string } | null = null;
@@ -45,6 +46,7 @@ class MarketDataService {
       'mock': '模拟数据',
       'eastmoney': '东方财富',
       'sina': '新浪黄金',
+      'stocksdk': 'Stock-sdk',
     };
     return names[source];
   }
@@ -82,6 +84,13 @@ class MarketDataService {
           throw new Error('新浪黄金API返回数据无效');
         }
         price = sinaData.price;
+        break;
+      case 'stocksdk':
+        const stockSdkData = await stockSdkService.getRealTimePrice();
+        if (!stockSdkData || stockSdkData.price <= 0) {
+          throw new Error('Stock-sdk API返回数据无效');
+        }
+        price = stockSdkData.price;
         break;
       case 'eastmoney':
       default:
@@ -143,6 +152,13 @@ class MarketDataService {
           throw new Error('新浪黄金API返回K线数据无效');
         }
         candles = sinaCandles;
+        break;
+      case 'stocksdk':
+        const stockSdkCandles = await stockSdkService.getCandles(interval, limit);
+        if (!stockSdkCandles || stockSdkCandles.length === 0) {
+          throw new Error('Stock-sdk API返回K线数据无效');
+        }
+        candles = stockSdkCandles;
         break;
       case 'eastmoney':
       default:
@@ -245,6 +261,9 @@ class MarketDataService {
         case 'sina':
           const sinaData = await sinaGoldService.getRealTimePrice();
           return { source: '新浪黄金', healthy: sinaData !== null };
+        case 'stocksdk':
+          const stockSdkData = await stockSdkService.getRealTimePrice();
+          return { source: 'Stock-sdk', healthy: stockSdkData !== null };
         case 'eastmoney':
         default:
           const eastmoneyData = await eastmoneyService.getRealTimePrice();

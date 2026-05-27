@@ -61,6 +61,28 @@ export async function getPrice(req: Request, res: Response): Promise<void> {
         break;
       }
 
+      case 'stocksdk': {
+        const { stockSdkService } = await import('../services/stockSdk.js');
+        const stockSdkData = await stockSdkService.getRealTimePrice();
+
+        if (!stockSdkData || stockSdkData.price <= 0) {
+          throw new Error('Stock-sdk API返回数据无效');
+        }
+
+        priceData = {
+          symbol: 'XAU/USD',
+          price: stockSdkData.price,
+          change: stockSdkData.change,
+          changePct: stockSdkData.changePct,
+          high: stockSdkData.high,
+          low: stockSdkData.low,
+          timestamp: new Date(),
+        };
+
+        logger.info(`Price data sent (Stock-sdk): ${stockSdkData.price}`);
+        break;
+      }
+
       case 'eastmoney':
       default: {
         const { eastmoneyService } = await import('../services/eastmoney.js');
