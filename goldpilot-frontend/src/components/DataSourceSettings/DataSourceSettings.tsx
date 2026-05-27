@@ -210,8 +210,10 @@ export function DataSourceSettings() {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.success && data.data.apiKey) {
-          setApiKey(data.data.apiKey);
+        // 只显示已配置状态，不加载遮蔽的API Key到输入框
+        if (data.success && data.data.hasKey) {
+          // 设置为空字符串或提示信息，不使用遮蔽值
+          setApiKey('');
         }
       }
     } catch (err) {
