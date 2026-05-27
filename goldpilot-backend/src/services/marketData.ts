@@ -2,11 +2,12 @@ import { logger } from '../utils';
 import { eastmoneyService } from './eastmoney';
 import { sinaGoldService } from './sinaGold';
 import { stockSdkService } from './stockSdk';
+import { twelveDataService } from './twelveData';
 
 /**
  * 数据源类型
  */
-export type DataSource = 'mock' | 'eastmoney' | 'sina' | 'stocksdk';
+export type DataSource = 'mock' | 'eastmoney' | 'sina' | 'stocksdk' | 'twelvedata';
 
 /**
  * 市场数据服务 - 获取真实黄金行情数据
@@ -47,6 +48,7 @@ class MarketDataService {
       'eastmoney': '东方财富',
       'sina': '新浪黄金',
       'stocksdk': 'Stock-sdk',
+      'twelvedata': 'Twelve Data',
     };
     return names[source];
   }
@@ -91,6 +93,13 @@ class MarketDataService {
           throw new Error('Stock-sdk API返回数据无效');
         }
         price = stockSdkData.price;
+        break;
+      case 'twelvedata':
+        const twelveDataData = await twelveDataService.getRealTimePrice();
+        if (!twelveDataData || twelveDataData.price <= 0) {
+          throw new Error('Twelve Data API返回数据无效');
+        }
+        price = twelveDataData.price;
         break;
       case 'eastmoney':
       default:
@@ -159,6 +168,13 @@ class MarketDataService {
           throw new Error('Stock-sdk API返回K线数据无效');
         }
         candles = stockSdkCandles;
+        break;
+      case 'twelvedata':
+        const twelveDataCandles = await twelveDataService.getCandles(interval, limit);
+        if (!twelveDataCandles || twelveDataCandles.length === 0) {
+          throw new Error('Twelve Data API返回K线数据无效');
+        }
+        candles = twelveDataCandles;
         break;
       case 'eastmoney':
       default:
@@ -264,6 +280,9 @@ class MarketDataService {
         case 'stocksdk':
           const stockSdkData = await stockSdkService.getRealTimePrice();
           return { source: 'Stock-sdk', healthy: stockSdkData !== null };
+        case 'twelvedata':
+          const twelveDataData = await twelveDataService.getRealTimePrice();
+          return { source: 'Twelve Data', healthy: twelveDataData !== null };
         case 'eastmoney':
         default:
           const eastmoneyData = await eastmoneyService.getRealTimePrice();

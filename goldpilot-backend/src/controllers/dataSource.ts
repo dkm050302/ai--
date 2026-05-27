@@ -35,7 +35,7 @@ export async function setDataSource(req: Request, res: Response): Promise<void> 
     const { source } = req.body;
 
     // 验证数据源
-    const validSources: DataSource[] = ['mock', 'eastmoney', 'sina', 'stocksdk'];
+    const validSources: DataSource[] = ['mock', 'eastmoney', 'sina', 'stocksdk', 'twelvedata'];
     if (!validSources.includes(source)) {
       res.status(400).json({
         success: false,
@@ -98,6 +98,12 @@ export async function getDataSources(req: Request, res: Response): Promise<void>
         id: 'stocksdk',
         name: 'Stock-sdk',
         description: '使用stock-sdk库获取的K线数据',
+        enabled: true,
+      },
+      {
+        id: 'twelvedata',
+        name: 'Twelve Data',
+        description: '使用Twelve Data API获取的黄金K线数据（需配置API Key）',
         enabled: true,
       },
     ];
