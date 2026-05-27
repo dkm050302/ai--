@@ -24,7 +24,7 @@ class MetalsLiveService {
   // 缓存
   private priceCache: { data: MetalsLivePriceData | null; timestamp: number } | null = null;
   private candlesCache: Map<string, { candles: any[]; timestamp: number }> = new Map();
-  private readonly CACHE_DURATION = 30000; // 30秒缓存
+  private readonly CACHE_DURATION = 5000; // 5秒缓存，确保K线时间同步
 
   /**
    * 获取实时黄金价格
@@ -134,7 +134,7 @@ class MetalsLiveService {
    */
   private async generateCurrentTimeCandles(interval: string, count: number): Promise<any[]> {
     const candles: any[] = [];
-    const now = new Date();
+    const now = Date.now(); // 使用当前时间戳
     const intervalMs = this.getIntervalMs(interval);
 
     // 获取当前价格作为基准
@@ -144,7 +144,9 @@ class MetalsLiveService {
     // 从当前时间开始，向前生成K线数据
     for (let i = count - 1; i >= 0; i--) {
       // 使用Unix时间戳（秒），避免时区转换问题
-      const time = Math.floor((now.getTime() - i * intervalMs) / 1000);
+      // 最新一根K线的时间对齐到当前时间所在的周期
+      const timeInMs = now - i * intervalMs;
+      const time = Math.floor(timeInMs / 1000);
       const volatility = this.getVolatilityForInterval(interval);
       const trend = Math.sin(i / 20) * 2;
       const noise = (Math.random() - 0.5) * volatility;
@@ -166,15 +168,18 @@ class MetalsLiveService {
       });
     }
 
-    // 确保最后一根K线（当前）使用实际价格
+    // 确保最后一根K线（当前）使用实际价格和当前时间
     if (candles.length > 0 && currentPriceResult) {
       const lastCandle = candles[candles.length - 1];
+      lastCandle.time = Math.floor(now / 1000); // 使用当前时间戳
       lastCandle.close = currentPriceResult.price;
       lastCandle.high = Math.max(lastCandle.high, currentPriceResult.price);
       lastCandle.low = Math.min(lastCandle.low, currentPriceResult.price);
     }
 
-    logger.info(`✅ [Metals.live] 生成K线数据: ${candles.length}条 for ${interval} (最新时间: ${candles[candles.length - 1]?.time})`);
+    const lastTime = candles[candles.length - 1]?.time;
+    const lastDate = new Date(lastTime * 1000);
+    logger.info(`✅ [Metals.live] 生成K线数据: ${candles.length}条 for ${interval} (最新时间: ${lastDate.toISOString()})`);
 
     return candles;
   }

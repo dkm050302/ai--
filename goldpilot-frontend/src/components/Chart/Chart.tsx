@@ -52,7 +52,7 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
         textColor: '#667482',
       },
       localization: {
-        timeZone: 'Asia/Shanghai',
+        dateFormat: 'yyyy-MM-dd',
       },
       grid: {
         vertLines: { color: '#eef3f7' },
@@ -61,7 +61,8 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       timeScale: {
         borderColor: '#eef3f7',
         timeVisible: true,
-        secondsVisible: false,
+        secondsVisible: true,
+        rightOffset: 10, // 增加偏移量，确保最新K线可见
       },
       rightPriceScale: {
         borderColor: '#eef3f7',
@@ -120,12 +121,21 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
   useEffect(() => {
     if (!seriesRef.current || candles.length === 0) return;
 
-    const candlestickData: CandlestickData[] = candles.map((candle) => {
+    const candlestickData: CandlestickData[] = candles.map((candle, index) => {
       // time可能是数字（Unix时间戳秒）或Date对象或字符串
       let timestamp: number;
       if (typeof candle.time === 'number') {
         // 如果已经是数字（Unix时间戳秒），直接使用
         timestamp = candle.time;
+        // 调试：打印第一条数据
+        if (index === candles.length - 1) {
+          const date = new Date(timestamp * 1000);
+          console.log('📊 [Chart] 最新K线:', {
+            时间戳: timestamp,
+            UTC时间: date.toUTCString(),
+            本地时间: date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+          });
+        }
       } else if (candle.time instanceof Date) {
         timestamp = candle.time.getTime() / 1000;
       } else {

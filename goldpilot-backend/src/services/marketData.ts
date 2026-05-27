@@ -19,7 +19,7 @@ class MarketDataService {
   // 缓存机制，减少API调用
   private priceCache: { price: number; timestamp: number; source: string } | null = null;
   private candlesCache: Map<string, { candles: any[]; timestamp: number; source: string }> = new Map();
-  private readonly CACHE_DURATION = 60000; // 缓存60秒
+  private readonly CACHE_DURATION = 5000; // 缓存5秒，确保K线时间同步
 
   /**
    * 设置数据源
