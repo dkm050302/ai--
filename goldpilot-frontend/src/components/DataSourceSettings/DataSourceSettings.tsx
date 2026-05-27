@@ -24,7 +24,7 @@ type RefreshInterval = '1m' | '5m' | '10m' | 'never';
  * 获取 API 基础 URL
  */
 const getApiUrl = (): string => {
-  const apiUrl = getApiUrl();
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
   // 处理相对路径：如果是 '/'，则返回空字符串避免双斜杠
   return apiUrl === '/' ? '' : apiUrl;
 };
