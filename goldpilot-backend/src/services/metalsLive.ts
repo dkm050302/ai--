@@ -143,7 +143,8 @@ class MetalsLiveService {
 
     // 从当前时间开始，向前生成K线数据
     for (let i = count - 1; i >= 0; i--) {
-      const time = new Date(now.getTime() - i * intervalMs);
+      // 使用Unix时间戳（秒），避免时区转换问题
+      const time = Math.floor((now.getTime() - i * intervalMs) / 1000);
       const volatility = this.getVolatilityForInterval(interval);
       const trend = Math.sin(i / 20) * 2;
       const noise = (Math.random() - 0.5) * volatility;
@@ -156,7 +157,7 @@ class MetalsLiveService {
       const low = Math.min(open, close) - Math.random() * volatility * 0.3;
 
       candles.push({
-        time,
+        time, // Unix时间戳（秒）
         open: parseFloat(open.toFixed(2)),
         high: parseFloat(high.toFixed(2)),
         low: parseFloat(low.toFixed(2)),

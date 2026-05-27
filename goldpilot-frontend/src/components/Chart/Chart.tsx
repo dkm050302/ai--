@@ -118,12 +118,19 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
     if (!seriesRef.current || candles.length === 0) return;
 
     const candlestickData: CandlestickData[] = candles.map((candle) => {
-      const timestamp = candle.time instanceof Date
-        ? candle.time.getTime()
-        : new Date(candle.time).getTime();
+      // time可能是数字（Unix时间戳秒）或Date对象或字符串
+      let timestamp: number;
+      if (typeof candle.time === 'number') {
+        // 如果已经是数字（Unix时间戳秒），直接使用
+        timestamp = candle.time;
+      } else if (candle.time instanceof Date) {
+        timestamp = candle.time.getTime() / 1000;
+      } else {
+        timestamp = new Date(candle.time).getTime() / 1000;
+      }
 
       return {
-        time: (timestamp / 1000) as Time,
+        time: timestamp as Time,
         open: candle.open,
         high: candle.high,
         low: candle.low,
