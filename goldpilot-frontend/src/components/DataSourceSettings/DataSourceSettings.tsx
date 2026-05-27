@@ -168,6 +168,7 @@ export function DataSourceSettings() {
           <li>• <strong>模拟数据</strong>：用于演示的生成数据，价格为美元/盎司</li>
           <li>• <strong>东方财富</strong>：中国东方财富网API数据</li>
           <li>• <strong>新浪黄金</strong>：新浪财经国际黄金API数据</li>
+          <li>• <strong>Metals.live</strong>：实时黄金数据，K线数据最新（推荐）</li>
         </ul>
       </div>
     </div>

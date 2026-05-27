@@ -1,19 +1,20 @@
 import { logger } from '../utils';
 import { eastmoneyService } from './eastmoney';
 import { sinaGoldService } from './sinaGold';
+import { metalsLiveService } from './metalsLive';
 
 /**
  * 数据源类型
  */
-export type DataSource = 'mock' | 'eastmoney' | 'sina';
+export type DataSource = 'mock' | 'eastmoney' | 'sina' | 'metalslive';
 
 /**
  * 市场数据服务 - 获取真实黄金行情数据
  * 支持多数据源切换
  */
 class MarketDataService {
-  // 当前数据源
-  private currentSource: DataSource = 'eastmoney';
+  // 当前数据源（默认使用 metalslive，因为它的K线数据最新）
+  private currentSource: DataSource = 'metalslive';
 
   // 缓存机制，减少API调用
   private priceCache: { price: number; timestamp: number; source: string } | null = null;
@@ -45,6 +46,7 @@ class MarketDataService {
       'mock': '模拟数据',
       'eastmoney': '东方财富',
       'sina': '新浪黄金',
+      'metalslive': 'Metals.live',
     };
     return names[source];
   }
@@ -82,6 +84,13 @@ class MarketDataService {
           throw new Error('新浪黄金API返回数据无效');
         }
         price = sinaData.price;
+        break;
+      case 'metalslive':
+        const metalsData = await metalsLiveService.getRealTimePrice();
+        if (!metalsData || metalsData.price <= 0) {
+          throw new Error('Metals.live API返回数据无效');
+        }
+        price = metalsData.price;
         break;
       case 'eastmoney':
       default:
@@ -143,6 +152,13 @@ class MarketDataService {
           throw new Error('新浪黄金API返回K线数据无效');
         }
         candles = sinaCandles;
+        break;
+      case 'metalslive':
+        const metalsCandles = await metalsLiveService.getCandles(interval, limit);
+        if (!metalsCandles || metalsCandles.length === 0) {
+          throw new Error('Metals.live API返回K线数据无效');
+        }
+        candles = metalsCandles;
         break;
       case 'eastmoney':
       default:
@@ -245,6 +261,9 @@ class MarketDataService {
         case 'sina':
           const sinaData = await sinaGoldService.getRealTimePrice();
           return { source: '新浪黄金', healthy: sinaData !== null };
+        case 'metalslive':
+          const metalsData = await metalsLiveService.getRealTimePrice();
+          return { source: 'Metals.live', healthy: metalsData !== null };
         case 'eastmoney':
         default:
           const eastmoneyData = await eastmoneyService.getRealTimePrice();

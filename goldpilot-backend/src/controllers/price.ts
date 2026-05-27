@@ -40,6 +40,28 @@ export async function getPrice(req: Request, res: Response): Promise<void> {
         break;
       }
 
+      case 'metalslive': {
+        const { metalsLiveService } = await import('../services/metalsLive.js');
+        const metalsData = await metalsLiveService.getRealTimePrice();
+
+        if (!metalsData || metalsData.price <= 0) {
+          throw new Error('Metals.live API返回数据无效');
+        }
+
+        priceData = {
+          symbol: 'XAU/USD',
+          price: metalsData.price,
+          change: metalsData.change,
+          changePct: metalsData.changePct,
+          high: metalsData.high,
+          low: metalsData.low,
+          timestamp: new Date(),
+        };
+
+        logger.info(`Price data sent (Metals.live): ${metalsData.price}`);
+        break;
+      }
+
       case 'mock': {
         const mockHigh = price + Math.abs(Math.random() * 15);
         const mockLow = price - Math.abs(Math.random() * 15);
