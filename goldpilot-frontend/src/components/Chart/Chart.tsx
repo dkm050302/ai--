@@ -53,14 +53,6 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       },
       localization: {
         dateFormat: 'yyyy-MM-dd',
-        timeFormatter: (time: any) => {
-          // 使用本地时间格式化
-          const date = new Date(time * 1000);
-          const hours = date.getHours().toString().padStart(2, '0');
-          const minutes = date.getMinutes().toString().padStart(2, '0');
-          const seconds = date.getSeconds().toString().padStart(2, '0');
-          return `${hours}:${minutes}:${seconds}`;
-        },
       },
       grid: {
         vertLines: { color: '#eef3f7' },
@@ -71,9 +63,6 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
         timeVisible: true,
         secondsVisible: true,
         rightOffset: 10,
-        localization: {
-          dateFormat: 'yyyy-MM-dd',
-        },
       },
       rightPriceScale: {
         borderColor: '#eef3f7',

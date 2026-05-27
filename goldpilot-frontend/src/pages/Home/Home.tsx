@@ -147,7 +147,13 @@ export function Home() {
       }
     };
 
+    // 初始加载
     loadCandles();
+
+    // 每10秒刷新一次K线数据
+    const interval = setInterval(loadCandles, 10000);
+
+    return () => clearInterval(interval);
   }, [period]);
 
   // 加载事件和快讯数据
