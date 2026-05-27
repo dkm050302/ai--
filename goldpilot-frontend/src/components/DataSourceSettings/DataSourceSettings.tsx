@@ -24,7 +24,7 @@ type RefreshInterval = '1m' | '5m' | '10m' | 'never';
  * 数据源设置组件
  */
 export function DataSourceSettings() {
-  const [currentSource, setCurrentSource] = useState<string>('eastmoney');
+  const [currentSource, setCurrentSource] = useState<string>('twelvedata');
   const [availableSources, setAvailableSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
