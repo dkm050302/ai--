@@ -1,21 +1,18 @@
 import { logger } from '../utils';
-import { eastmoneyService } from './eastmoney';
-import { sinaGoldService } from './sinaGold';
-import { stockSdkService } from './stockSdk';
 import { twelveDataService } from './twelveData';
 
 /**
  * 数据源类型
  */
-export type DataSource = 'mock' | 'eastmoney' | 'sina' | 'stocksdk' | 'twelvedata';
+export type DataSource = 'mock' | 'twelvedata';
 
 /**
  * 市场数据服务 - 获取真实黄金行情数据
  * 支持多数据源切换
  */
 class MarketDataService {
-  // 当前数据源（默认使用 stocksdk）
-  private currentSource: DataSource = 'stocksdk';
+  // 当前数据源（默认使用 Twelve Data）
+  private currentSource: DataSource = 'twelvedata';
 
   // 缓存机制，减少API调用
   private priceCache: { price: number; timestamp: number; source: string } | null = null;
@@ -44,32 +41,27 @@ class MarketDataService {
    */
   private getSourceName(source: DataSource): string {
     const names: Record<DataSource, string> = {
-      'mock': '模拟数据',
-      'eastmoney': '东方财富',
-      'sina': '新浪黄金',
-      'stocksdk': 'Stock-sdk',
-      'twelvedata': 'Twelve Data',
+      mock: '模拟数据',
+      twelvedata: 'Twelve Data',
     };
-    return names[source];
+    return names[source] || source;
   }
 
   /**
-   * 清除所有缓存
+   * 清除缓存
    */
   clearCache(): void {
     this.priceCache = null;
     this.candlesCache.clear();
-    logger.info('[数据源] 缓存已清除');
+    logger.info('[缓存] 已清除所有缓存');
   }
 
   /**
-   * 获取实时黄金价格（现货）
-   * 使用当前选择的数据源
+   * 获取实时价格
    */
-  async getRealTimePrice(): Promise<number> {
+  async getPrice(): Promise<number> {
     // 检查缓存
-    const now = Date.now();
-    if (this.priceCache && (now - this.priceCache.timestamp) < this.CACHE_DURATION) {
+    if (this.priceCache && (Date.now() - this.priceCache.timestamp) < this.CACHE_DURATION) {
       logger.info(`📦 [缓存] 使用缓存价格: ${this.priceCache.price} (来源: ${this.priceCache.source})`);
       return this.priceCache.price;
     }
@@ -80,34 +72,17 @@ class MarketDataService {
       case 'mock':
         price = this.getMockPrice();
         break;
-      case 'sina':
-        const sinaData = await sinaGoldService.getRealTimePrice();
-        if (!sinaData || sinaData.price <= 0) {
-          throw new Error('新浪黄金API返回数据无效');
-        }
-        price = sinaData.price;
-        break;
-      case 'stocksdk':
-        const stockSdkData = await stockSdkService.getRealTimePrice();
-        if (!stockSdkData || stockSdkData.price <= 0) {
-          throw new Error('Stock-sdk API返回数据无效');
-        }
-        price = stockSdkData.price;
-        break;
       case 'twelvedata':
         const twelveDataData = await twelveDataService.getRealTimePrice();
         if (!twelveDataData || twelveDataData.price <= 0) {
-          throw new Error('Twelve Data API返回数据无效');
+          logger.warn('[Twelve Data] 价格数据获取失败或为空，使用模拟数据');
+          price = this.getMockPrice();
+        } else {
+          price = twelveDataData.price;
         }
-        price = twelveDataData.price;
         break;
-      case 'eastmoney':
       default:
-        const eastmoneyData = await eastmoneyService.getRealTimePrice();
-        if (!eastmoneyData || eastmoneyData.price <= 0) {
-          throw new Error('东方财富API返回数据无效');
-        }
-        price = eastmoneyData.price;
+        price = this.getMockPrice();
         break;
     }
 
@@ -155,34 +130,17 @@ class MarketDataService {
       case 'mock':
         candles = this.generateMockCandles(interval, limit);
         break;
-      case 'sina':
-        const sinaCandles = await sinaGoldService.getCandles(interval, limit);
-        if (!sinaCandles || sinaCandles.length === 0) {
-          throw new Error('新浪黄金API返回K线数据无效');
-        }
-        candles = sinaCandles;
-        break;
-      case 'stocksdk':
-        const stockSdkCandles = await stockSdkService.getCandles(interval, limit);
-        if (!stockSdkCandles || stockSdkCandles.length === 0) {
-          throw new Error('Stock-sdk API返回K线数据无效');
-        }
-        candles = stockSdkCandles;
-        break;
       case 'twelvedata':
         const twelveDataCandles = await twelveDataService.getCandles(interval, limit);
         if (!twelveDataCandles || twelveDataCandles.length === 0) {
-          throw new Error('Twelve Data API返回K线数据无效');
+          logger.warn('[Twelve Data] K线数据获取失败或为空');
+          candles = [];
+        } else {
+          candles = twelveDataCandles;
         }
-        candles = twelveDataCandles;
         break;
-      case 'eastmoney':
       default:
-        const eastmoneyCandles = await eastmoneyService.getCandles(interval, limit);
-        if (!eastmoneyCandles || eastmoneyCandles.length === 0) {
-          throw new Error('东方财富API返回K线数据无效');
-        }
-        candles = eastmoneyCandles;
+        candles = this.generateMockCandles(interval, limit);
         break;
     }
 
@@ -201,54 +159,30 @@ class MarketDataService {
   /**
    * 生成模拟K线数据
    */
-  private generateMockCandles(interval: string, count: number): any[] {
+  private generateMockCandles(interval: string, limit: number): any[] {
     const candles: any[] = [];
-    const now = new Date();
+    const now = Date.now();
     const intervalMs = this.getIntervalMs(interval);
 
-    let price = 2380 + Math.sin(Date.now() / 300000) * 15;
+    let basePrice = 2380;
 
-    for (let i = count - 1; i >= 0; i--) {
-      const time = Math.floor((now.getTime() - i * intervalMs) / 1000); // Unix时间戳（秒）
-      const volatility = this.getVolatilityForInterval(interval);
-      const trend = Math.sin(i / 20) * 2;
-      const noise = (Math.random() - 0.5) * volatility;
+    for (let i = limit - 1; i >= 0; i--) {
+      const time = Math.floor((now - i * intervalMs) / 1000);
+      const volatility = 2 + Math.random() * 3;
+      const change = (Math.random() - 0.5) * volatility;
 
-      const open = price;
-      const change = trend + noise;
-      const close = open + change;
+      const open = basePrice;
+      const close = basePrice + change;
+      const high = Math.max(open, close) + Math.random() * 1;
+      const low = Math.min(open, close) - Math.random() * 1;
+      const volume = Math.floor(1000 + Math.random() * 5000);
 
-      const high = Math.max(open, close) + Math.random() * volatility * 0.5;
-      const low = Math.min(open, close) - Math.random() * volatility * 0.5;
+      candles.push({ time, open, high, low, close, volume });
 
-      candles.push({
-        time,
-        open: parseFloat(open.toFixed(2)),
-        high: parseFloat(high.toFixed(2)),
-        low: parseFloat(low.toFixed(2)),
-        close: parseFloat(close.toFixed(2)),
-        volume: Math.floor(Math.random() * 1000 + 500),
-      });
-
-      price = close;
+      basePrice = close;
     }
 
     return candles;
-  }
-
-  /**
-   * 获取各周期对应的波动率
-   */
-  private getVolatilityForInterval(interval: string): number {
-    const volatilityMap: Record<string, number> = {
-      '1m': 3,
-      '5m': 8,
-      '15m': 15,
-      '1h': 25,
-      '4h': 40,
-      '1d': 60,
-    };
-    return volatilityMap[interval] || 5;
   }
 
   /**
@@ -264,33 +198,6 @@ class MarketDataService {
       '1d': 24 * 60 * 60 * 1000,
     };
     return map[interval] || 60 * 1000;
-  }
-
-  /**
-   * 健康检查
-   */
-  async healthCheck(): Promise<{ source: string; healthy: boolean }> {
-    try {
-      switch (this.currentSource) {
-        case 'mock':
-          return { source: '模拟数据', healthy: true };
-        case 'sina':
-          const sinaData = await sinaGoldService.getRealTimePrice();
-          return { source: '新浪黄金', healthy: sinaData !== null };
-        case 'stocksdk':
-          const stockSdkData = await stockSdkService.getRealTimePrice();
-          return { source: 'Stock-sdk', healthy: stockSdkData !== null };
-        case 'twelvedata':
-          const twelveDataData = await twelveDataService.getRealTimePrice();
-          return { source: 'Twelve Data', healthy: twelveDataData !== null };
-        case 'eastmoney':
-        default:
-          const eastmoneyData = await eastmoneyService.getRealTimePrice();
-          return { source: '东方财富', healthy: eastmoneyData !== null };
-      }
-    } catch (error) {
-      return { source: this.getSourceName(this.currentSource), healthy: false };
-    }
   }
 }
 

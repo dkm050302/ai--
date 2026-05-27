@@ -26,6 +26,7 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
   // 实时计算信号（仅在1分钟周期）
   const calculatedSignals = useMemo(() => {
@@ -159,12 +160,13 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
 
     seriesRef.current.setData(candlestickData);
 
-    // 自动滚动到最新数据
-    if (chartRef.current) {
+    // 只在首次加载数据时自动调整视图，之后不再自动调整
+    if (!initialDataLoaded && chartRef.current) {
       chartRef.current.timeScale().fitContent();
       chartRef.current.timeScale().scrollToPosition(0, false);
+      setInitialDataLoaded(true);
     }
-  }, [candles]);
+  }, [candles, initialDataLoaded]);
 
   useEffect(() => {
     if (!seriesRef.current || signals.length === 0) {
@@ -238,6 +240,19 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
     return () => clearInterval(timer);
   }, []);
 
+  // 当周期切换时，重置初始加载状态并自动调整视图
+  useEffect(() => {
+    setInitialDataLoaded(false);
+  }, [period]);
+
+  // 手动重置视图
+  const handleResetView = () => {
+    if (chartRef.current) {
+      chartRef.current.timeScale().fitContent();
+      chartRef.current.timeScale().scrollToPosition(0, false);
+    }
+  };
+
   return (
     <>
       {/* K线图标题和周期切换 */}
@@ -252,6 +267,14 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
           </div>
         </div>
         <div className="periods" id="periods">
+          <button
+            type="button"
+            onClick={handleResetView}
+            className="reset-view-btn"
+            title="重置图表视图"
+          >
+            ⟲
+          </button>
           {periods.map((p) => (
             <button
               key={p.value}
@@ -269,7 +292,25 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       <div
         ref={chartContainerRef}
         className="chart-wrap"
-      />
+        style={{
+          position: 'relative',
+        }}
+      >
+        {candles.length === 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              fontSize: '16px',
+              color: '#999',
+            }}
+          >
+            获取失败
+          </div>
+        )}
+      </div>
     </>
   );
 }

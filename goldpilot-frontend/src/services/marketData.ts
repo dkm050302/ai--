@@ -82,7 +82,8 @@ export async function fetchCandles(period: Period = '1m', limit: number = 500): 
     // 调用后端 API
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
     const response = await fetch(
-      `${apiUrl}/api/candles?period=${period}&limit=${limit}`
+      `${apiUrl}/api/candles?period=${period}&limit=${limit}`,
+      { cache: 'no-store' }
     );
 
     if (!response.ok) {

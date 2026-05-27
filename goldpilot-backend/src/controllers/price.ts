@@ -5,42 +5,35 @@ import { logger } from '../utils';
 
 /**
  * 获取实时价格
- * 注意：价格固定使用新浪黄金数据源，不受数据源切换影响
- * K线数据可以通过数据源设置切换
+ * 使用当前数据源获取价格
  */
 export async function getPrice(req: Request, res: Response): Promise<void> {
   try {
-    // 价格固定使用新浪黄金数据源
-    const { sinaGoldService } = await import('../services/sinaGold.js');
-    const sinaData = await sinaGoldService.getRealTimePrice();
-
-    if (!sinaData || sinaData.price <= 0) {
-      throw new Error('新浪黄金API返回数据无效');
-    }
+    const price = await marketDataService.getPrice();
 
     const priceData: PriceData = {
       symbol: 'XAU/USD',
-      price: sinaData.price,
-      change: sinaData.change,
-      changePct: sinaData.changePct,
-      high: sinaData.high,
-      low: sinaData.low,
+      price,
+      change: 0,
+      changePct: 0,
+      high: price,
+      low: price,
       timestamp: new Date(),
     };
 
-    logger.info(`Price data sent (新浪黄金): ${sinaData.price}`);
+    logger.info(`Price sent: ${price}`);
 
     res.json({
       success: true,
       data: priceData,
     });
   } catch (error) {
-    logger.error('Error fetching price:', error);
+    logger.error('Error getting price:', error);
     res.status(500).json({
       success: false,
       error: {
-        code: 'PRICE_FETCH_ERROR',
-        message: 'Failed to fetch price data',
+        code: 'GET_PRICE_ERROR',
+        message: 'Failed to get price',
       },
     });
   }
@@ -51,21 +44,18 @@ export async function getPrice(req: Request, res: Response): Promise<void> {
  */
 export async function getCandles(req: Request, res: Response): Promise<void> {
   try {
-    let { period = '1m', limit = 100 } = req.query;
+    const { period = '1m', limit = '100' } = req.query;
 
-    // 处理可能是数组的情况
-    period = Array.isArray(period) ? period[0] : period;
-    limit = Array.isArray(limit) ? limit[0] : limit;
-
-    // 从当前数据源API获取数据
-    const candles = await marketDataService.getCandles(String(period), Number(limit));
+    const candles = await marketDataService.getCandles(
+      period as string,
+      parseInt(limit as string, 10)
+    );
 
     logger.info(`Candles data sent: ${candles.length} candles for ${period}`);
 
     res.json({
       success: true,
       data: {
-        period: String(period),
         candles,
       },
     });
@@ -74,8 +64,8 @@ export async function getCandles(req: Request, res: Response): Promise<void> {
     res.status(500).json({
       success: false,
       error: {
-        code: 'CANDLES_FETCH_ERROR',
-        message: 'Failed to fetch candle data',
+        code: 'GET_CANDLES_ERROR',
+        message: 'Failed to get candles data',
       },
     });
   }

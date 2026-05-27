@@ -14,11 +14,115 @@ class TwelveDataService {
   private candlesCache: Map<string, { candles: any[]; timestamp: number }> = new Map();
   private readonly CACHE_DURATION = 60000; // 60秒缓存
 
+  // 配额追踪（从响应头获取）
+  private dailyLimit = 800; // 免费版每日限制
+  private apiCreditsUsed = 0; // 从响应头获取：已使用额度
+  private apiCreditsLeft = 800; // 从响应头获取：剩余额度
+  private lastResetDate = new Date().getDate();
+
+  // 速率限制：每分钟最多4次请求
+  private rateLimitRequests: number[] = []; // 记录请求时间戳
+  private readonly RATE_LIMIT_MAX_REQUESTS = 4; // 每分钟最大请求数
+  private readonly RATE_LIMIT_WINDOW = 60000; // 时间窗口：60秒
+
   constructor() {
     // 从环境变量获取API密钥（支持两种命名方式）
     this.apiKey = process.env.TWELVEDATA_API_KEY || process.env.TWELVE_DATA_API_KEY || '';
     if (!this.apiKey) {
       logger.warn('[Twelve Data] 未配置 TWELVEDATA_API_KEY 环境变量');
+    }
+  }
+
+  /**
+   * 获取剩余配额（从响应头获取的真实数据）
+   */
+  getRemainingQuota(): { limit: number; used: number; remaining: number; resetTime: string } {
+    const now = new Date();
+    const today = now.getDate();
+
+    // 如果是新的一天，重置计数
+    if (this.lastResetDate !== today) {
+      this.apiCreditsUsed = 0;
+      this.apiCreditsLeft = this.dailyLimit;
+      this.lastResetDate = today;
+    }
+
+    // 计算重置时间（UTC午夜）
+    const utcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+    const resetTime = utcMidnight.toISOString();
+
+    // 如果有响应头数据，使用真实数据；否则使用默认值
+    const used = this.apiCreditsUsed > 0 ? this.apiCreditsUsed : 0;
+    const remaining = this.apiCreditsLeft > 0 ? this.apiCreditsLeft : this.dailyLimit;
+    const limit = used + remaining;
+
+    return {
+      limit,
+      used,
+      remaining: Math.max(0, remaining),
+      resetTime,
+    };
+  }
+
+  /**
+   * 速率限制检查和等待
+   * 确保每分钟不超过指定次数的请求
+   */
+  private async waitForRateLimit(): Promise<void> {
+    const now = Date.now();
+
+    // 清理过期的请求记录（超过时间窗口的）
+    this.rateLimitRequests = this.rateLimitRequests.filter(
+      timestamp => now - timestamp < this.RATE_LIMIT_WINDOW
+    );
+
+    // 检查是否超过速率限制
+    if (this.rateLimitRequests.length >= this.RATE_LIMIT_MAX_REQUESTS) {
+      // 计算需要等待的时间（最早的请求过期时间）
+      const oldestRequest = this.rateLimitRequests[0];
+      const waitTime = oldestRequest + this.RATE_LIMIT_WINDOW - now;
+
+      if (waitTime > 0) {
+        logger.warn(`[Twelve Data] 速率限制：等待 ${Math.ceil(waitTime / 1000)} 秒`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+
+        // 等待后再次清理过期记录
+        const afterWait = Date.now();
+        this.rateLimitRequests = this.rateLimitRequests.filter(
+          timestamp => afterWait - timestamp < this.RATE_LIMIT_WINDOW
+        );
+      }
+    }
+
+    // 记录当前请求时间
+    this.rateLimitRequests.push(now);
+    logger.debug(`[Twelve Data] 当前分钟请求次数: ${this.rateLimitRequests.length}/${this.RATE_LIMIT_MAX_REQUESTS}`);
+  }
+
+  /**
+   * 从响应头提取并更新配额信息
+   */
+  private updateQuotaFromHeaders(headers: any): void {
+    const creditsUsed = headers['api-credits-used'];
+    const creditsLeft = headers['api-credits-left'];
+
+    if (creditsUsed !== undefined) {
+      this.apiCreditsUsed = parseInt(creditsUsed, 10);
+      logger.debug(`[Twelve Data] 已使用额度: ${this.apiCreditsUsed}`);
+    }
+
+    if (creditsLeft !== undefined) {
+      this.apiCreditsLeft = parseInt(creditsLeft, 10);
+      logger.debug(`[Twelve Data] 剩余额度: ${this.apiCreditsLeft}`);
+    }
+
+    // 计算总限额
+    if (creditsUsed !== undefined && creditsLeft !== undefined) {
+      const total = parseInt(creditsUsed, 10) + parseInt(creditsLeft, 10);
+      if (total > 0) {
+        this.dailyLimit = total;
+        logger.debug(`[Twelve Data] 总限额: ${this.dailyLimit}`);
+      }
     }
   }
 
@@ -74,19 +178,33 @@ class TwelveDataService {
         logger.info(`[Twelve Data] 第 ${day + 1}/${daysNeeded} 天: ${startStr} 到 ${endStr}`);
 
         try {
+          // 速率限制检查
+          await this.waitForRateLimit();
+
           const response = await axios.get(`${this.baseUrl}/time_series`, {
             params: {
               symbol,
               interval: intervalStr,
               start_date: startStr,
               end_date: endStr,
+              timezone: 'UTC',
               apikey: this.apiKey,
             },
             timeout: 30000,
           });
 
+          // 从响应头提取配额信息
+          this.updateQuotaFromHeaders(response.headers);
+
           if (response.data.status === 'error') {
+            const quota = this.getRemainingQuota();
             logger.warn(`[Twelve Data] 第 ${day + 1} 天错误: ${response.data.message}`);
+            logger.warn(`[Twelve Data] 配额状态: ${quota.used}/${quota.limit} 已使用, 剩余 ${quota.remaining}`);
+
+            // 如果是429错误（超限），记录日志
+            if (response.data.code === 429) {
+              logger.error(`[Twelve Data] API配额已用完! 今日已使用 ${quota.used}/${quota.limit}`);
+            }
             continue;
           }
 
@@ -130,25 +248,13 @@ class TwelveDataService {
 
       // 转换数据格式
       // Twelve Data 返回格式: { datetime, open, high, low, close, volume }
-      // datetime 格式: "YYYY-MM-DD HH:MM:SS"
-      // 需要重新计算时间戳，使其与当前时间对齐
+      // datetime 格式: "YYYY-MM-DD HH:MM:SS" (指定 timezone=UTC 后为 UTC 时间)
 
       const candles: any[] = [];
 
-      // 获取最后一根K线的时间（Twelve Data返回的最新时间）
-      const lastDatetime = allCandles[allCandles.length - 1].datetime;
-      const lastDataDate = new Date(lastDatetime);
-      const lastDataTime = lastDataDate.getTime();
+      logger.info(`[Twelve Data] 开始转换 ${allCandles.length} 条数据`);
 
-      // 当前时间
-      const currentTime = Date.now();
-
-      // 计算时间差（毫秒）
-      const timeDiff = lastDataTime - currentTime;
-
-      logger.info(`[Twelve Data] 时间调整: 数据时间=${lastDatetime}, 时间差=${Math.round(timeDiff/1000)}秒`);
-
-      // 先收集所有数据并解析时间，然后调整时间戳
+      // 转换每根K线
       for (let i = 0; i < allCandles.length; i++) {
         const item = allCandles[i];
         const datetime = item.datetime;
@@ -158,25 +264,21 @@ class TwelveDataService {
         const close = parseFloat(item.close);
         const volume = parseFloat(item.volume || '0');
 
-        // 解析原始时间并计算调整后的时间戳
-        const originalDate = new Date(datetime);
-        const adjustedTime = originalDate.getTime() - timeDiff;
-        const time = Math.floor(adjustedTime / 1000);
+        // Twelve Data 在指定 timezone=UTC 后返回的是 UTC 时间
+        // 需要加 'Z' 后缀让 JavaScript 正确解析为 UTC 时间
+        const date = new Date(datetime + 'Z');
+        const time = Math.floor(date.getTime() / 1000);
 
-        // 调试：显示前几条和最后一条的时间调整
-        if (i < 3 || i === allCandles.length - 1) {
-          const adjustedDate = new Date(adjustedTime);
-          logger.info(`[Twelve Data] 时间调整 [${i}]: ${datetime} → ${adjustedDate.toISOString()}`);
-        }
-
-        // 只保留时间合理的数据（调整后不超过当前时间）
-        if (adjustedTime <= currentTime) {
-          candles.push({ time, open, high, low, close, volume });
-        }
+        candles.push({ time, open, high, low, close, volume });
       }
 
       // 按时间排序（升序）
       candles.sort((a, b) => a.time - b.time);
+
+      // 如果数据超过 limit，只保留最后的 limit 条
+      if (candles.length > limit) {
+        candles.splice(0, candles.length - limit);
+      }
 
       logger.info(`✅ [Twelve Data] K线数据: ${candles.length}条 for ${interval}`);
 
@@ -319,6 +421,14 @@ class TwelveDataService {
   clearCache(): void {
     this.candlesCache.clear();
     logger.info('[Twelve Data] 缓存已清除');
+  }
+
+  /**
+   * 更新 API Key
+   */
+  updateApiKey(apiKey: string): void {
+    this.apiKey = apiKey;
+    logger.info('[Twelve Data] API Key 已更新');
   }
 
   /**

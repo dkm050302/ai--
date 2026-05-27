@@ -40,6 +40,9 @@ out/
 .env.production.local
 .env.*.local
 
+# API Key 文件（重要！不要提交）
+.twelvedata-apikey
+
 # ================================
 # 日志文件
 # ================================

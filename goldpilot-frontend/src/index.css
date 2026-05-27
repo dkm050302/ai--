@@ -741,9 +741,32 @@ body {
   font-weight: 700;
 }
 
+.periods .reset-view-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  border: 1px solid var(--line-dark);
+  background: #f8fafc;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--muted);
+  transition: all 0.2s;
+}
+
+.periods .reset-view-btn:hover {
+  background: var(--blue-soft);
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
 .chart-wrap {
   flex: 1;
-  min-height: 300px;
+  min-height: 400px;
   position: relative;
   overflow: hidden;
   border: none;

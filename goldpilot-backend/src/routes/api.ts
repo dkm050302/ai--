@@ -34,6 +34,13 @@ import {
   getDataSource,
   setDataSource,
   getDataSources,
+  getRefreshInterval,
+  setRefreshInterval,
+  refreshDataSource,
+  getTwelveDataApiKey,
+  saveTwelveDataApiKey,
+  testTwelveDataApiKey,
+  getTwelveDataQuota,
 } from '../controllers/dataSource';
 import authRouter from './auth';
 import { updateAccount } from '../controllers/accountUpdate';
@@ -78,5 +85,12 @@ router.post('/ai/analyze', optionalAuth, analyzeMarket);
 router.get('/datasource', getDataSource);
 router.put('/datasource', setDataSource);
 router.get('/datasources', getDataSources);
+router.get('/datasource/refresh-interval', getRefreshInterval);
+router.put('/datasource/refresh-interval', setRefreshInterval);
+router.post('/datasource/refresh', refreshDataSource);
+router.get('/datasource/twelvedata/apikey', getTwelveDataApiKey);
+router.put('/datasource/twelvedata/apikey', saveTwelveDataApiKey);
+router.post('/datasource/twelvedata/test', testTwelveDataApiKey);
+router.get('/datasource/twelvedata/quota', getTwelveDataQuota);
 
 export default router;
