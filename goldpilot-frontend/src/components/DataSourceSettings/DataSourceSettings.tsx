@@ -33,7 +33,7 @@ export function DataSourceSettings() {
   const [success, setSuccess] = useState<string | null>(null);
   const [refreshInterval, setRefreshInterval] = useState<RefreshInterval>('never');
   const [nextRefreshIn, setNextRefreshIn] = useState<number>(0);
-  const intervalTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Twelve Data API Key 状态
   const [apiKey, setApiKey] = useState<string>('');
