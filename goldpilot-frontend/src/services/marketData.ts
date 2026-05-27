@@ -80,9 +80,8 @@ export async function fetchCandles(period: Period = '1m', limit: number = 500): 
 
   try {
     // 调用后端 API
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3006';
     const response = await fetch(
-      `${apiUrl}/api/candles?period=${period}&limit=${limit}`,
+      getApiUrl(`/api/candles?period=${period}&limit=${limit}`),
       { cache: 'no-store' }
     );
 
@@ -112,6 +111,7 @@ export async function fetchCandles(period: Period = '1m', limit: number = 500): 
  * 创建实时数据连接（WebSocket）
  * 对于不支持WebSocket的场景，使用轮询
  */
+import { getApiUrl } from '@/utils/apiConfig';
 export function createRealtimeConnection(
   onPriceUpdate: (price: PriceQuote) => void,
   onError?: (error: Error) => void
