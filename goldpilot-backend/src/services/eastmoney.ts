@@ -89,14 +89,22 @@ class EastMoneyService {
 
       const data = response.data.data;
 
-      // 解析数据
-      const price = data.f43 || 0; // 最新价
-      const prevClose = data.f44 || data.f60 || price; // 昨收价
-      const open = data.f45 || price; // 今开
-      const high = data.f46 || price; // 最高
-      const low = data.f47 || price; // 最低
+      // 解析数据 - 东方财富API返回的价格单位是分，需要除以100转换为美元
+      const rawPrice = data.f43 || 0; // 最新价（原始值，单位：分）
+      const rawPrevClose = data.f44 || data.f60 || rawPrice; // 昨收价
+      const rawOpen = data.f45 || rawPrice; // 今开
+      const rawHigh = data.f46 || rawPrice; // 最高
+      const rawLow = data.f47 || rawPrice; // 最低
       const changePct = data.f48 || 0; // 涨跌幅(%)
-      const change = data.f49 || 0; // 涨跌额
+      const rawChange = data.f49 || 0; // 涨跌额（原始值，单位：分）
+
+      // 单位转换：分 -> 美元
+      const price = rawPrice / 100;
+      const prevClose = rawPrevClose / 100;
+      const open = rawOpen / 100;
+      const high = rawHigh / 100;
+      const low = rawLow / 100;
+      const change = rawChange / 100;
 
       logger.info(`✅ [东方财富] 实时价格: ${price} (涨跌: ${change.toFixed(2)}, ${changePct.toFixed(2)}%)`);
 
@@ -160,20 +168,21 @@ class EastMoneyService {
 
       // 解析K线数据
       // 格式: "日期,开,高,低,收,量,额,振幅,涨跌幅,涨跌额,昨收"
+      // 注意：东方财富API返回的K线价格单位是分，需要除以100转换为美元
       const klineStrings = response.data.data.klines;
       const candles = klineStrings.map((kline: string) => {
         const parts = kline.split(',');
         return {
           time: new Date(parts[0]),
-          open: parseFloat(parts[1]),
-          high: parseFloat(parts[2]),
-          low: parseFloat(parts[3]),
-          close: parseFloat(parts[4]),
+          open: parseFloat(parts[1]) / 100,  // 分 -> 美元
+          high: parseFloat(parts[2]) / 100,  // 分 -> 美元
+          low: parseFloat(parts[3]) / 100,   // 分 -> 美元
+          close: parseFloat(parts[4]) / 100, // 分 -> 美元
           volume: parseFloat(parts[5]) || 0,
         };
       });
 
-      logger.info(`✅ [东方财富] K线数据: ${candles.length}条 for ${interval}`);
+      logger.info(`✅ [东方财富] K线数据: ${candles.length}条 for ${interval} (已转换单位)`);
 
       // 更新缓存
       this.candlesCache.set(cacheKey, { candles, timestamp: Date.now() });

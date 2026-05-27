@@ -1,7 +1,7 @@
 import { Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, BellOutlined } from '@ant-design/icons';
+import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, BellOutlined, DatabaseOutlined } from '@ant-design/icons';
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -17,6 +17,9 @@ export function Sidebar() {
     }
     if (location.pathname === '/event-driven') {
       return ['event-driven'];
+    }
+    if (location.pathname === '/datasource-settings') {
+      return ['datasource-settings'];
     }
     return ['home'];
   };
@@ -48,6 +51,12 @@ export function Sidebar() {
     },
     {
       type: 'divider' as const,
+    },
+    {
+      key: 'datasource-settings',
+      icon: <DatabaseOutlined className="text-lg" />,
+      label: <span className="ml-2 font-medium">数据源设置</span>,
+      onClick: () => navigate('/datasource-settings'),
     },
     {
       key: 'settings',

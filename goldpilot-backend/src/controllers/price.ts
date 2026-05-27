@@ -8,47 +8,81 @@ import { logger } from '../utils';
  */
 export async function getPrice(req: Request, res: Response): Promise<void> {
   try {
-    // 尝试从新浪财经获取完整数据
-    const { sinaFinanceScraper } = await import('../services/sinaFinance.js');
-    const sinaData = await sinaFinanceScraper.getGoldData();
+    // 使用当前选择的数据源获取价格
+    const price = await marketDataService.getRealTimePrice();
 
+    // 获取当前数据源信息
+    const currentSource = marketDataService.getDataSource();
+
+    // 根据数据源获取完整的价格数据（包括高低价）
     let priceData: PriceData;
 
-    if (sinaData && sinaData.currentPrice > 0) {
-      // 使用新浪财经的完整数据
-      priceData = {
-        symbol: sinaData.symbol,
-        price: sinaData.currentPrice,
-        change: sinaData.change,
-        changePct: sinaData.changePercent,
-        high: sinaData.high,
-        low: sinaData.low,
-        timestamp: sinaData.timestamp,
-      };
-      logger.info(`Price data sent (新浪财经): ${sinaData.currentPrice}`);
-    } else {
-      // 降级到基础服务
-      const currentPrice = await marketDataService.getRealTimePrice();
+    switch (currentSource) {
+      case 'sina': {
+        const { sinaGoldService } = await import('../services/sinaGold.js');
+        const sinaData = await sinaGoldService.getRealTimePrice();
 
-      // 计算涨跌（基于前一个收盘价）
-      const prevClose = currentPrice - (Math.random() * 20 - 10); // 简化处理
-      const change = currentPrice - prevClose;
-      const changePct = (change / prevClose) * 100;
+        if (!sinaData || sinaData.price <= 0) {
+          throw new Error('新浪黄金API返回数据无效');
+        }
 
-      // 估算今日高低点
-      const high = currentPrice + Math.abs(Math.random() * 15);
-      const low = currentPrice - Math.abs(Math.random() * 15);
+        priceData = {
+          symbol: 'XAU/USD',
+          price: sinaData.price,
+          change: sinaData.change,
+          changePct: sinaData.changePct,
+          high: sinaData.high,
+          low: sinaData.low,
+          timestamp: new Date(),
+        };
 
-      priceData = {
-        symbol: 'XAU/USD',
-        price: currentPrice,
-        change,
-        changePct,
-        high,
-        low,
-        timestamp: new Date(),
-      };
-      logger.info(`Price data sent (降级): ${currentPrice}`);
+        logger.info(`Price data sent (新浪黄金): ${sinaData.price}`);
+        break;
+      }
+
+      case 'mock': {
+        const mockHigh = price + Math.abs(Math.random() * 15);
+        const mockLow = price - Math.abs(Math.random() * 15);
+        const mockChange = (Math.random() - 0.5) * 10;
+        const mockPrevClose = price - mockChange;
+        const mockChangePct = (mockChange / mockPrevClose) * 100;
+
+        priceData = {
+          symbol: 'XAU/USD',
+          price,
+          change: mockChange,
+          changePct: mockChangePct,
+          high: mockHigh,
+          low: mockLow,
+          timestamp: new Date(),
+        };
+
+        logger.info(`Price data sent (模拟数据): ${price}`);
+        break;
+      }
+
+      case 'eastmoney':
+      default: {
+        const { eastmoneyService } = await import('../services/eastmoney.js');
+        const eastmoneyData = await eastmoneyService.getRealTimePrice();
+
+        if (!eastmoneyData || eastmoneyData.price <= 0) {
+          throw new Error('东方财富API返回数据无效');
+        }
+
+        priceData = {
+          symbol: 'XAU/USD',
+          price: eastmoneyData.price,
+          change: eastmoneyData.change,
+          changePct: eastmoneyData.changePct,
+          high: eastmoneyData.high,
+          low: eastmoneyData.low,
+          timestamp: new Date(),
+        };
+
+        logger.info(`Price data sent (东方财富): ${eastmoneyData.price}`);
+        break;
+      }
     }
 
     res.json({
@@ -78,7 +112,7 @@ export async function getCandles(req: Request, res: Response): Promise<void> {
     period = Array.isArray(period) ? period[0] : period;
     limit = Array.isArray(limit) ? limit[0] : limit;
 
-    // 从真实行情API获取数据
+    // 从当前数据源API获取数据
     const candles = await marketDataService.getCandles(String(period), Number(limit));
 
     logger.info(`Candles data sent: ${candles.length} candles for ${period}`);

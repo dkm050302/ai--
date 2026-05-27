@@ -30,6 +30,11 @@ import {
 import {
   analyzeMarket,
 } from '../controllers/aiAnalysis';
+import {
+  getDataSource,
+  setDataSource,
+  getDataSources,
+} from '../controllers/dataSource';
 import authRouter from './auth';
 import { updateAccount } from '../controllers/accountUpdate';
 import { optionalAuth } from '../middleware/auth';
@@ -68,5 +73,10 @@ router.post('/ai/test', optionalAuth, testAIConnection);
 
 // AI分析相关路由
 router.post('/ai/analyze', optionalAuth, analyzeMarket);
+
+// 数据源相关路由
+router.get('/datasource', getDataSource);
+router.put('/datasource', setDataSource);
+router.get('/datasources', getDataSources);
 
 export default router;

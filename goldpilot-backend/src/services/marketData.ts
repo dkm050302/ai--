@@ -1,240 +1,122 @@
-import axios from 'axios';
 import { logger } from '../utils';
-import { sinaFinanceScraper } from './sinaFinance';
-import { dukascopyService } from './dukascopy';
 import { eastmoneyService } from './eastmoney';
+import { sinaGoldService } from './sinaGold';
+
+/**
+ * 数据源类型
+ */
+export type DataSource = 'mock' | 'eastmoney' | 'sina';
 
 /**
  * 市场数据服务 - 获取真实黄金行情数据
- * 支持多个数据源自动切换
+ * 支持多数据源切换
  */
 class MarketDataService {
+  // 当前数据源
+  private currentSource: DataSource = 'eastmoney';
+
   // 缓存机制，减少API调用
-  private priceCache: { price: number; timestamp: number } | null = null;
-  private candlesCache: Map<string, { candles: any[]; timestamp: number }> = new Map();
+  private priceCache: { price: number; timestamp: number; source: string } | null = null;
+  private candlesCache: Map<string, { candles: any[]; timestamp: number; source: string }> = new Map();
   private readonly CACHE_DURATION = 60000; // 缓存60秒
 
-  private sources = [
-    {
-      name: 'Twelve Data',
-      baseUrl: 'https://api.twelvedata.com',
-      apiKey: process.env.TWELVEDATA_API_KEY || '',
-    },
-    {
-      name: 'Alpha Vantage',
-      baseUrl: 'https://www.alphavantage.co/query',
-      apiKey: process.env.ALPHAVANTAGE_KEY || '',
-    },
-  ];
+  /**
+   * 设置数据源
+   */
+  setDataSource(source: DataSource): void {
+    this.currentSource = source;
+    // 清除缓存，确保使用新数据源
+    this.clearCache();
+    logger.info(`[数据源] 已切换到: ${this.getSourceName(source)}`);
+  }
+
+  /**
+   * 获取当前数据源
+   */
+  getDataSource(): DataSource {
+    return this.currentSource;
+  }
+
+  /**
+   * 获取数据源名称
+   */
+  private getSourceName(source: DataSource): string {
+    const names: Record<DataSource, string> = {
+      'mock': '模拟数据',
+      'eastmoney': '东方财富',
+      'sina': '新浪黄金',
+    };
+    return names[source];
+  }
+
+  /**
+   * 清除所有缓存
+   */
+  clearCache(): void {
+    this.priceCache = null;
+    this.candlesCache.clear();
+    logger.info('[数据源] 缓存已清除');
+  }
 
   /**
    * 获取实时黄金价格（现货）
-   * 使用多个数据源自动切换
-   * 优先级: 东方财富 > Dukascopy > 新浪财经 > Twelve Data > metals.live > 降级方案
+   * 使用当前选择的数据源
    */
   async getRealTimePrice(): Promise<number> {
     // 检查缓存
     const now = Date.now();
     if (this.priceCache && (now - this.priceCache.timestamp) < this.CACHE_DURATION) {
-      logger.info(`📦 [缓存] 使用缓存价格: ${this.priceCache.price}`);
+      logger.info(`📦 [缓存] 使用缓存价格: ${this.priceCache.price} (来源: ${this.priceCache.source})`);
       return this.priceCache.price;
     }
 
-    // 方案1: 使用东方财富数据（最高优先级）
-    try {
-      const eastmoneyData = await eastmoneyService.getRealTimePrice();
-      if (eastmoneyData && eastmoneyData.price > 0) {
-        logger.info(`✅ [东方财富] Price: ${eastmoneyData.price}`);
+    let price = 0;
 
-        // 更新缓存（保存额外数据用于前端显示）
-        this.priceCache = {
-          price: eastmoneyData.price,
-          timestamp: Date.now(),
-          // 保存额外信息供前端使用
-          change: eastmoneyData.change,
-          changePct: eastmoneyData.changePct,
-          high: eastmoneyData.high,
-          low: eastmoneyData.low,
-        } as any;
-        return eastmoneyData.price;
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('⚠️ 东方财富失败:', message);
+    switch (this.currentSource) {
+      case 'mock':
+        price = this.getMockPrice();
+        break;
+      case 'sina':
+        const sinaData = await sinaGoldService.getRealTimePrice();
+        if (!sinaData || sinaData.price <= 0) {
+          throw new Error('新浪黄金API返回数据无效');
+        }
+        price = sinaData.price;
+        break;
+      case 'eastmoney':
+      default:
+        const eastmoneyData = await eastmoneyService.getRealTimePrice();
+        if (!eastmoneyData || eastmoneyData.price <= 0) {
+          throw new Error('东方财富API返回数据无效');
+        }
+        price = eastmoneyData.price;
+        break;
     }
 
-    // 方案2: 使用新浪财经数据
-    // Dukascopy 已禁用（内存溢出问题）
-    try {
-      const sinaData = await sinaFinanceScraper.getGoldData();
-      if (sinaData && sinaData.currentPrice > 0) {
-        logger.info(`✅ [新浪财经] Price: ${sinaData.currentPrice}`);
+    logger.info(`✅ [${this.getSourceName(this.currentSource)}] Price: ${price}`);
 
-        // 更新缓存
-        this.priceCache = { price: sinaData.currentPrice, timestamp: Date.now() };
-        return sinaData.currentPrice;
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('⚠️ 新浪财经失败:', message);
-    }
+    // 更新缓存
+    this.priceCache = {
+      price,
+      timestamp: Date.now(),
+      source: this.getSourceName(this.currentSource),
+    };
 
-    // 方案2: 使用 Twelve Data（如果有 API key）
-    if (this.sources[0].apiKey && this.sources[0].apiKey !== 'your_token_here') {
-      try {
-        const price = await this.fetchFromTwelveData();
-        logger.info(`✅ [Twelve Data] Price: ${price}`);
-
-        // 更新缓存
-        this.priceCache = { price, timestamp: Date.now() };
-        return price;
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        logger.warn('⚠️ Twelve Data failed:', message);
-      }
-    }
-
-    // 方案3: 使用 metals.live API（免费，无需注册）
-    try {
-      const price = await this.fetchFromMetalsLive();
-      logger.info(`✅ [metals.live] Price: ${price}`);
-
-      // 更新缓存
-      this.priceCache = { price, timestamp: Date.now() };
-      return price;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('⚠️ metals.live failed:', message);
-    }
-
-    // 方案4: 使用基于市场水平的估算
-    const fallbackPrice = await this.getFallbackPrice();
-    this.priceCache = { price: fallbackPrice, timestamp: Date.now() };
-    return fallbackPrice;
-  }
-
-  /**
-   * 从 metals.live 获取黄金现货价格
-   * 免费，无需注册
-   */
-  private async fetchFromMetalsLive(): Promise<number> {
-    const response = await axios.get('https://api.metals.live/v1/spot/gold', {
-      timeout: 8000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
-
-    if (!response.data || !response.data.price) {
-      throw new Error('Invalid response from metals.live');
-    }
-
-    return parseFloat(response.data.price);
-  }
-
-  /**
-   * 从 Yahoo Finance 获取实时价格
-   * 黄金期货代码：GC=F
-   */
-  private async fetchFromYahooFinance(): Promise<number> {
-    // 使用更完整的请求头模拟浏览器
-    const response = await axios.get(
-      'https://query2.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=5d&includePrePost=false',
-      {
-        timeout: 10000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Referer': 'https://finance.yahoo.com/',
-          'Origin': 'https://finance.yahoo.com',
-          'Connection': 'keep-alive',
-          'Sec-Fetch-Dest': 'empty',
-          'Sec-Fetch-Mode': 'cors',
-          'Sec-Fetch-Site': 'same-site',
-        },
-      }
-    );
-
-    const result = response.data.chart?.result?.[0];
-    if (!result) {
-      throw new Error('Invalid Yahoo Finance response');
-    }
-
-    const quote = result.indicators?.quote?.[0];
-    const timestamps = result.timestamp || [];
-
-    if (!quote || timestamps.length === 0) {
-      throw new Error('No quote data from Yahoo Finance');
-    }
-
-    // 获取最新收盘价
-    const lastIndex = timestamps.length - 1;
-    const currentPrice = quote.close[lastIndex];
-
-    if (currentPrice === null) {
-      throw new Error('Current price is null');
-    }
-
-    return currentPrice;
-  }
-
-  /**
-   * 从 Twelve Data 获取价格
-   */
-  private async fetchFromTwelveData(): Promise<number> {
-    const response = await axios.get(`${this.sources[0].baseUrl}/price`, {
-      params: {
-        symbol: 'XAU/USD',
-        apikey: this.sources[0].apiKey,
-      },
-      timeout: 10000,
-    });
-
-    if (response.data.status === 'error') {
-      throw new Error(response.data.message);
-    }
-
-    return parseFloat(response.data.price);
-  }
-
-  /**
-   * 获取备用价格（使用免费的汇率API）
-   */
-  private async getFallbackPrice(): Promise<number> {
-    try {
-      // 使用 exchangeRate.host 的免费API
-      const response = await axios.get('https://api.exchangerate.host/latest', {
-        params: {
-          base: 'XAU',
-          symbols: 'USD',
-        },
-        timeout: 5000,
-      });
-
-      const rate = response.data.rates?.USD;
-      if (rate) {
-        // XAU以盎司计价，1盎司≈31.1克
-        // 转换为美元/克（显示用）
-        const pricePerGram = rate * 31.1035;
-        logger.info(`Price from exchangeRate.host: ${pricePerGram}`);
-        return pricePerGram;
-      }
-    } catch (error) {
-      logger.warn('exchangeRate.host failed');
-    }
-
-    // 最后的降级方案：使用基于时间的模拟价格（接近真实值）
-    const basePrice = 2380;
-    const timeVariation = Math.sin(Date.now() / 300000) * 15; // 每5分钟波动
-    const price = basePrice + timeVariation;
-    logger.info(`Using simulated price: ${price}`);
     return price;
   }
 
   /**
-   * 获取K线数据，带缓存机制
+   * 获取模拟价格
+   */
+  private getMockPrice(): number {
+    const basePrice = 2380;
+    const timeVariation = Math.sin(Date.now() / 300000) * 15;
+    return basePrice + timeVariation;
+  }
+
+  /**
+   * 获取K线数据
+   * 使用当前选择的数据源
    * @param interval - 时间周期 (1m, 5m, 15m, 1h, 4h, 1d)
    * @param limit - 数据条数
    */
@@ -245,215 +127,59 @@ class MarketDataService {
     const now = Date.now();
 
     if (cached && (now - cached.timestamp) < this.CACHE_DURATION) {
-      logger.info(`📦 [缓存] 使用缓存K线数据: ${interval} (${cached.candles.length}条)`);
+      logger.info(`📦 [缓存] 使用缓存K线: ${interval} (${cached.candles.length}条, 来源: ${cached.source})`);
       return cached.candles;
     }
 
-    // 方案1: 尝试东方财富K线数据（最高优先级）
-    try {
-      const eastmoneyCandles = await eastmoneyService.getCandles(interval, limit);
-      if (eastmoneyCandles && eastmoneyCandles.length > 0) {
-        logger.info(`✅ [东方财富] K线: ${eastmoneyCandles.length}条 for ${interval}`);
+    let candles: any[] = [];
 
-        // 更新缓存
-        this.candlesCache.set(cacheKey, { candles: eastmoneyCandles, timestamp: Date.now() });
-        return eastmoneyCandles;
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('⚠️ 东方财富K线失败:', message);
-    }
-
-    // 方案3: 尝试新浪财经K线数据
-    // Dukascopy 已禁用（内存溢出问题）
-    try {
-      const sinaCandles = await sinaFinanceScraper.getKlineData(interval, limit);
-      if (sinaCandles.length > 0) {
-        logger.info(`✅ [新浪财经] K线: ${sinaCandles.length}条 for ${interval}`);
-
-        // 更新缓存
-        this.candlesCache.set(cacheKey, { candles: sinaCandles, timestamp: Date.now() });
-        return sinaCandles;
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.warn('⚠️ 新浪财经K线失败:', message);
-    }
-
-    // 方案2: 尝试 Twelve Data（如果有 API key）
-    if (this.sources[0].apiKey && this.sources[0].apiKey !== 'your_token_here') {
-      try {
-        const candles = await this.fetchCandlesFromTwelveData(interval, limit);
-        if (candles.length > 0) {
-          logger.info(`✅ [Twelve Data] Candles: ${candles.length} for ${interval}`);
-
-          // 更新缓存
-          this.candlesCache.set(cacheKey, { candles, timestamp: Date.now() });
-          return candles;
+    switch (this.currentSource) {
+      case 'mock':
+        candles = this.generateMockCandles(interval, limit);
+        break;
+      case 'sina':
+        const sinaCandles = await sinaGoldService.getCandles(interval, limit);
+        if (!sinaCandles || sinaCandles.length === 0) {
+          throw new Error('新浪黄金API返回K线数据无效');
         }
-      } catch (error: any) {
-        logger.warn('⚠️ Twelve Data candles failed:', error.message);
-      }
+        candles = sinaCandles;
+        break;
+      case 'eastmoney':
+      default:
+        const eastmoneyCandles = await eastmoneyService.getCandles(interval, limit);
+        if (!eastmoneyCandles || eastmoneyCandles.length === 0) {
+          throw new Error('东方财富API返回K线数据无效');
+        }
+        candles = eastmoneyCandles;
+        break;
     }
 
-    // 方案3: 使用基于真实价格的模拟K线（基于当前市场价）
-    logger.info(`📊 [数据源] 使用基于市场价的K线数据 (${interval})`);
-    const candles = this.generateRealisticCandles(interval, limit);
+    logger.info(`✅ [${this.getSourceName(this.currentSource)}] K线: ${candles.length}条 for ${interval}`);
 
     // 更新缓存
-    this.candlesCache.set(cacheKey, { candles, timestamp: Date.now() });
+    this.candlesCache.set(cacheKey, {
+      candles,
+      timestamp: Date.now(),
+      source: this.getSourceName(this.currentSource),
+    });
+
     return candles;
   }
 
   /**
-   * 从 Yahoo Finance 获取K线数据
+   * 生成模拟K线数据
    */
-  private async fetchCandlesFromYahooFinance(interval: string, limit: number): Promise<any[]> {
-    const intervalMap: Record<string, string> = {
-      '1m': '1m',
-      '5m': '5m',
-      '15m': '15m',
-      '1h': '1h',
-      '4h': '1d', // Yahoo 不支持 4h
-      '1d': '1d',
-    };
-
-    const rangeMap: Record<string, string> = {
-      '1m': '1d',
-      '5m': '5d',
-      '15m': '15d',
-      '1h': '1mo',
-      '4h': '3mo',
-      '1d': '1y',
-    };
-
-    const apiInterval = intervalMap[interval] || '1m';
-    const range = rangeMap[interval] || '1d';
-
-    const response = await axios.get(
-      `https://query2.finance.yahoo.com/v8/finance/chart/GC=F?interval=${apiInterval}&range=${range}`,
-      {
-        timeout: 15000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Referer': 'https://finance.yahoo.com/',
-          'Origin': 'https://finance.yahoo.com',
-          'Connection': 'keep-alive',
-          'Sec-Fetch-Dest': 'empty',
-          'Sec-Fetch-Mode': 'cors',
-          'Sec-Fetch-Site': 'same-site',
-        },
-      }
-    );
-
-    const result = response.data.chart?.result?.[0];
-    if (!result) {
-      throw new Error('Invalid Yahoo Finance response');
-    }
-
-    const timestamps = result.timestamp || [];
-    const quote = result.indicators?.quote?.[0];
-
-    if (!quote || timestamps.length === 0) {
-      throw new Error('No quote data from Yahoo Finance');
-    }
-
-    const candles: any[] = [];
-
-    for (let i = 0; i < timestamps.length; i++) {
-      const open = quote.open[i];
-      const high = quote.high[i];
-      const low = quote.low[i];
-      const close = quote.close[i];
-      const volume = quote.volume[i];
-
-      // 跳过无效数据
-      if (open === null || high === null || low === null || close === null) continue;
-
-      candles.push({
-        time: new Date(timestamps[i] * 1000),
-        open,
-        high,
-        low,
-        close,
-        volume: volume || 0,
-      });
-    }
-
-    // 返回最后 limit 条数据
-    return candles.slice(-limit);
-  }
-
-  /**
-   * 从 Twelve Data 获取K线数据
-   */
-  private async fetchCandlesFromTwelveData(interval: string, limit: number): Promise<any[]> {
-    const intervalMap: Record<string, string> = {
-      '1m': '1min',
-      '5m': '5min',
-      '15m': '15min',
-      '1h': '1h',
-      '4h': '4h',
-      '1d': '1day',
-    };
-
-    const apiInterval = intervalMap[interval] || '1min';
-
-    const response = await axios.get(`${this.sources[0].baseUrl}/time_series`, {
-      params: {
-        symbol: 'XAU/USD',
-        interval: apiInterval,
-        outputsize: limit,
-        apikey: this.sources[0].apiKey,
-      },
-      timeout: 15000,
-    });
-
-    if (response.data.status === 'error') {
-      throw new Error(response.data.message);
-    }
-
-    if (!response.data.values || response.data.values.length === 0) {
-      throw new Error('No data returned');
-    }
-
-    // 转换API响应格式
-    const candles = response.data.values.map((item: any) => ({
-      time: new Date(item.datetime),
-      open: parseFloat(item.open),
-      high: parseFloat(item.high),
-      low: parseFloat(item.low),
-      close: parseFloat(item.close),
-      volume: 0,
-    }));
-
-    // Twelve Data 返回降序数据（最新在前），需要反转成升序
-    return candles.reverse();
-  }
-
-  /**
-   * 生成逼真的K线数据（基于真实价格波动模式）
-   * 当API不可用时使用
-   */
-  private generateRealisticCandles(interval: string, count: number): any[] {
-    logger.info(`Generating realistic candles for ${interval}`);
-
+  private generateMockCandles(interval: string, count: number): any[] {
     const candles: any[] = [];
     const now = new Date();
     const intervalMs = this.getIntervalMs(interval);
 
-    // 从当前价格开始
     let price = 2380 + Math.sin(Date.now() / 300000) * 15;
 
     for (let i = count - 1; i >= 0; i--) {
       const time = new Date(now.getTime() - i * intervalMs);
-
-      // 模拟价格波动（基于布朗运动）
       const volatility = this.getVolatilityForInterval(interval);
-      const trend = Math.sin(i / 20) * 2; // 缓慢趋势
+      const trend = Math.sin(i / 20) * 2;
       const noise = (Math.random() - 0.5) * volatility;
 
       const open = price;
@@ -513,15 +239,20 @@ class MarketDataService {
    */
   async healthCheck(): Promise<{ source: string; healthy: boolean }> {
     try {
-      if (this.sources[0].apiKey && this.sources[0].apiKey !== 'your_token_here') {
-        await this.fetchFromTwelveData();
-        return { source: 'Twelve Data', healthy: true };
+      switch (this.currentSource) {
+        case 'mock':
+          return { source: '模拟数据', healthy: true };
+        case 'sina':
+          const sinaData = await sinaGoldService.getRealTimePrice();
+          return { source: '新浪黄金', healthy: sinaData !== null };
+        case 'eastmoney':
+        default:
+          const eastmoneyData = await eastmoneyService.getRealTimePrice();
+          return { source: '东方财富', healthy: eastmoneyData !== null };
       }
     } catch (error) {
-      // Ignore
+      return { source: this.getSourceName(this.currentSource), healthy: false };
     }
-
-    return { source: 'Fallback', healthy: true };
   }
 }
 

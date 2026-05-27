@@ -4,6 +4,7 @@ import { Home } from '@/pages/Home/Home';
 import { MT4Account } from '@/pages/MT4Account/MT4Account';
 import { AIAccount } from '@/pages/AIAccount/AIAccount';
 import { EventDrivenHome } from '@/pages/EventDrivenHome/EventDrivenHome';
+import { DataSourceSettingsPage } from '@/pages/DataSourceSettings';
 
 export const router = createBrowserRouter([
   {
@@ -25,6 +26,10 @@ export const router = createBrowserRouter([
       {
         path: 'ai-account',
         element: <AIAccount />,
+      },
+      {
+        path: 'datasource-settings',
+        element: <DataSourceSettingsPage />,
       },
     ],
   },
