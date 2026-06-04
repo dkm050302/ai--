@@ -321,7 +321,7 @@ export function Home() {
               size="large"
               icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />}
               onClick={handleAIAnalyze}
-              disabled={analyzing || candles.length === 0}
+              disabled={analyzing}
               style={{ marginLeft: '12px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none' }}
             >
               {analyzing ? '分析中...' : 'AI 智能分析'}

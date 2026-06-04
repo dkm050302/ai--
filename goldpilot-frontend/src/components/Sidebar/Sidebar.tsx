@@ -1,7 +1,7 @@
 import { Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, BellOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, BellOutlined, DatabaseOutlined, ExperimentOutlined } from '@ant-design/icons';
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -17,6 +17,9 @@ export function Sidebar() {
     }
     if (location.pathname === '/datasource-settings') {
       return ['datasource-settings'];
+    }
+    if (location.pathname === '/research-center') {
+      return ['research-center'];
     }
     return ['home'];
   };
@@ -39,6 +42,12 @@ export function Sidebar() {
       icon: <RobotOutlined className="text-lg" />,
       label: <span className="ml-2 font-medium">AI账号</span>,
       onClick: () => navigate('/ai-account'),
+    },
+    {
+      key: 'research-center',
+      icon: <ExperimentOutlined className="text-lg" />,
+      label: <span className="ml-2 font-medium">策略研究</span>,
+      onClick: () => navigate('/research-center'),
     },
     {
       type: 'divider' as const,

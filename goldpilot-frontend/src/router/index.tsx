@@ -4,6 +4,7 @@ import { Home } from '@/pages/Home/Home';
 import { AIAccount } from '@/pages/AIAccount/AIAccount';
 import { EventDrivenHome } from '@/pages/EventDrivenHome/EventDrivenHome';
 import { DataSourceSettingsPage } from '@/pages/DataSourceSettings';
+import { ResearchCenter } from '@/pages/ResearchCenter';
 
 export const router = createBrowserRouter([
   {
@@ -25,6 +26,10 @@ export const router = createBrowserRouter([
       {
         path: 'datasource-settings',
         element: <DataSourceSettingsPage />,
+      },
+      {
+        path: 'research-center',
+        element: <ResearchCenter />,
       },
     ],
   },

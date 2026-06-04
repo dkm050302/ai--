@@ -1,11 +1,11 @@
 /**
  * API配置
- * 开发环境：http://localhost:3006
+ * 开发环境：默认使用同域 /api，由 Vite 代理到后端
  * 生产环境：空字符串（使用相对路径，通过Nginx代理）
  */
 const isDev = import.meta.env.DEV;
 export const API_CONFIG = {
-  baseURL: isDev ? (import.meta.env.VITE_API_URL || 'http://localhost:3006') : '',
+  baseURL: isDev ? (import.meta.env.VITE_API_URL ?? '') : '',
   wsURL: import.meta.env.VITE_WS_URL || (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host,
 } as const;
 

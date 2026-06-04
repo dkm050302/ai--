@@ -31,6 +31,15 @@ import {
   analyzeMarket,
 } from '../controllers/aiAnalysis';
 import {
+  executePaperTrading,
+  getAnalysisReports,
+  getBacktests,
+  getPaperAccounts,
+  getResearchSummary,
+  resetPaperAccounts,
+  runBacktest,
+} from '../controllers/research';
+import {
   getDataSource,
   setDataSource,
   getDataSources,
@@ -80,6 +89,15 @@ router.post('/ai/test', optionalAuth, testAIConnection);
 
 // AI分析相关路由
 router.post('/ai/analyze', optionalAuth, analyzeMarket);
+
+// 研究中心：AI报告、模拟账号、回测
+router.get('/research/summary', optionalAuth, getResearchSummary);
+router.get('/research/reports', optionalAuth, getAnalysisReports);
+router.get('/research/paper-accounts', optionalAuth, getPaperAccounts);
+router.post('/research/paper-accounts/execute', optionalAuth, executePaperTrading);
+router.post('/research/paper-accounts/reset', optionalAuth, resetPaperAccounts);
+router.post('/research/backtests/run', optionalAuth, runBacktest);
+router.get('/research/backtests', optionalAuth, getBacktests);
 
 // 数据源相关路由
 router.get('/datasource', getDataSource);

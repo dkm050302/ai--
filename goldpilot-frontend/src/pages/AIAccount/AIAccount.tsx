@@ -140,10 +140,10 @@ export function AIAccount() {
       <div className="flex items-center justify-between pb-6">
         <div>
           <h1 className="text-4xl font-black text-slate-900" style={{ fontFamily: '"Times New Roman", serif' }}>
-            AI账号配置
+            AI配置
           </h1>
           <p className="text-sm text-slate-600 font-medium mt-2" style={{ fontFamily: '"Georgia", serif' }}>
-            配置您的AI服务提供商
+            单人样品模式，无需登录即可使用
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -257,20 +257,20 @@ export function AIAccount() {
         title={
           <div className="flex items-center gap-2">
             <ApiOutlined className="text-slate-600" />
-            <span className="font-bold text-slate-900">使用说明</span>
+            <span className="font-bold text-slate-900">样品说明</span>
           </div>
         }
       >
         <div className="space-y-3 text-slate-700">
           <div>
-            <p className="font-semibold mb-1">1. 获取API Key</p>
+            <p className="font-semibold mb-1">1. 无需登录</p>
             <p className="text-sm text-slate-600">
-              访问 <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">DeepSeek开放平台</a> 注册账号并获取API Key
+              当前版本默认使用本机演示用户，打开交易看板即可运行 AI 分析
             </p>
           </div>
           <div>
-            <p className="font-semibold mb-1">2. 配置API Key</p>
-            <p className="text-sm text-slate-600">点击"配置API Key"按钮，输入您的API Key并保存</p>
+            <p className="font-semibold mb-1">2. AI Key</p>
+            <p className="text-sm text-slate-600">DeepSeek API Key 已加密保存在本机后端，如需更换可在此页编辑</p>
           </div>
           <div>
             <p className="font-semibold mb-1">3. 测试连接</p>

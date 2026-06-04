@@ -3,7 +3,7 @@
  */
 const isDev = import.meta.env.DEV;
 export const API_BASE_URL = isDev
-  ? (import.meta.env.VITE_API_URL || 'http://localhost:3006')
+  ? (import.meta.env.VITE_API_URL ?? '')
   : '';
 
 /**

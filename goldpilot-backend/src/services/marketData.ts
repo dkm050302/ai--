@@ -12,8 +12,8 @@ export type DataSource = 'mock' | 'twelvedata';
  * 支持多数据源切换
  */
 class MarketDataService {
-  // 当前数据源（默认使用 Twelve Data）
-  private currentSource: DataSource = 'twelvedata';
+  // 单人样品默认使用模拟K线，避免未配置 Twelve Data 时首页无法分析
+  private currentSource: DataSource = process.env.DEFAULT_DATA_SOURCE === 'twelvedata' ? 'twelvedata' : 'mock';
 
   // 缓存机制，减少API调用
   private priceCache: { price: number; timestamp: number; source: string } | null = null;

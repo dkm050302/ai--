@@ -1,5 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService, type TokenPayload } from '../services/auth';
+import { UserModel } from '../models/User';
+import bcrypt from 'bcryptjs';
+
+const DEMO_MODE = process.env.DEMO_MODE !== 'false';
+const DEMO_ACCOUNT_ID = process.env.DEMO_ACCOUNT_ID || '27238218';
+const DEMO_SERVER = process.env.DEMO_SERVER || 'VTMarkets-Live 8';
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'Abc1234@';
+
+async function getDemoUserPayload(): Promise<TokenPayload> {
+  let user = await UserModel.findByAccountId(DEMO_ACCOUNT_ID, DEMO_SERVER);
+
+  if (!user) {
+    user = await UserModel.create({
+      accountId: DEMO_ACCOUNT_ID,
+      password: await bcrypt.hash(DEMO_PASSWORD, 10),
+      server: DEMO_SERVER,
+      accountInfo: {
+        balance: 0,
+        equity: 0,
+        margin: 0,
+        freeMargin: 0,
+        positions: [],
+        dailyPnl: 0,
+      },
+    });
+  }
+
+  return {
+    userId: user._id.toString(),
+    accountId: user.accountId,
+    server: user.server,
+  };
+}
 
 // 扩展Request类型，添加user属性
 declare global {
@@ -19,6 +52,11 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
+      if (DEMO_MODE) {
+        req.user = await getDemoUserPayload();
+        return next();
+      }
+
       return res.status(401).json({
         success: false,
         message: '未提供认证令牌',
@@ -35,6 +73,11 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     const decoded = authService.verifyToken(token);
 
     if (!decoded) {
+      if (DEMO_MODE) {
+        req.user = await getDemoUserPayload();
+        return next();
+      }
+
       return res.status(401).json({
         success: false,
         message: '认证令牌无效，请清除浏览器缓存后重新登录',
@@ -71,12 +114,24 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       const decoded = authService.verifyToken(token);
       if (decoded) {
         req.user = decoded;
+        return next();
       }
+    }
+
+    if (DEMO_MODE) {
+      req.user = await getDemoUserPayload();
     }
 
     next();
   } catch (error) {
-    // 忽略错误，继续处理请求
+    if (DEMO_MODE) {
+      try {
+        req.user = await getDemoUserPayload();
+      } catch {
+        // 忽略错误，继续处理请求
+      }
+    }
+
     next();
   }
 }

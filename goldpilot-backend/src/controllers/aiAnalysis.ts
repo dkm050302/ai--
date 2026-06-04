@@ -5,6 +5,7 @@
 import { Request, Response } from 'express';
 import { getUserApiKey } from './ai';
 import { logger } from '../utils/logger';
+import { AnalysisReportModel } from '../models/AnalysisReport';
 
 /**
  * AI分析请求接口
@@ -82,11 +83,25 @@ export async function analyzeMarket(req: Request, res: Response): Promise<void> 
 
     // 调用DeepSeek API
     const analysis = await callDeepSeekAPI(apiKey, prompt);
+    const report = await AnalysisReportModel.create({
+      userAccountId: req.user.accountId,
+      modelName: 'deepseek-chat',
+      promptVersion: 'goldpilot-analysis-v1',
+      currentPrice: currentPrice || candles?.[candles.length - 1]?.close || 0,
+      candleCount: candles?.length || 0,
+      events: events || [],
+      flashes: flashes || [],
+      signals: signals || [],
+      result: analysis,
+    });
 
     logger.info(`[AI分析] 分析完成`);
     res.json({
       success: true,
-      data: analysis
+      data: {
+        ...analysis,
+        reportId: report._id.toString(),
+      }
     });
   } catch (error) {
     logger.error('[AI分析] 分析失败:', error);

@@ -35,6 +35,12 @@ export function Tabs() {
         label = 'MT4账号管理';
       } else if (path === '/event-driven') {
         label = '事件驱动首页';
+      } else if (path === '/ai-account') {
+        label = 'AI账号';
+      } else if (path === '/datasource-settings') {
+        label = '数据源设置';
+      } else if (path === '/research-center') {
+        label = '策略研究';
       }
 
       setItems([...items, { key: path, label, closable: true }]);
