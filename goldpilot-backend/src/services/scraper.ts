@@ -2,7 +2,7 @@
  * 爬虫服务 - 获取经济日历和市场快讯数据
  *
  * 数据源:
- * - 经济日历: Trading Economics (免费API)
+ * - 经济日历: 汇通财经日历 + 金十财经日历(备用) + Trading Economics(备用)
  * - 市场快讯: 东方财富快讯
  */
 
@@ -16,9 +16,14 @@ import { logger } from '../utils/logger';
 const TE_API_KEY = process.env.TRADING_ECONOMICS_KEY || 'guest';
 const TE_API_BASE = 'https://api.tradingeconomics.com';
 const TRADING_ECONOMICS_CALENDAR_URL = 'https://tradingeconomics.com/calendar';
+const FX678_CALENDAR_BASE_URL = 'https://rl.fx678.com';
+const JIN10_API_REFERER_URL = 'https://rili.jin10.com';
+const JIN10_API_BASE = 'https://e0430d16720e4211b5e072c26205c890.z3c.jin10.com';
 const EASTMONEY_FLASH_URL = 'https://kuaixun.eastmoney.com/index.html';
 const EASTMONEY_FAST_NEWS_API = 'https://np-weblist.eastmoney.com/comm/web/getFastNewsList';
 const EASTMONEY_ARTICLE_BASE_URL = 'https://finance.eastmoney.com/a/';
+
+type EconomicEventCategory = 'data' | 'event';
 
 /**
  * 经济事件类型
@@ -44,6 +49,8 @@ export interface EconomicEvent {
   source?: string;
   /** 来源链接 */
   sourceUrl?: string;
+  /** 日历分类 */
+  category?: EconomicEventCategory;
 }
 
 /**
@@ -91,7 +98,7 @@ class ScraperService {
 
   /**
    * 获取经济日历数据（多数据源降级）
-   * 优先级: Trading Economics 官方API(需Key) -> Trading Economics网页 -> 模拟不可用提示
+   * 优先级: Trading Economics 官方API(需Key) -> 汇通财经日历 -> 金十财经日历 -> Trading Economics网页 -> 模拟不可用提示
    * @param date 日期格式: YYYYMMDD 或 YYYY-MM-DD
    */
   async getEconomicCalendar(date: string = ''): Promise<EconomicEvent[]> {
@@ -103,7 +110,19 @@ class ScraperService {
       }
     }
 
-    // 尝试使用 Trading Economics API（免费有限访问）
+    try {
+      return await this.getFx678EconomicCalendar(date);
+    } catch (error) {
+      logger.warn(`[Scraper] 汇通财经日历失败，尝试金十财经日历: ${error}`);
+    }
+
+    try {
+      return await this.getJin10EconomicCalendar(date);
+    } catch (error) {
+      logger.warn(`[Scraper] 金十财经日历失败，尝试 Trading Economics 网页解析: ${error}`);
+    }
+
+    // 尝试使用 Trading Economics 网页（备用）
     try {
       return await this.getTradingEconomicsCalendar(date);
     } catch (error) {
@@ -179,7 +198,298 @@ class ScraperService {
       previous: this.stringifyField(row.Previous) || undefined,
       source: 'Trading Economics',
       sourceUrl: TRADING_ECONOMICS_CALENDAR_URL,
+      category: 'data',
     };
+  }
+
+  /**
+   * 汇通财经日历页面服务端直接输出表格，适合作为客户可核对的公开源。
+   */
+  private async getFx678EconomicCalendar(date: string = ''): Promise<EconomicEvent[]> {
+    const dateKey = this.normalizeDate(date);
+    const dateCompact = dateKey.replace(/-/g, '');
+    const pageUrl = `${FX678_CALENDAR_BASE_URL}/date/${dateCompact}.html`;
+
+    logger.info(`[Scraper] 从汇通财经日历获取 ${dateKey} 经济数据/事件`);
+
+    const response = await axios.get(pageUrl, {
+      headers: {
+        'User-Agent': this.USER_AGENT,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        Referer: `${FX678_CALENDAR_BASE_URL}/`,
+      },
+      timeout: this.TIMEOUT,
+    });
+
+    const $ = cheerio.load(response.data);
+    const dataItems = this.parseFx678DataRows($, dateKey, pageUrl);
+    const eventItems = this.parseFx678EventRows($, dateKey, pageUrl);
+    const events = [...dataItems, ...eventItems].sort((a, b) =>
+      `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)
+    );
+
+    if (events.length === 0) {
+      throw new Error('汇通财经日历未解析到数据');
+    }
+
+    logger.info(`[Scraper] 汇通财经日历: 成功获取 ${events.length} 条数据/事件`);
+    return events.slice(0, 160);
+  }
+
+  private parseFx678DataRows(
+    $: cheerio.CheerioAPI,
+    dateKey: string,
+    pageUrl: string
+  ): EconomicEvent[] {
+    const events: EconomicEvent[] = [];
+    let currentTime = '';
+    let currentCountry = '';
+
+    $('#current_data tr, #moreData tr').each((_, element) => {
+      const $row = $(element);
+      const $cells = $row.children('td');
+      if ($cells.length === 0) return;
+
+      const $timeCell = $cells.filter((__, cell) => $(cell).hasClass('tab_time')).first();
+      const parsedTime = this.cleanText($timeCell.text());
+      if (parsedTime) currentTime = parsedTime;
+
+      const rowCountry = this.getFx678Country($row);
+      if (rowCountry) currentCountry = rowCountry;
+
+      const titleCellIndex = $cells.toArray().findIndex((cell) => $(cell).hasClass('tab_font'));
+      if (titleCellIndex < 0) return;
+
+      const $titleCell = $cells.eq(titleCellIndex);
+      const $link = $titleCell.find('a').first();
+      const event = this.cleanText($link.text() || $titleCell.text());
+      if (!event) return;
+
+      const href = $link.attr('href');
+      const sourceUrl = href ? new URL(href, FX678_CALENDAR_BASE_URL).toString() : pageUrl;
+      const importanceCell = $cells.eq(titleCellIndex + 4);
+      const importance = this.mapFx678DataImportance(
+        this.cleanText(importanceCell.text()),
+        $row.hasClass('red_color_s')
+      );
+
+      events.push({
+        date: dateKey,
+        time: currentTime || '待定',
+        country: currentCountry || '',
+        event,
+        importance,
+        previous: this.cleanText($cells.eq(titleCellIndex + 1).text()) || undefined,
+        forecast: this.cleanText($cells.eq(titleCellIndex + 2).text()) || undefined,
+        actual: this.cleanText($cells.eq(titleCellIndex + 3).text()) || undefined,
+        source: '汇通财经日历',
+        sourceUrl,
+        category: 'data',
+      });
+    });
+
+    return events;
+  }
+
+  private parseFx678EventRows(
+    $: cheerio.CheerioAPI,
+    dateKey: string,
+    pageUrl: string
+  ): EconomicEvent[] {
+    const eventTable = $('.sq_logo')
+      .filter((_, element) => $(element).text().includes('财经大事件'))
+      .first()
+      .nextAll('table.cjsj_tab2')
+      .not('#next_event')
+      .first();
+
+    const events: EconomicEvent[] = [];
+    eventTable.find('tr').each((_, element) => {
+      const $cells = $(element).children('td');
+      if ($cells.length < 5) return;
+
+      const time = this.cleanText($cells.eq(0).text());
+      const country = this.cleanText($cells.eq(1).find('span').first().text()) ||
+        this.getFx678Country($cells.eq(1));
+      const event = this.cleanText($cells.last().text());
+      if (!event) return;
+
+      events.push({
+        date: dateKey,
+        time: time || '待定',
+        country,
+        event,
+        importance: this.mapFx678EventImportance($cells.eq(3).html() || ''),
+        source: '汇通财经大事',
+        sourceUrl: pageUrl,
+        category: 'event',
+      });
+    });
+
+    return events;
+  }
+
+  private getFx678Country(node: cheerio.Cheerio<any>): string {
+    const classText = node.find('.circle_flag').first().attr('class') || '';
+    if (classText.includes('c_usa')) return '美国';
+    if (classText.includes('c_uk')) return '英国';
+    if (classText.includes('c_euro')) return '欧元区';
+    if (classText.includes('c_china')) return '中国';
+    if (classText.includes('c_japan')) return '日本';
+    if (classText.includes('c_australia')) return '澳大利亚';
+    if (classText.includes('c_canada')) return '加拿大';
+    return this.cleanText(node.find('.flag_bb span').first().text());
+  }
+
+  private mapFx678DataImportance(label: string, highlighted: boolean): number {
+    if (label.includes('高')) return 4;
+    if (label.includes('中')) return 3;
+    if (label.includes('低')) return 2;
+    return highlighted ? 4 : 1;
+  }
+
+  private mapFx678EventImportance(html: string): number {
+    const match = html.match(/star_(\d+)/);
+    if (match) return this.normalizeImportance(match[1]);
+    return 1;
+  }
+
+  /**
+   * 使用金十财经日历结构化接口获取当天经济数据和重要事件。
+   * 仅作为后台备用源，不作为客户可点击核对入口。
+   */
+  private async getJin10EconomicCalendar(date: string = ''): Promise<EconomicEvent[]> {
+    const dateKey = this.normalizeDate(date);
+    const headers = this.getJin10Headers();
+
+    logger.info(`[Scraper] 从金十财经日历获取 ${dateKey} 经济数据/事件`);
+
+    const [dataResponse, eventResponse] = await Promise.all([
+      axios.get(`${JIN10_API_BASE}/get/data`, {
+        params: { date: dateKey, category: 'cj' },
+        headers,
+        timeout: this.TIMEOUT,
+      }).catch((error) => {
+        logger.warn(`[Scraper] 金十财经数据接口失败: ${error}`);
+        return null;
+      }),
+      axios.get(`${JIN10_API_BASE}/get/event`, {
+        params: { date: dateKey, category: 'cj' },
+        headers,
+        timeout: this.TIMEOUT,
+      }).catch((error) => {
+        logger.warn(`[Scraper] 金十财经事件接口失败: ${error}`);
+        return null;
+      }),
+    ]);
+
+    if (!dataResponse && !eventResponse) {
+      throw new Error('金十财经日历数据和事件接口均不可用');
+    }
+
+    const dataRows = dataResponse ? this.getJin10Rows(dataResponse.data) : [];
+    const eventRows = eventResponse ? this.getJin10Rows(eventResponse.data) : [];
+
+    const dataItems = dataRows
+      .map((row) => this.mapJin10EconomicDataRow(row, dateKey))
+      .filter((item): item is EconomicEvent => Boolean(item));
+    const eventItems = eventRows
+      .map((row) => this.mapJin10EventRow(row, dateKey))
+      .filter((item): item is EconomicEvent => Boolean(item));
+
+    const events = [...dataItems, ...eventItems].sort((a, b) =>
+      `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)
+    );
+
+    logger.info(`[Scraper] 金十财经日历: 成功获取 ${events.length} 条数据/事件`);
+    return events.slice(0, 120);
+  }
+
+  private getJin10Headers(): Record<string, string> {
+    return {
+      'User-Agent': this.USER_AGENT,
+      Accept: 'application/json,text/plain,*/*',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
+      Origin: JIN10_API_REFERER_URL,
+      Referer: `${JIN10_API_REFERER_URL}/`,
+      'x-app-id': 'sKKYe29sFuJaeOCJ',
+      'x-version': '2.0',
+      handleError: 'false',
+    };
+  }
+
+  private getJin10Rows(payload: unknown): Record<string, unknown>[] {
+    const rows = (payload as { data?: unknown })?.data;
+    return Array.isArray(rows) ? rows as Record<string, unknown>[] : [];
+  }
+
+  private mapJin10EconomicDataRow(row: Record<string, unknown>, dateKey: string): EconomicEvent | null {
+    const name = this.stringifyField(row.indicator_name) || this.stringifyField(row.name);
+    if (!name) return null;
+
+    const { date, time } = this.splitJin10DateTime(row.pub_time, dateKey);
+    const unit = this.stringifyField(row.unit);
+    const timePeriod = this.stringifyField(row.time_period);
+    const titlePrefix = timePeriod ? `${timePeriod}` : '';
+    const unitText = unit && unit !== '%' ? `(${unit})` : '';
+
+    return {
+      date,
+      time,
+      country: this.stringifyField(row.country) || '美国',
+      event: `${titlePrefix}${name}${unitText}`,
+      importance: this.normalizeImportance(row.star),
+      actual: this.formatValueWithUnit(row.actual, unit),
+      forecast: this.formatValueWithUnit(row.consensus, unit),
+      previous: this.formatValueWithUnit(row.revised || row.previous, unit),
+      source: '金十财经日历',
+      sourceUrl: this.getFx678DatePageUrl(dateKey),
+      category: 'data',
+    };
+  }
+
+  private mapJin10EventRow(row: Record<string, unknown>, dateKey: string): EconomicEvent | null {
+    const content = this.stringifyField(row.event_content) || this.stringifyField(row.content);
+    if (!content) return null;
+
+    const { date, time } = this.splitJin10DateTime(row.event_time, dateKey);
+    const timeStatus = this.stringifyField(row.time_status);
+
+    return {
+      date,
+      time: timeStatus || time,
+      country: this.stringifyField(row.country) || '美国',
+      event: content,
+      importance: this.normalizeImportance(row.star),
+      source: '金十重要事件',
+      sourceUrl: this.getFx678DatePageUrl(dateKey),
+      category: 'event',
+    };
+  }
+
+  private getFx678DatePageUrl(dateKey: string): string {
+    return `${FX678_CALENDAR_BASE_URL}/date/${dateKey.replace(/-/g, '')}.html`;
+  }
+
+  private splitJin10DateTime(value: unknown, fallbackDate: string): { date: string; time: string } {
+    const text = this.stringifyField(value);
+    const match = text.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})/);
+    if (!match) {
+      return { date: fallbackDate, time: '待定' };
+    }
+
+    return {
+      date: match[1],
+      time: match[2].padStart(5, '0'),
+    };
+  }
+
+  private formatValueWithUnit(value: unknown, unit: string): string | undefined {
+    const text = this.stringifyField(value);
+    if (!text) return undefined;
+    if (unit === '%' && !text.endsWith('%')) return `${text}%`;
+    return text;
   }
 
   private stringifyField(value: unknown): string {

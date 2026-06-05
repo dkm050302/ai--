@@ -37,8 +37,7 @@ interface CalendarFetchResult {
 }
 
 const WEEK_DAYS = 7;
-const JIN10_CALENDAR_URL = 'https://rili.jin10.com';
-const JIN10_EVENT_URL = 'https://rili.jin10.com/?tab=event';
+const FX678_CALENDAR_URL = 'https://rl.fx678.com/';
 const TRADING_ECONOMICS_CALENDAR_URL = 'https://tradingeconomics.com/calendar';
 
 const EVENT_KEYWORDS = [
@@ -167,6 +166,9 @@ function includesKeyword(content: string, keyword: string): boolean {
 }
 
 function classifyEvent(item: EconomicEvent): ImportantCalendarCategory {
+  if (item.category === 'event') return 'event';
+  if (item.category === 'data') return 'data';
+
   const content = `${item.country || ''} ${item.event || ''}`;
   if (EVENT_KEYWORDS.some((keyword) => includesKeyword(content, keyword))) return 'event';
   if (DATA_KEYWORDS.some((keyword) => includesKeyword(content, keyword))) return 'data';
@@ -185,7 +187,7 @@ function isInTodayWindow(item: EconomicEvent, today: string): boolean {
 
   const itemDate = normalizeDate(item.date || today);
   const nextDate = addDays(today, 1);
-  return (itemDate === today && minutes >= 18 * 60) ||
+  return (itemDate === today && (minutes >= 18 * 60 || minutes <= 5 * 60)) ||
     (itemDate === nextDate && minutes <= 5 * 60);
 }
 
@@ -211,7 +213,11 @@ function toImportantItem(item: EconomicEvent, category: ImportantCalendarCategor
 
 function getFallbackSourceUrl(source?: string): string {
   if (source === 'Trading Economics') return TRADING_ECONOMICS_CALENDAR_URL;
-  return JIN10_CALENDAR_URL;
+  return FX678_CALENDAR_URL;
+}
+
+function compactDate(date: string): string {
+  return normalizeDate(date).replace(/-/g, '');
 }
 
 function dedupeItems(items: ImportantCalendarItem[]): ImportantCalendarItem[] {
@@ -226,6 +232,19 @@ function dedupeItems(items: ImportantCalendarItem[]): ImportantCalendarItem[] {
 
 function sortByDateTime(a: EconomicEvent, b: EconomicEvent): number {
   return `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
+}
+
+function sortByTodayWindowPriority(today: string) {
+  return (a: EconomicEvent, b: EconomicEvent): number => {
+    const priority = (item: EconomicEvent): number => {
+      const itemDate = normalizeDate(item.date || today);
+      const minutes = parseTimeMinutes(item.time);
+      if (itemDate === today && minutes !== null && minutes >= 18 * 60) return 0;
+      return 1;
+    };
+
+    return priority(a) - priority(b) || sortByDateTime(a, b);
+  };
 }
 
 function isMockEvent(item: EconomicEvent): boolean {
@@ -256,11 +275,17 @@ function mergeMeta(results: CalendarFetchResult[]): EventDataMeta {
 class ImportantEventsService {
   async getImportantEvents(date: string = ''): Promise<{ data: ImportantEventsPayload; meta: EventDataMeta }> {
     const today = normalizeDate(date);
-    const calendarResult = await eventDataCacheService.getEconomicCalendar(today);
-    const results: CalendarFetchResult[] = [{
-      events: calendarResult.data,
-      meta: calendarResult.meta,
-    }];
+    const todayCompact = compactDate(today);
+    const dateKeys = Array.from({ length: WEEK_DAYS }, (_, index) => addDays(today, index));
+    const results: CalendarFetchResult[] = await Promise.all(
+      dateKeys.map(async (dateKey) => {
+        const calendarResult = await eventDataCacheService.getEconomicCalendar(dateKey);
+        return {
+          events: calendarResult.data,
+          meta: calendarResult.meta,
+        };
+      })
+    );
 
     const rawItems = results
       .flatMap((result) => result.events)
@@ -278,9 +303,11 @@ class ImportantEventsService {
 
     const todayData = importantItems
       .filter((item) => item.category === 'data' && isInTodayWindow(item, today))
+      .sort(sortByTodayWindowPriority(today))
       .slice(0, 6);
     const todayEvents = importantItems
       .filter((item) => item.category === 'event' && isInTodayWindow(item, today))
+      .sort(sortByTodayWindowPriority(today))
       .slice(0, 6);
     const weekData = importantItems
       .filter((item) => item.category === 'data' && isWithinWeek(item, today) && isTradingWindowHour(item))
@@ -296,13 +323,12 @@ class ImportantEventsService {
         weekData,
         weekEvents,
         sourceLinks: [
-          { name: '金十财经日历', url: JIN10_CALENDAR_URL, note: '人工核对当天重要数据' },
-          { name: '金十重要事件', url: JIN10_EVENT_URL, note: '人工核对当天重要事项' },
-          { name: 'Trading Economics', url: TRADING_ECONOMICS_CALENDAR_URL, note: '当前缓存/抓取源' },
+          { name: '汇通财经日历', url: `${FX678_CALENDAR_URL}date/${todayCompact}.html`, note: '当前主要数据源，可打开核对原信息' },
+          { name: 'Trading Economics', url: TRADING_ECONOMICS_CALENDAR_URL, note: '备用日历源' },
         ],
         filters: {
           country: '美国',
-          todayWindow: '北京时间18:00-次日05:00',
+          todayWindow: '北京时间00:00-05:00与18:00-次日05:00',
           dataImportanceMin: 4,
           eventImportanceMin: 3,
           weekDays: WEEK_DAYS,

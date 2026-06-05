@@ -28,6 +28,7 @@ export interface EconomicEvent {
   previous?: string;
   source?: string;
   sourceUrl?: string;
+  category?: 'data' | 'event';
 }
 
 export type ImportantCalendarCategory = 'data' | 'event';
