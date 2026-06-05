@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Descriptions, Progress, Row, Space, Statistic, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Col, Descriptions, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ExperimentOutlined, FundProjectionScreenOutlined, ReloadOutlined, RiseOutlined, UndoOutlined } from '@ant-design/icons';
 import { researchApi, type AnalysisReport, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade } from '@/services/research';
+import { EquityCurveChart, type EquityCurveSeries } from '@/components/EquityCurveChart';
+import { PageHeader } from '@/components/PageHeader';
 
 const { Text, Title } = Typography;
+const INITIAL_BALANCE = 10000;
 
 function formatMoney(value: number): string {
   return `$${Number(value || 0).toFixed(2)}`;
@@ -29,6 +32,7 @@ function statusTag(status?: PaperTrade['status']) {
   if (status === 'open') return <Tag color="processing">持仓中</Tag>;
   if (status === 'closed') return <Tag color="default">已平仓</Tag>;
   if (status === 'skipped') return <Tag color="warning">跳过</Tag>;
+  if (status === 'held') return <Tag color="blue">继续持有</Tag>;
   return <Tag>未知</Tag>;
 }
 
@@ -38,11 +42,24 @@ function riskColor(level?: string): 'success' | 'normal' | 'exception' {
   return 'normal';
 }
 
+function toSeconds(value?: string): number {
+  if (!value) return Math.floor(Date.now() / 1000);
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : Math.floor(Date.now() / 1000);
+}
+
 const profileOrder: Record<string, number> = {
   conservative: 0,
   balanced: 1,
   aggressive: 2,
   event: 3,
+};
+
+const profileColors: Record<string, string> = {
+  conservative: '#2563eb',
+  balanced: '#16a34a',
+  aggressive: '#dc2626',
+  event: '#7c3aed',
 };
 
 interface TradeRecord extends PaperTrade {
@@ -55,16 +72,28 @@ export function ResearchCenter() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [latestReport, setLatestReport] = useState<AnalysisReport | null>(null);
+  const [reports, setReports] = useState<AnalysisReport[]>([]);
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
   const [latestBacktest, setLatestBacktest] = useState<BacktestRun | null>(null);
+  const [markPrice, setMarkPrice] = useState<number | null>(null);
+  const [backtestPeriod, setBacktestPeriod] = useState('1m');
+  const [backtestLimit, setBacktestLimit] = useState(240);
+  const [backtestExitBars, setBacktestExitBars] = useState(8);
+  const [backtestSlippagePct, setBacktestSlippagePct] = useState(0.03);
+  const [backtestCommissionPct, setBacktestCommissionPct] = useState(0.01);
 
   const loadSummary = async () => {
     try {
       setLoading(true);
-      const summary = await researchApi.getSummary();
+      const [summary, reportList] = await Promise.all([
+        researchApi.getSummary(),
+        researchApi.getReports(),
+      ]);
       setLatestReport(summary.latestReport);
+      setReports(reportList);
       setAccounts(summary.accounts || []);
       setLatestBacktest(summary.latestBacktest);
+      setMarkPrice(summary.markPrice ?? null);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载研究中心失败');
     } finally {
@@ -88,6 +117,12 @@ export function ResearchCenter() {
     [accounts]
   );
 
+  const reportById = useMemo(() => {
+    const map = new Map<string, AnalysisReport>();
+    reports.forEach((report) => map.set(report._id, report));
+    return map;
+  }, [reports]);
+
   const tradeRows = useMemo<TradeRecord[]>(() => {
     return orderedAccounts
       .flatMap((account) =>
@@ -100,6 +135,99 @@ export function ResearchCenter() {
       )
       .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
   }, [orderedAccounts]);
+
+  const accountStats = useMemo(() => {
+    return orderedAccounts.map((account) => {
+      const trades = account.tradeLog || [];
+      const closed = trades.filter((trade) => trade.status === 'closed');
+      const opened = trades.filter((trade) => trade.status === 'open');
+      const skipped = trades.filter((trade) => trade.status === 'skipped');
+      const held = trades.filter((trade) => trade.status === 'held');
+      const wins = closed.filter((trade) => Number(trade.pnl) > 0);
+
+      return {
+        key: account.profileId,
+        name: account.name,
+        balance: account.balance,
+        equity: account.equity,
+        realizedPnl: account.realizedPnl,
+        total: trades.length,
+        open: opened.length,
+        skipped: skipped.length,
+        held: held.length,
+        closed: closed.length,
+        winRate: closed.length ? Number(((wins.length / closed.length) * 100).toFixed(1)) : 0,
+      };
+    });
+  }, [orderedAccounts]);
+
+  const researchMetrics = useMemo(() => {
+    const totalEquity = orderedAccounts.reduce((sum, account) => sum + Number(account.equity || 0), 0);
+    const realizedPnl = orderedAccounts.reduce((sum, account) => sum + Number(account.realizedPnl || 0), 0);
+    const openTrades = orderedAccounts.filter((account) => account.openTrade?.status === 'open').length;
+
+    return {
+      totalEquity,
+      realizedPnl,
+      openTrades,
+      reportCount: reports.length,
+    };
+  }, [orderedAccounts, reports.length]);
+
+  const accountEquitySeries = useMemo<EquityCurveSeries[]>(() => {
+    return orderedAccounts.map((account) => {
+      const chronologicalTrades = [...(account.tradeLog || [])]
+        .sort((a, b) => toSeconds(a.openedAt) - toSeconds(b.openedAt));
+      const firstTime = chronologicalTrades[0]?.openedAt
+        ? toSeconds(chronologicalTrades[0].openedAt) - 60
+        : toSeconds(account.updatedAt) - 60;
+      let realizedEquity = INITIAL_BALANCE;
+      const data = [{ time: firstTime, value: realizedEquity }];
+
+      chronologicalTrades.forEach((trade) => {
+        if (trade.status === 'closed') {
+          realizedEquity = Number((realizedEquity + Number(trade.pnl || 0)).toFixed(2));
+          data.push({
+            time: toSeconds(trade.closedAt || trade.openedAt),
+            value: realizedEquity,
+          });
+        }
+
+        if (trade.status === 'held') {
+          data.push({
+            time: toSeconds(trade.openedAt),
+            value: Number((account.balance + Number(trade.pnl || 0)).toFixed(2)),
+          });
+        }
+      });
+
+      data.push({
+        time: toSeconds(account.updatedAt),
+        value: Number(account.equity || account.balance || INITIAL_BALANCE),
+      });
+
+      return {
+        id: account.profileId,
+        name: account.name,
+        color: profileColors[account.profileId],
+        data,
+      };
+    });
+  }, [orderedAccounts]);
+
+  const backtestEquitySeries = useMemo<EquityCurveSeries[]>(() => {
+    return (latestBacktest?.results || [])
+      .filter((result) => result.equityCurve && result.equityCurve.length > 0)
+      .map((result) => ({
+        id: result.profileId,
+        name: result.name,
+        color: profileColors[result.profileId] || '#2563eb',
+        data: (result.equityCurve || []).map((point) => ({
+          time: point.time,
+          value: point.equity,
+        })),
+      }));
+  }, [latestBacktest]);
 
   const handleExecute = async () => {
     try {
@@ -114,12 +242,33 @@ export function ResearchCenter() {
     }
   };
 
+  const handleSettle = async () => {
+    try {
+      setActing(true);
+      const result = await researchApi.settlePaperAccounts();
+      const closedCount = result.settlements.filter((item) => item.action === 'closed').length;
+      setAccounts(result.accounts);
+      setMarkPrice(result.price);
+      message.success(closedCount > 0 ? `已自动平仓 ${closedCount} 笔` : '未触发止盈止损，已更新权益');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '结算持仓失败');
+    } finally {
+      setActing(false);
+    }
+  };
+
   const handleBacktest = async () => {
     try {
       setActing(true);
-      const backtest = await researchApi.runBacktest(latestReport?._id);
+      const backtest = await researchApi.runBacktest(latestReport?._id, {
+        period: backtestPeriod,
+        limit: backtestLimit,
+        exitBars: backtestExitBars,
+        slippagePct: backtestSlippagePct,
+        commissionPct: backtestCommissionPct,
+      });
       setLatestBacktest(backtest);
-      message.success('基础回测完成');
+      message.success('升级回测完成');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '回测失败');
     } finally {
@@ -169,6 +318,20 @@ export function ResearchCenter() {
       render: (value) => `${Number(value || 0).toFixed(1)}%`,
     },
     {
+      title: 'PF',
+      dataIndex: 'profitFactor',
+      key: 'profitFactor',
+      width: 80,
+      render: (value) => Number(value || 0).toFixed(2),
+    },
+    {
+      title: '期望',
+      dataIndex: 'expectancy',
+      key: 'expectancy',
+      width: 90,
+      render: (value) => <Text type={value >= 0 ? 'success' : 'danger'}>{formatMoney(value)}</Text>,
+    },
+    {
       title: '净收益',
       dataIndex: 'netPnl',
       key: 'netPnl',
@@ -183,10 +346,141 @@ export function ResearchCenter() {
       render: (value) => `${Number(value || 0).toFixed(2)}%`,
     },
     {
+      title: '稳健度',
+      dataIndex: 'robustnessScore',
+      key: 'robustnessScore',
+      width: 90,
+      render: (value) => <Tag color={value >= 75 ? 'success' : value >= 50 ? 'warning' : 'error'}>{Number(value || 0)}%</Tag>,
+    },
+    {
       title: '备注',
       dataIndex: 'note',
       key: 'note',
       ellipsis: true,
+      render: (value, record) => (
+        <Space>
+          {record.sampleWarning && <Tag color="warning">样本偏少</Tag>}
+          <Text>{value}</Text>
+        </Space>
+      ),
+    },
+  ];
+
+  const reportColumns: ColumnsType<AnalysisReport> = [
+    {
+      title: '时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 130,
+      render: formatDate,
+    },
+    {
+      title: '结论',
+      key: 'headline',
+      render: (_, report) => <Text strong>{report.result.decision.headline}</Text>,
+    },
+    {
+      title: '价格',
+      dataIndex: 'currentPrice',
+      key: 'currentPrice',
+      width: 100,
+      render: (value) => Number(value || 0).toFixed(2),
+    },
+    {
+      title: '上涨',
+      key: 'upProb',
+      width: 90,
+      render: (_, report) => `${report.result.probability.upProb}%`,
+    },
+    {
+      title: '下跌',
+      key: 'downProb',
+      width: 90,
+      render: (_, report) => `${report.result.probability.downProb}%`,
+    },
+    {
+      title: '风险',
+      key: 'risk',
+      width: 90,
+      render: (_, report) => `${report.result.risk.risk}`,
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 90,
+      render: (_, report) => (
+        <Button size="small" onClick={() => setLatestReport(report)}>
+          查看
+        </Button>
+      ),
+    },
+  ];
+
+  const accountStatColumns: ColumnsType<(typeof accountStats)[number]> = [
+    {
+      title: '账号',
+      dataIndex: 'name',
+      key: 'name',
+      width: 110,
+      render: (value) => <Text strong>{value}</Text>,
+    },
+    {
+      title: '余额',
+      dataIndex: 'balance',
+      key: 'balance',
+      width: 110,
+      render: formatMoney,
+    },
+    {
+      title: '权益',
+      dataIndex: 'equity',
+      key: 'equity',
+      width: 110,
+      render: formatMoney,
+    },
+    {
+      title: '已实现盈亏',
+      dataIndex: 'realizedPnl',
+      key: 'realizedPnl',
+      width: 120,
+      render: (value) => <Text type={value >= 0 ? 'success' : 'danger'}>{formatMoney(value)}</Text>,
+    },
+    {
+      title: '记录数',
+      dataIndex: 'total',
+      key: 'total',
+      width: 90,
+    },
+    {
+      title: '开仓',
+      dataIndex: 'open',
+      key: 'open',
+      width: 80,
+    },
+    {
+      title: '跳过',
+      dataIndex: 'skipped',
+      key: 'skipped',
+      width: 80,
+    },
+    {
+      title: '持有',
+      dataIndex: 'held',
+      key: 'held',
+      width: 80,
+    },
+    {
+      title: '已平仓',
+      dataIndex: 'closed',
+      key: 'closed',
+      width: 90,
+    },
+    {
+      title: '平仓胜率',
+      dataIndex: 'winRate',
+      key: 'winRate',
+      width: 100,
+      render: (value) => `${Number(value || 0).toFixed(1)}%`,
     },
   ];
 
@@ -267,24 +561,75 @@ export function ResearchCenter() {
       key: 'reason',
       ellipsis: true,
     },
+    {
+      title: '关联报告',
+      dataIndex: 'reportId',
+      key: 'reportId',
+      width: 160,
+      ellipsis: true,
+      render: (reportId) => reportId ? (reportById.get(reportId)?.result.decision.headline || reportId.slice(-8)) : '-',
+    },
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <Title level={3} style={{ margin: 0 }}>AI策略研究中心</Title>
-          <Text type="secondary">报告、模拟账号、基础回测</Text>
-        </div>
-        <Space>
+    <div className="workspace-page">
+      <PageHeader
+        eyebrow="Strategy Lab"
+        title="策略研究"
+        description="AI报告、四账号模拟交易和回测结果"
+        meta={markPrice !== null ? <span className="pill blue">结算价 {markPrice.toFixed(2)}</span> : <span className="pill">等待结算</span>}
+        actions={(
+          <Space wrap>
           <Button icon={<ReloadOutlined />} onClick={loadSummary} loading={loading}>
             刷新
+          </Button>
+          <Button icon={<FundProjectionScreenOutlined />} onClick={handleSettle} loading={acting}>
+            结算持仓
           </Button>
           <Button icon={<UndoOutlined />} onClick={handleReset} loading={acting}>
             重置账号
           </Button>
-        </Space>
-      </div>
+          </Space>
+        )}
+      />
+
+      <Row gutter={[12, 12]}>
+        <Col xs={24} sm={12} xl={6}>
+          <div className="metric-tile">
+            <div className="metric-tile-label">AI报告</div>
+            <div className="metric-tile-value">{researchMetrics.reportCount}</div>
+          </div>
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <div className="metric-tile">
+            <div className="metric-tile-label">模拟权益</div>
+            <div className="metric-tile-value">{formatMoney(researchMetrics.totalEquity)}</div>
+          </div>
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <div className="metric-tile">
+            <div className="metric-tile-label">已实现盈亏</div>
+            <div className={researchMetrics.realizedPnl >= 0 ? 'metric-tile-value green' : 'metric-tile-value red'}>
+              {formatMoney(researchMetrics.realizedPnl)}
+            </div>
+          </div>
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <div className="metric-tile">
+            <div className="metric-tile-label">持仓账号</div>
+            <div className="metric-tile-value">{researchMetrics.openTrades}</div>
+          </div>
+        </Col>
+      </Row>
+
+      {markPrice !== null && (
+        <Alert
+          type="info"
+          showIcon
+          message={`最近模拟结算价：${markPrice.toFixed(2)}`}
+          description="系统会在加载研究中心、新AI报告生成、手动结算时检查模拟持仓是否触发止盈或止损。"
+        />
+      )}
 
       {!latestReport && (
         <Alert
@@ -298,7 +643,8 @@ export function ResearchCenter() {
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
           <Card
-            title="最新AI报告"
+            className="workspace-card"
+            title="当前查看报告"
             loading={loading}
             extra={latestReport ? <Text type="secondary">{formatDate(latestReport.createdAt)}</Text> : null}
           >
@@ -353,20 +699,84 @@ export function ResearchCenter() {
                 </Descriptions>
 
                 <Space wrap>
+                  <Space>
+                    <Text type="secondary">周期</Text>
+                    <Select
+                      size="small"
+                      value={backtestPeriod}
+                      style={{ width: 92 }}
+                      onChange={setBacktestPeriod}
+                      options={[
+                        { value: '1m', label: '1分钟' },
+                        { value: '5m', label: '5分钟' },
+                        { value: '15m', label: '15分钟' },
+                        { value: '1h', label: '1小时' },
+                      ]}
+                    />
+                  </Space>
+                  <Space>
+                    <Text type="secondary">K线</Text>
+                    <InputNumber
+                      size="small"
+                      min={60}
+                      max={1500}
+                      step={60}
+                      value={backtestLimit}
+                      style={{ width: 92 }}
+                      onChange={(value) => setBacktestLimit(Number(value || 240))}
+                    />
+                  </Space>
+                  <Space>
+                    <Text type="secondary">持仓K</Text>
+                    <InputNumber
+                      size="small"
+                      min={3}
+                      max={48}
+                      value={backtestExitBars}
+                      style={{ width: 78 }}
+                      onChange={(value) => setBacktestExitBars(Number(value || 8))}
+                    />
+                  </Space>
+                  <Space>
+                    <Text type="secondary">滑点%</Text>
+                    <InputNumber
+                      size="small"
+                      min={0}
+                      max={0.5}
+                      step={0.01}
+                      value={backtestSlippagePct}
+                      style={{ width: 78 }}
+                      onChange={(value) => setBacktestSlippagePct(Number(value ?? 0.03))}
+                    />
+                  </Space>
+                  <Space>
+                    <Text type="secondary">手续费%</Text>
+                    <InputNumber
+                      size="small"
+                      min={0}
+                      max={0.5}
+                      step={0.01}
+                      value={backtestCommissionPct}
+                      style={{ width: 78 }}
+                      onChange={(value) => setBacktestCommissionPct(Number(value ?? 0.01))}
+                    />
+                  </Space>
                   <Button
                     type="primary"
                     icon={<RiseOutlined />}
                     onClick={handleExecute}
                     loading={acting}
+                    disabled={!latestReport}
                   >
-                    执行四账号模拟交易
+                    用此报告执行四账号模拟交易
                   </Button>
                   <Button
                     icon={<ExperimentOutlined />}
                     onClick={handleBacktest}
                     loading={acting}
+                    disabled={!latestReport}
                   >
-                    运行基础回测
+                    运行升级回测
                   </Button>
                 </Space>
               </Space>
@@ -377,21 +787,39 @@ export function ResearchCenter() {
         </Col>
 
         <Col xs={24} xl={10}>
-          <Card title="回测结果" loading={loading}>
+          <Card className="workspace-card" title="回测结果" loading={loading}>
             {latestBacktest ? (
               <Space direction="vertical" style={{ width: '100%' }} size="middle">
                 <Descriptions column={2} size="small">
                   <Descriptions.Item label="周期">{latestBacktest.period}</Descriptions.Item>
                   <Descriptions.Item label="K线">{latestBacktest.candleCount}</Descriptions.Item>
                   <Descriptions.Item label="时间">{formatDate(latestBacktest.createdAt)}</Descriptions.Item>
+                  <Descriptions.Item label="滑点">{latestBacktest.config?.slippagePct ?? 0.03}%</Descriptions.Item>
+                  <Descriptions.Item label="手续费">{latestBacktest.config?.commissionPct ?? 0.01}%</Descriptions.Item>
+                  <Descriptions.Item label="持仓K线">{latestBacktest.config?.exitBars ?? 8}</Descriptions.Item>
                 </Descriptions>
+                {backtestEquitySeries.length > 0 && (
+                  <EquityCurveChart series={backtestEquitySeries} height={220} />
+                )}
                 <Table
                   rowKey="profileId"
                   size="small"
                   pagination={false}
                   columns={backtestColumns}
                   dataSource={latestBacktest.results || []}
-                  scroll={{ x: 720 }}
+                  scroll={{ x: 980 }}
+                  expandable={{
+                    rowExpandable: (record) => !!record.stressTests?.length,
+                    expandedRowRender: (record) => (
+                      <Space wrap>
+                        {(record.stressTests || []).map((item) => (
+                          <Tag key={item.label} color={item.passed ? 'success' : 'error'}>
+                            {item.label} {item.netPnl >= 0 ? '+' : ''}{formatMoney(item.netPnl)} PF {Number(item.profitFactor || 0).toFixed(2)}
+                          </Tag>
+                        ))}
+                      </Space>
+                    ),
+                  }}
                 />
               </Space>
             ) : (
@@ -402,6 +830,41 @@ export function ResearchCenter() {
       </Row>
 
       <Row gutter={[16, 16]}>
+        <Col xs={24} xl={12}>
+          <Card className="workspace-card" title="AI报告历史" extra={<Text type="secondary">点击查看可切换当前报告</Text>}>
+            <Table
+              rowKey="_id"
+              size="small"
+              columns={reportColumns}
+              dataSource={reports}
+              pagination={{ pageSize: 6, showSizeChanger: false }}
+              scroll={{ x: 720 }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} xl={12}>
+          <Card className="workspace-card" title="账号表现统计" extra={<Text type="secondary">按模拟账号汇总</Text>}>
+            <Table
+              rowKey="key"
+              size="small"
+              columns={accountStatColumns}
+              dataSource={accountStats}
+              pagination={false}
+              scroll={{ x: 860 }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      <Card className="workspace-card" title="模拟账号收益曲线" extra={<Text type="secondary">按权益展示</Text>}>
+        {accountEquitySeries.length > 0 ? (
+          <EquityCurveChart series={accountEquitySeries} />
+        ) : (
+          <Text type="secondary">暂无模拟交易记录</Text>
+        )}
+      </Card>
+
+      <Row gutter={[16, 16]}>
         {orderedAccounts.map((account) => {
           const openTrade = account.openTrade;
           const latestTrade = account.tradeLog?.[0];
@@ -410,6 +873,7 @@ export function ResearchCenter() {
           return (
             <Col xs={24} md={12} xl={6} key={account.profileId}>
               <Card
+                className="workspace-card"
                 title={
                   <Space>
                     <FundProjectionScreenOutlined />
@@ -451,6 +915,7 @@ export function ResearchCenter() {
       </Row>
 
       <Card
+        className="workspace-card"
         title="买卖记录"
         extra={<Text type="secondary">显示开仓、平仓和跳过原因</Text>}
       >
@@ -460,7 +925,7 @@ export function ResearchCenter() {
           columns={tradeColumns}
           dataSource={tradeRows}
           pagination={{ pageSize: 10, showSizeChanger: false }}
-          scroll={{ x: 1120 }}
+          scroll={{ x: 1280 }}
         />
       </Card>
     </div>

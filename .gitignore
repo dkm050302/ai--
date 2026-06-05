@@ -42,6 +42,8 @@ out/
 
 # API Key 文件（重要！不要提交）
 .twelvedata-apikey
+.twelvedata-apikeys
+.datasource-settings.json
 
 # ================================
 # 日志文件

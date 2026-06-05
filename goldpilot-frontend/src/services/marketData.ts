@@ -3,7 +3,10 @@
  * 使用免费的金融API获取实时行情和历史K线数据
  */
 
+import { getApiUrl } from '@/utils/apiConfig';
+
 export type Period = '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
+export type RefreshInterval = '1m' | '5m' | '10m' | 'never';
 
 interface PriceQuote {
   symbol: string;
@@ -22,6 +25,35 @@ interface Candle {
   low: number;
   close: number;
   volume: number;
+}
+
+export async function fetchRefreshInterval(): Promise<RefreshInterval> {
+  const response = await fetch(getApiUrl('/api/datasource/refresh-interval'), {
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new Error(`刷新间隔读取失败: ${response.status}`);
+  }
+
+  const result = await response.json();
+  const interval = result?.data?.interval;
+  return interval === '1m' || interval === '5m' || interval === '10m' || interval === 'never'
+    ? interval
+    : '5m';
+}
+
+export function refreshIntervalToMs(interval: RefreshInterval): number | null {
+  switch (interval) {
+    case '1m':
+      return 60 * 1000;
+    case '5m':
+      return 5 * 60 * 1000;
+    case '10m':
+      return 10 * 60 * 1000;
+    case 'never':
+      return null;
+  }
 }
 
 /**
@@ -110,13 +142,11 @@ export async function fetchCandles(period: Period = '1m', limit: number = 500): 
  * 创建实时数据连接（WebSocket）
  * 对于不支持WebSocket的场景，使用轮询
  */
-import { getApiUrl } from '@/utils/apiConfig';
 export function createRealtimeConnection(
   onPriceUpdate: (price: PriceQuote) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  intervalMs: number | null = 300000
 ): () => void {
-  const intervalMs = 300000; // 每5分钟更新一次（800次/天限制内）
-
   const updatePrice = async () => {
     try {
       const price = await fetchRealTimePrice();
@@ -129,9 +159,14 @@ export function createRealtimeConnection(
   // 立即执行一次
   updatePrice();
 
-  // 定期更新
-  const intervalId = setInterval(updatePrice, intervalMs);
+  const intervalId = intervalMs && intervalMs > 0
+    ? setInterval(updatePrice, intervalMs)
+    : null;
 
   // 返回清理函数
-  return () => clearInterval(intervalId);
+  return () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+    }
+  };
 }

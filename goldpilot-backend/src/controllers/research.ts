@@ -194,6 +194,164 @@ function closeOpenTrade(account: PaperAccountDocument, currentPrice: number, rea
   account.openTrade = undefined;
 }
 
+function getSettlementPriceAndReason(openTrade: PaperTrade, currentPrice: number): { price: number; reason: string } | null {
+  if (openTrade.status !== 'open') {
+    return null;
+  }
+
+  if (openTrade.direction === 'long') {
+    if (currentPrice >= openTrade.takeProfit) {
+      return { price: openTrade.takeProfit, reason: '触发止盈，自动平仓' };
+    }
+    if (currentPrice <= openTrade.stopLoss) {
+      return { price: openTrade.stopLoss, reason: '触发止损，自动平仓' };
+    }
+    return null;
+  }
+
+  if (currentPrice <= openTrade.takeProfit) {
+    return { price: openTrade.takeProfit, reason: '触发止盈，自动平仓' };
+  }
+  if (currentPrice >= openTrade.stopLoss) {
+    return { price: openTrade.stopLoss, reason: '触发止损，自动平仓' };
+  }
+
+  return null;
+}
+
+export async function settlePaperAccounts(userAccountId: string, currentPrice?: number) {
+  const price = currentPrice ?? await marketDataService.getPrice();
+  const accounts = await ensurePaperAccounts(userAccountId);
+  const settlements = [];
+
+  for (const account of accounts) {
+    const openTrade = account.openTrade;
+    if (!openTrade || openTrade.status !== 'open') {
+      account.equity = account.balance;
+      await account.save();
+      continue;
+    }
+
+    const settlement = getSettlementPriceAndReason(openTrade, price);
+    if (settlement) {
+      closeOpenTrade(account, settlement.price, settlement.reason);
+      settlements.push({
+        profileId: account.profileId,
+        name: account.name,
+        action: 'closed',
+        direction: openTrade.direction,
+        exitPrice: settlement.price,
+        reason: settlement.reason,
+      });
+    } else {
+      markAccountToMarket(account, price);
+      settlements.push({
+        profileId: account.profileId,
+        name: account.name,
+        action: 'mark',
+        direction: openTrade.direction,
+        reason: '未触发止盈止损，按当前价更新权益',
+      });
+    }
+
+    await account.save();
+  }
+
+  const updatedAccounts = await PaperAccountModel.find({ userAccountId }).sort({ profileId: 1 }).lean();
+  return { price, settlements, accounts: updatedAccounts };
+}
+
+export async function executePaperTradingForReport(userAccountId: string, reportId?: string) {
+  const report = reportId
+    ? await AnalysisReportModel.findOne({ _id: reportId, userAccountId })
+    : await AnalysisReportModel.findOne({ userAccountId }).sort({ createdAt: -1 });
+
+  if (!report) {
+    throw new Error('还没有AI分析报告，请先运行AI分析');
+  }
+
+  const currentPrice = Number(report.currentPrice);
+  await settlePaperAccounts(userAccountId, currentPrice);
+  const accounts = await ensurePaperAccounts(userAccountId);
+  const currentReportId = report._id.toString();
+  const decisions = [];
+
+  for (const account of accounts) {
+    const alreadyEvaluated = account.tradeLog?.some((trade) => trade.reportId === currentReportId);
+
+    if (alreadyEvaluated) {
+      markAccountToMarket(account, currentPrice);
+      decisions.push({
+        profileId: account.profileId,
+        name: account.name,
+        action: 'already_evaluated',
+        reason: '这份AI报告已经评估过，未重复写入交易记录',
+      });
+      await account.save();
+      continue;
+    }
+
+    const profile = getProfile(account.profileId);
+    const nextTrade = buildTrade(account, report, profile);
+
+    if (account.openTrade?.status === 'open') {
+      if (account.openTrade.direction !== nextTrade.direction && nextTrade.status === 'open') {
+        closeOpenTrade(account, currentPrice, 'AI方向反转，先平旧仓');
+      } else {
+        markAccountToMarket(account, currentPrice);
+        const unrealizedPnl = calculatePnl(
+          account.openTrade.direction,
+          account.openTrade.entryPrice,
+          currentPrice,
+          account.openTrade.volume
+        );
+        const heldTrade: PaperTrade = {
+          reportId: currentReportId,
+          direction: account.openTrade.direction,
+          status: 'held',
+          entryPrice: account.openTrade.entryPrice,
+          exitPrice: currentPrice,
+          volume: account.openTrade.volume,
+          stopLoss: account.openTrade.stopLoss,
+          takeProfit: account.openTrade.takeProfit,
+          pnl: unrealizedPnl,
+          reason: '已有同向持仓，继续观察',
+          openedAt: new Date(),
+        };
+        account.tradeLog = [heldTrade, ...account.tradeLog].slice(0, 100);
+        decisions.push({
+          profileId: account.profileId,
+          name: account.name,
+          action: 'hold',
+          reason: '已有同向持仓，继续观察',
+        });
+        await account.save();
+        continue;
+      }
+    }
+
+    if (nextTrade.status === 'open') {
+      account.openTrade = nextTrade;
+    }
+
+    account.tradeLog = [nextTrade, ...account.tradeLog].slice(0, 100);
+    markAccountToMarket(account, currentPrice);
+    await account.save();
+
+    decisions.push({
+      profileId: account.profileId,
+      name: account.name,
+      action: nextTrade.status === 'open' ? 'open' : 'skip',
+      direction: nextTrade.direction,
+      volume: nextTrade.volume,
+      reason: nextTrade.reason,
+    });
+  }
+
+  const updatedAccounts = await PaperAccountModel.find({ userAccountId }).sort({ profileId: 1 }).lean();
+  return { report, decisions, accounts: updatedAccounts };
+}
+
 export async function getAnalysisReports(req: Request, res: Response): Promise<void> {
   try {
     const userAccountId = getUserAccountId(req);
@@ -223,17 +381,31 @@ export async function getPaperAccounts(req: Request, res: Response): Promise<voi
       return;
     }
 
-    const price = await marketDataService.getPrice();
-    const accounts = await ensurePaperAccounts(userAccountId);
-    for (const account of accounts) {
-      markAccountToMarket(account, price);
-      await account.save();
-    }
+    const result = await settlePaperAccounts(userAccountId);
 
-    res.json({ success: true, data: { accounts } });
+    res.json({ success: true, data: { accounts: result.accounts, settlements: result.settlements, price: result.price } });
   } catch (error) {
     logger.error('[Research] 获取模拟账号失败:', error);
     res.status(500).json({ success: false, message: '获取模拟账号失败' });
+  }
+}
+
+export async function settlePaperAccountsEndpoint(req: Request, res: Response): Promise<void> {
+  try {
+    const userAccountId = getUserAccountId(req);
+    if (!userAccountId) {
+      res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    const result = await settlePaperAccounts(userAccountId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    logger.error('[Research] 结算模拟持仓失败:', error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : '结算模拟持仓失败',
+    });
   }
 }
 
@@ -246,62 +418,21 @@ export async function executePaperTrading(req: Request, res: Response): Promise<
     }
 
     const reportId = req.body?.reportId;
-    const report = reportId
-      ? await AnalysisReportModel.findOne({ _id: reportId, userAccountId })
-      : await AnalysisReportModel.findOne({ userAccountId }).sort({ createdAt: -1 });
-
-    if (!report) {
-      res.status(400).json({ success: false, message: '还没有AI分析报告，请先运行AI分析' });
-      return;
-    }
-
-    const accounts = await ensurePaperAccounts(userAccountId);
-    const currentPrice = Number(report.currentPrice);
-    const decisions = [];
-
-    for (const account of accounts) {
-      const profile = getProfile(account.profileId);
-      const nextTrade = buildTrade(account, report, profile);
-
-      if (account.openTrade?.status === 'open') {
-        if (account.openTrade.direction !== nextTrade.direction && nextTrade.status === 'open') {
-          closeOpenTrade(account, currentPrice, 'AI方向反转，先平旧仓');
-        } else {
-          markAccountToMarket(account, currentPrice);
-          decisions.push({
-            profileId: account.profileId,
-            name: account.name,
-            action: 'hold',
-            reason: '已有同向持仓，继续观察',
-          });
-          await account.save();
-          continue;
-        }
-      }
-
-      if (nextTrade.status === 'open') {
-        account.openTrade = nextTrade;
-      }
-
-      account.tradeLog = [nextTrade, ...account.tradeLog].slice(0, 100);
-      markAccountToMarket(account, currentPrice);
-      await account.save();
-
-      decisions.push({
-        profileId: account.profileId,
-        name: account.name,
-        action: nextTrade.status === 'open' ? 'open' : 'skip',
-        direction: nextTrade.direction,
-        volume: nextTrade.volume,
-        reason: nextTrade.reason,
-      });
-    }
-
-    const updatedAccounts = await PaperAccountModel.find({ userAccountId }).sort({ profileId: 1 }).lean();
-    res.json({ success: true, data: { reportId: report._id, decisions, accounts: updatedAccounts } });
+    const result = await executePaperTradingForReport(userAccountId, reportId);
+    res.json({
+      success: true,
+      data: {
+        reportId: result.report._id,
+        decisions: result.decisions,
+        accounts: result.accounts,
+      },
+    });
   } catch (error) {
     logger.error('[Research] 执行模拟交易失败:', error);
-    res.status(500).json({ success: false, message: '执行模拟交易失败' });
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : '执行模拟交易失败',
+    });
   }
 }
 
@@ -322,12 +453,99 @@ export async function resetPaperAccounts(req: Request, res: Response): Promise<v
   }
 }
 
+interface BacktestOptions {
+  exitBars: number;
+  slippagePct: number;
+  commissionPct: number;
+  stopScale: number;
+  rewardRiskScale: number;
+}
+
+interface BacktestStressCase {
+  label: string;
+  options: BacktestOptions;
+}
+
 function average(values: number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function runProfileBacktest(profile: RiskProfile, candles: any[], report: AnalysisReportDocument | any) {
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(Math.max(parsed, min), max);
+}
+
+function getCandleTime(candle: any, fallbackSeconds: number): number {
+  if (!candle?.time) {
+    return fallbackSeconds;
+  }
+
+  if (typeof candle.time === 'number') {
+    return candle.time > 1_000_000_000_000 ? Math.floor(candle.time / 1000) : candle.time;
+  }
+
+  const timestamp = new Date(candle.time).getTime();
+  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : fallbackSeconds;
+}
+
+function getExecutionPrice(direction: 'long' | 'short', price: number, slippagePct: number, side: 'entry' | 'exit'): number {
+  const slippage = slippagePct / 100;
+  if (direction === 'long') {
+    return side === 'entry' ? price * (1 + slippage) : price * (1 - slippage);
+  }
+  return side === 'entry' ? price * (1 - slippage) : price * (1 + slippage);
+}
+
+function calculateTradeExecution(
+  direction: 'long' | 'short',
+  rawEntry: number,
+  rawExit: number,
+  volume: number,
+  options: BacktestOptions
+) {
+  const entry = getExecutionPrice(direction, rawEntry, options.slippagePct, 'entry');
+  const exit = getExecutionPrice(direction, rawExit, options.slippagePct, 'exit');
+  const grossPnl = calculatePnl(direction, entry, exit, volume);
+  const tradedNotional = (Math.abs(entry) + Math.abs(exit)) * volume;
+  const cost = tradedNotional * (options.commissionPct / 100);
+  const pnl = Number((grossPnl - cost).toFixed(2));
+
+  return {
+    entry: Number(entry.toFixed(2)),
+    exit: Number(exit.toFixed(2)),
+    grossPnl: Number(grossPnl.toFixed(2)),
+    cost: Number(cost.toFixed(2)),
+    pnl,
+  };
+}
+
+function calculateProfitFactor(trades: Array<{ pnl: number }>): number {
+  const grossProfit = trades
+    .filter((trade) => trade.pnl > 0)
+    .reduce((sum, trade) => sum + trade.pnl, 0);
+  const grossLoss = Math.abs(trades
+    .filter((trade) => trade.pnl < 0)
+    .reduce((sum, trade) => sum + trade.pnl, 0));
+
+  if (grossProfit > 0 && grossLoss === 0) {
+    return 99;
+  }
+  if (grossProfit === 0 && grossLoss === 0) {
+    return 0;
+  }
+  return Number((grossProfit / Math.max(grossLoss, 0.01)).toFixed(2));
+}
+
+function simulateProfileBacktest(
+  profile: RiskProfile,
+  candles: any[],
+  report: AnalysisReportDocument | any,
+  options: BacktestOptions
+) {
   const direction = getReportDirection(report);
   const confidence = getConfidence(report);
   const aiRisk = Number(report.result?.risk?.risk || 0);
@@ -337,6 +555,14 @@ function runProfileBacktest(profile: RiskProfile, candles: any[], report: Analys
   let peak = INITIAL_BALANCE;
   let maxDrawdown = 0;
   const trades: any[] = [];
+  const startTime = getCandleTime(candles[0], Math.floor(Date.now() / 1000));
+  const equityCurve = [
+    {
+      time: startTime,
+      equity: INITIAL_BALANCE,
+      drawdownPct: 0,
+    },
+  ];
 
   if (!shouldTrade || candles.length < 30) {
     return {
@@ -347,70 +573,108 @@ function runProfileBacktest(profile: RiskProfile, candles: any[], report: Analys
       netPnl: 0,
       maxDrawdown: 0,
       endingBalance: balance,
+      profitFactor: 0,
+      avgWin: 0,
+      avgLoss: 0,
+      expectancy: 0,
+      totalCost: 0,
+      robustnessScore: 0,
+      equityCurve,
+      stressTests: [],
+      sampleWarning: true,
       note: shouldTrade ? 'K线数量不足' : 'AI置信度或风险不满足该账号规则',
     };
   }
 
-  for (let i = 20; i < candles.length - 8; i += 8) {
+  for (let i = 20; i < candles.length - options.exitBars; i += options.exitBars) {
     const window = candles.slice(i - 20, i);
     const ma20 = average(window.map((c) => Number(c.close)));
-    const entry = Number(candles[i].close);
-    const trendOk = direction === 'long' ? entry > ma20 : entry < ma20;
+    const rawEntry = Number(candles[i].close);
+    const trendOk = direction === 'long' ? rawEntry > ma20 : rawEntry < ma20;
 
     if (!trendOk) {
       continue;
     }
 
-    const stopPct = baseStopPct * profile.stopMultiplier;
-    const stopDistance = entry * (stopPct / 100);
-    const takeDistance = stopDistance * profile.rewardRisk;
-    const stopPrice = direction === 'long' ? entry - stopDistance : entry + stopDistance;
-    const takePrice = direction === 'long' ? entry + takeDistance : entry - takeDistance;
+    const stopPct = baseStopPct * profile.stopMultiplier * options.stopScale;
+    const stopDistance = rawEntry * (stopPct / 100);
+    const takeDistance = stopDistance * profile.rewardRisk * options.rewardRiskScale;
+    const stopPrice = direction === 'long' ? rawEntry - stopDistance : rawEntry + stopDistance;
+    const takePrice = direction === 'long' ? rawEntry + takeDistance : rawEntry - takeDistance;
     const riskBudget = balance * (profile.riskPerTradePct / 100);
     const volumeByRisk = riskBudget / Math.max(stopDistance, 0.01);
-    const volumeByCap = (balance * (profile.maxPositionPct / 100)) / Math.max(entry, 0.01);
+    const volumeByCap = (balance * (profile.maxPositionPct / 100)) / Math.max(rawEntry, 0.01);
     const volume = Math.min(volumeByRisk, volumeByCap);
-    let exit = Number(candles[i + 8].close);
+    const exitIndex = Math.min(i + options.exitBars, candles.length - 1);
+    let rawExit = Number(candles[exitIndex].close);
     let exitReason = 'time';
 
-    for (let j = i + 1; j <= Math.min(i + 8, candles.length - 1); j++) {
+    for (let j = i + 1; j <= exitIndex; j++) {
       const high = Number(candles[j].high);
       const low = Number(candles[j].low);
 
       if (direction === 'long') {
         if (low <= stopPrice) {
-          exit = stopPrice;
+          rawExit = stopPrice;
           exitReason = 'stop';
           break;
         }
         if (high >= takePrice) {
-          exit = takePrice;
+          rawExit = takePrice;
           exitReason = 'take';
           break;
         }
       } else {
         if (high >= stopPrice) {
-          exit = stopPrice;
+          rawExit = stopPrice;
           exitReason = 'stop';
           break;
         }
         if (low <= takePrice) {
-          exit = takePrice;
+          rawExit = takePrice;
           exitReason = 'take';
           break;
         }
       }
     }
 
-    const pnl = calculatePnl(direction, entry, exit, volume);
+    const execution = calculateTradeExecution(direction, rawEntry, rawExit, volume, options);
+    const pnl = execution.pnl;
     balance = Number((balance + pnl).toFixed(2));
     peak = Math.max(peak, balance);
     maxDrawdown = Math.max(maxDrawdown, ((peak - balance) / peak) * 100);
-    trades.push({ entry, exit, pnl, exitReason });
+    const drawdownPct = Number((((peak - balance) / peak) * 100).toFixed(2));
+    const closeTime = getCandleTime(candles[exitIndex], startTime + trades.length * 60);
+
+    equityCurve.push({
+      time: closeTime,
+      equity: balance,
+      drawdownPct,
+    });
+    trades.push({
+      entry: execution.entry,
+      exit: execution.exit,
+      rawEntry: Number(rawEntry.toFixed(2)),
+      rawExit: Number(rawExit.toFixed(2)),
+      volume: Number(volume.toFixed(4)),
+      pnl,
+      grossPnl: execution.grossPnl,
+      cost: execution.cost,
+      exitReason,
+      closedAt: closeTime,
+      balance,
+    });
   }
 
   const wins = trades.filter((trade) => trade.pnl > 0).length;
+  const winTrades = trades.filter((trade) => trade.pnl > 0);
+  const lossTrades = trades.filter((trade) => trade.pnl < 0);
   const netPnl = Number((balance - INITIAL_BALANCE).toFixed(2));
+  const avgWin = winTrades.length ? average(winTrades.map((trade) => trade.pnl)) : 0;
+  const avgLoss = lossTrades.length ? average(lossTrades.map((trade) => Math.abs(trade.pnl))) : 0;
+  const avgPnl = trades.length ? average(trades.map((trade) => trade.pnl)) : 0;
+  const totalCost = trades.reduce((sum, trade) => sum + trade.cost, 0);
+  const profitFactor = calculateProfitFactor(trades);
 
   return {
     profileId: profile.profileId,
@@ -421,8 +685,70 @@ function runProfileBacktest(profile: RiskProfile, candles: any[], report: Analys
     netPnl,
     maxDrawdown: Number(maxDrawdown.toFixed(2)),
     endingBalance: balance,
+    profitFactor,
+    avgWin: Number(avgWin.toFixed(2)),
+    avgLoss: Number(avgLoss.toFixed(2)),
+    expectancy: Number(avgPnl.toFixed(2)),
+    totalCost: Number(totalCost.toFixed(2)),
+    robustnessScore: 0,
+    equityCurve,
+    stressTests: [],
+    sampleWarning: trades.length < 30,
     sampleTrades: trades.slice(-5),
-    note: '基础规则回测：AI方向 + MA20趋势过滤 + 固定止盈止损',
+    note: trades.length < 30
+      ? '样本量偏少：结果只能做演示参考'
+      : 'AI方向 + MA20趋势过滤 + 固定止盈止损 + 滑点手续费',
+  };
+}
+
+function summarizeStressResult(label: string, result: any) {
+  const passed = result.trades >= 5 && result.netPnl >= 0 && result.profitFactor >= 1;
+  return {
+    label,
+    passed,
+    trades: result.trades,
+    winRate: result.winRate,
+    netPnl: result.netPnl,
+    maxDrawdown: result.maxDrawdown,
+    profitFactor: result.profitFactor,
+  };
+}
+
+function runProfileBacktest(
+  profile: RiskProfile,
+  candles: any[],
+  report: AnalysisReportDocument | any,
+  options: BacktestOptions
+) {
+  const baseline = simulateProfileBacktest(profile, candles, report, options);
+  const stressCases: BacktestStressCase[] = [
+    {
+      label: '滑点加倍',
+      options: { ...options, slippagePct: Number((options.slippagePct * 2).toFixed(4)) },
+    },
+    {
+      label: '手续费加倍',
+      options: { ...options, commissionPct: Number((options.commissionPct * 2).toFixed(4)) },
+    },
+    {
+      label: '止损缩窄25%',
+      options: { ...options, stopScale: 0.75 },
+    },
+    {
+      label: '盈亏比降低20%',
+      options: { ...options, rewardRiskScale: 0.8 },
+    },
+  ];
+
+  const stressTests = stressCases.map((item) => (
+    summarizeStressResult(item.label, simulateProfileBacktest(profile, candles, report, item.options))
+  ));
+  const passedCount = stressTests.filter((item) => item.passed).length;
+
+  return {
+    ...baseline,
+    stressTests,
+    robustnessScore: stressTests.length ? Number(((passedCount / stressTests.length) * 100).toFixed(0)) : 0,
   };
 }
 
@@ -434,7 +760,21 @@ export async function runBacktest(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const { reportId, period = '1m', limit = 240 } = req.body || {};
+    const {
+      reportId,
+      period = '1m',
+      limit = 240,
+      exitBars,
+      slippagePct,
+      commissionPct,
+    } = req.body || {};
+    const backtestOptions: BacktestOptions = {
+      exitBars: Math.round(clampNumber(exitBars, 3, 48, 8)),
+      slippagePct: clampNumber(slippagePct, 0, 0.5, 0.03),
+      commissionPct: clampNumber(commissionPct, 0, 0.5, 0.01),
+      stopScale: 1,
+      rewardRiskScale: 1,
+    };
     const report = reportId
       ? await AnalysisReportModel.findOne({ _id: reportId, userAccountId })
       : await AnalysisReportModel.findOne({ userAccountId }).sort({ createdAt: -1 });
@@ -444,19 +784,30 @@ export async function runBacktest(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const candles = await marketDataService.getCandles(period, Number(limit));
+    const candleLimit = Math.round(clampNumber(limit, 60, 1500, 240));
+    const candles = await marketDataService.getCandles(period, candleLimit);
     if (!candles || candles.length < 30) {
       res.status(400).json({ success: false, message: 'K线数量不足，无法回测' });
       return;
     }
 
-    const results = RISK_PROFILES.map((profile) => runProfileBacktest(profile, candles, report));
+    const results = RISK_PROFILES.map((profile) => runProfileBacktest(profile, candles, report, backtestOptions));
     const backtest = await BacktestRunModel.create({
       userAccountId,
       reportId: report._id.toString(),
       period,
       candleCount: candles.length,
-      assumption: 'MVP基础回测：沿用最新AI方向，不逐根调用大模型；含风险阈值、仓位上限、止盈止损和趋势过滤。',
+      assumption: [
+        '升级回测：沿用选定AI报告方向，不逐根调用大模型',
+        '含风险阈值、仓位上限、MA20趋势过滤、止盈止损、滑点、手续费和压力测试',
+      ].join('；'),
+      config: {
+        period,
+        limit: candleLimit,
+        exitBars: backtestOptions.exitBars,
+        slippagePct: backtestOptions.slippagePct,
+        commissionPct: backtestOptions.commissionPct,
+      },
       results,
     });
 
@@ -495,9 +846,9 @@ export async function getResearchSummary(req: Request, res: Response): Promise<v
       return;
     }
 
-    const [latestReport, accounts, latestBacktest] = await Promise.all([
+    const [latestReport, settlementResult, latestBacktest] = await Promise.all([
       AnalysisReportModel.findOne({ userAccountId }).sort({ createdAt: -1 }).lean(),
-      ensurePaperAccounts(userAccountId),
+      settlePaperAccounts(userAccountId),
       BacktestRunModel.findOne({ userAccountId }).sort({ createdAt: -1 }).lean(),
     ]);
 
@@ -505,7 +856,9 @@ export async function getResearchSummary(req: Request, res: Response): Promise<v
       success: true,
       data: {
         latestReport,
-        accounts,
+        accounts: settlementResult.accounts,
+        settlements: settlementResult.settlements,
+        markPrice: settlementResult.price,
         latestBacktest,
       },
     });

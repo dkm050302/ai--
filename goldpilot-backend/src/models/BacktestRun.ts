@@ -6,6 +6,7 @@ export interface BacktestRunDocument extends Document {
   period: string;
   candleCount: number;
   assumption: string;
+  config?: unknown;
   results: unknown[];
   createdAt: Date;
   updatedAt: Date;
@@ -33,6 +34,10 @@ const BacktestRunSchema = new Schema<BacktestRunDocument>({
   assumption: {
     type: String,
     required: true,
+  },
+  config: {
+    type: Schema.Types.Mixed,
+    default: undefined,
   },
   results: {
     type: [Schema.Types.Mixed],

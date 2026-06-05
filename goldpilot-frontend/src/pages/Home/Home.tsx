@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Button, message } from 'antd';
-import { RobotOutlined, LoadingOutlined } from '@ant-design/icons';
+import { Button, Space, message } from 'antd';
+import { RobotOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
+import { PageHeader } from '@/components/PageHeader';
 import { PriceCard } from '@/components/PriceCard';
 import { Chart } from '@/components/Chart';
 import { SignalPanel } from '@/components/SignalPanel';
@@ -15,11 +16,22 @@ import { createDefaultPriceData } from '@/types/price';
 import { createDefaultEvents, createDefaultFlashes } from '@/types/event';
 import { createDefaultDecisionData } from '@/types/decision';
 import type { PriceData, Candle, Signal, DailyStats, Event, Flash } from '@/types';
-import { fetchCandles, createRealtimeConnection } from '@/services/marketData';
+import {
+  fetchCandles,
+  createRealtimeConnection,
+  fetchRefreshInterval,
+  refreshIntervalToMs,
+} from '@/services/marketData';
 import { detectSignals } from '@/utils/signalCalculator';
 import type { Period } from '@/services/marketData';
 import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
 import { aiService, type AIAnalysisResult } from '@/services/ai';
+
+function getCandleLimit(period: Period): number {
+  if (period === '1d') return 220;
+  if (period === '4h' || period === '1h') return 260;
+  return 360;
+}
 
 /**
  * 计算信号统计数据
@@ -65,6 +77,7 @@ export function Home() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [candlesError, setCandlesError] = useState<string | null>(null);
+  const [marketRefreshMs, setMarketRefreshMs] = useState<number | null>(5 * 60 * 1000);
 
   // 真实数据状态
   const [events, setEvents] = useState<Event[]>(createDefaultEvents());
@@ -74,6 +87,11 @@ export function Home() {
   const [analyzing, setAnalyzing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
   const [showAnalysisButton, setShowAnalysisButton] = useState(true);
+  const todayText = useMemo(() => new Date().toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }), []);
 
   // 计算统计数据（优先使用AI分析结果）
   const stats = useMemo(() => {
@@ -111,6 +129,36 @@ export function Home() {
     return createDefaultDecisionData();
   }, [aiAnalysis]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadRefreshSetting = async () => {
+      try {
+        const interval = await fetchRefreshInterval();
+        if (mounted) {
+          setMarketRefreshMs(refreshIntervalToMs(interval));
+        }
+      } catch (error) {
+        console.warn('读取行情刷新间隔失败，使用默认5分钟:', error);
+      }
+    };
+
+    loadRefreshSetting();
+
+    const handleRefreshIntervalChange: EventListener = (event) => {
+      const interval = (event as unknown as CustomEvent).detail;
+      if (interval === '1m' || interval === '5m' || interval === '10m' || interval === 'never') {
+        setMarketRefreshMs(refreshIntervalToMs(interval));
+      }
+    };
+
+    window.addEventListener('goldpilot-refresh-interval-change', handleRefreshIntervalChange);
+    return () => {
+      mounted = false;
+      window.removeEventListener('goldpilot-refresh-interval-change', handleRefreshIntervalChange);
+    };
+  }, []);
+
   // AI建议（优先使用AI分析结果）
   const aiActions = useMemo(() => {
     if (aiAnalysis) {
@@ -127,7 +175,7 @@ export function Home() {
   useEffect(() => {
     const loadCandles = async () => {
       try {
-        const data = await fetchCandles(period, 1440);
+        const data = await fetchCandles(period, getCandleLimit(period));
         setCandles(data);
 
         console.log(`📊 [信号检测] K线数据: ${data.length} 条`);
@@ -167,11 +215,14 @@ export function Home() {
     // 初始加载
     loadCandles();
 
-    // 每10秒刷新一次K线数据
-    const interval = setInterval(loadCandles, 10000);
+    if (!marketRefreshMs) {
+      return undefined;
+    }
+
+    const interval = setInterval(loadCandles, marketRefreshMs);
 
     return () => clearInterval(interval);
-  }, [period]);
+  }, [period, marketRefreshMs]);
 
   // 加载事件和快讯数据
   useEffect(() => {
@@ -247,11 +298,12 @@ export function Home() {
       },
       (error) => {
         console.error('Real-time price error:', error);
-      }
+      },
+      marketRefreshMs
     );
 
     return cleanup;
-  }, []);
+  }, [marketRefreshMs]);
 
   /**
    * 执行AI分析
@@ -272,7 +324,11 @@ export function Home() {
       setAiAnalysis(result);
       setShowAnalysisButton(false);
 
-      message.success({ content: 'AI分析完成！', key: 'ai-analysis', duration: 2 });
+      message.success({
+        content: result.paperTrading ? 'AI分析完成，四个模拟账号已自动评估！' : 'AI分析完成！',
+        key: 'ai-analysis',
+        duration: 2,
+      });
     } catch (error) {
       console.error('AI分析失败:', error);
       const errorMessage = error instanceof Error ? error.message : 'AI分析失败';
@@ -301,49 +357,39 @@ export function Home() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* 页面标题 */}
-      <div className="title-bar">
-        <div className="min-w-0 title-container">
-          <h1 className="main-title">交易看板</h1>
-          <div className="divider"></div>
-          <p className="sub-title">实时监控黄金市场动态</p>
-        </div>
-        <div className="date-meta" style={{ marginTop: '-30px' }}>
-          <span className="pill">实时更新</span>
-          <div className="status-dot"></div>
-          <span className="date-text">2026/05/21</span>
-
-          {/* AI分析按钮 */}
-          {showAnalysisButton ? (
-            <Button
-              type="primary"
-              size="large"
-              icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />}
-              onClick={handleAIAnalyze}
-              disabled={analyzing}
-              style={{ marginLeft: '12px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none' }}
-            >
-              {analyzing ? '分析中...' : 'AI 智能分析'}
-            </Button>
-          ) : (
-            <Button
-              size="large"
-              onClick={handleResetAnalysis}
-              style={{ marginLeft: '12px' }}
-            >
-              重新分析
-            </Button>
-          )}
-        </div>
-      </div>
+    <div className="workspace-page">
+      <PageHeader
+        eyebrow="Trading Desk"
+        title="交易看板"
+        description="实时行情、信号统计和 AI 决策"
+        meta={(
+          <Space size={8}>
+            <span className="pill green">实时</span>
+            <span className="date-text">{todayText}</span>
+          </Space>
+        )}
+        actions={showAnalysisButton ? (
+          <Button
+            type="primary"
+            icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />}
+            onClick={handleAIAnalyze}
+            disabled={analyzing}
+          >
+            {analyzing ? '分析中...' : 'AI 智能分析'}
+          </Button>
+        ) : (
+          <Button onClick={handleResetAnalysis}>
+            重新分析
+          </Button>
+        )}
+      />
 
       {/* 主内容区 - 左边K线，右边信息 */}
       <main className="main">
         {/* 左侧区域：实时行情K线图 */}
         <section className="left" aria-label="实时行情K线图">
           {/* 市场卡片 - 报价条 + K线图 */}
-          <article className="market-card">
+          <article className="market-card chart-panel">
             {/* 报价条 */}
             <div className="quote-strip">
               <PriceCard priceData={priceData} />
@@ -360,7 +406,7 @@ export function Home() {
                 color: '#ef4444',
                 fontSize: '16px'
               }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+                <WarningOutlined style={{ fontSize: '38px', marginBottom: '16px' }} />
                 <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' }}>K线数据获取失败</div>
                 <div style={{ color: '#666' }}>{candlesError}</div>
                 <div style={{ marginTop: '16px', fontSize: '14px', color: '#888' }}>
@@ -372,6 +418,7 @@ export function Home() {
                 candles={candles}
                 signals={signals}
                 period={period}
+                currentPrice={priceData.price}
                 onPeriodChange={(p) => setPeriod(p as Period)}
               />
             )}

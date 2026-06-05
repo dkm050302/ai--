@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Chart } from '@/components/Chart';
 import type { PriceData, Candle, Signal } from '@/types';
-import { fetchCandles } from '@/services/marketData';
+import { fetchCandles, fetchRefreshInterval, refreshIntervalToMs } from '@/services/marketData';
 import { detectSignals } from '@/utils/signalCalculator';
 import type { Period } from '@/services/marketData';
 
@@ -13,6 +13,7 @@ export function MarketCard({ priceData }: MarketCardProps) {
   const [period, setPeriod] = useState<Period>('1m');
   const [candles, setCandles] = useState<Candle[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [refreshMs, setRefreshMs] = useState<number | null>(5 * 60 * 1000);
 
   const getColorClass = (value: number) => {
     return value >= 0 ? 'green' : 'red';
@@ -20,9 +21,39 @@ export function MarketCard({ priceData }: MarketCardProps) {
 
   // 获取K线数据
   useEffect(() => {
+    let mounted = true;
+
+    const loadRefreshSetting = async () => {
+      try {
+        const interval = await fetchRefreshInterval();
+        if (mounted) {
+          setRefreshMs(refreshIntervalToMs(interval));
+        }
+      } catch (error) {
+        console.warn('读取行情刷新间隔失败，使用默认5分钟:', error);
+      }
+    };
+
+    loadRefreshSetting();
+
+    const handleRefreshIntervalChange: EventListener = (event) => {
+      const interval = (event as unknown as CustomEvent).detail;
+      if (interval === '1m' || interval === '5m' || interval === '10m' || interval === 'never') {
+        setRefreshMs(refreshIntervalToMs(interval));
+      }
+    };
+
+    window.addEventListener('goldpilot-refresh-interval-change', handleRefreshIntervalChange);
+    return () => {
+      mounted = false;
+      window.removeEventListener('goldpilot-refresh-interval-change', handleRefreshIntervalChange);
+    };
+  }, []);
+
+  useEffect(() => {
     const loadCandles = async () => {
       try {
-        const data = await fetchCandles(period, 500);
+        const data = await fetchCandles(period, period === '1d' ? 220 : 360);
         setCandles(data);
 
         // 计算信号（需要至少233根K线）
@@ -36,10 +67,16 @@ export function MarketCard({ priceData }: MarketCardProps) {
     };
 
     loadCandles();
-  }, [period]);
+    if (!refreshMs) {
+      return undefined;
+    }
+
+    const interval = setInterval(loadCandles, refreshMs);
+    return () => clearInterval(interval);
+  }, [period, refreshMs]);
 
   return (
-    <article className="market-card">
+    <article className="market-card chart-panel">
       {/* 报价条 */}
       <div className="quote-strip">
         <div className="quote">
@@ -75,6 +112,7 @@ export function MarketCard({ priceData }: MarketCardProps) {
         candles={candles}
         signals={signals}
         period={period}
+        currentPrice={priceData.price}
         onPeriodChange={(p) => setPeriod(p as Period)}
       />
     </article>

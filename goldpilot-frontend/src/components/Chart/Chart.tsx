@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type CandlestickData, type Time } from 'lightweight-charts';
+import { createChart, type IChartApi, type IPriceLine, type ISeriesApi, type CandlestickData, type Time } from 'lightweight-charts';
 import type { Candle, Signal } from '@/types';
 import { detectSignals, getSignalMarkerText } from '@/utils/signalCalculator';
 
@@ -8,6 +8,7 @@ interface ChartProps {
   signals: Signal[];
   period: string;
   onPeriodChange: (period: string) => void;
+  currentPrice?: number;
 }
 
 const periods = [
@@ -19,13 +20,53 @@ const periods = [
   { value: '1d', label: '日线' },
 ];
 
+function toUnixSeconds(value: Candle['time'] | Signal['timestamp']): number {
+  if (typeof value === 'number') {
+    return value > 1_000_000_000_000 ? Math.floor(value / 1000) : value;
+  }
+
+  if (value instanceof Date) {
+    return Math.floor(value.getTime() / 1000);
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : 0;
+}
+
+function normalizeCandles(candles: Candle[]): CandlestickData[] {
+  const dataByTime = new Map<number, CandlestickData>();
+
+  candles.forEach((candle) => {
+    const timestamp = toUnixSeconds(candle.time);
+    const open = Number(candle.open);
+    const high = Number(candle.high);
+    const low = Number(candle.low);
+    const close = Number(candle.close);
+
+    if (!timestamp || ![open, high, low, close].every(Number.isFinite)) {
+      return;
+    }
+
+    dataByTime.set(timestamp, {
+      time: timestamp as Time,
+      open,
+      high,
+      low,
+      close,
+    });
+  });
+
+  return [...dataByTime.values()].sort((a, b) => Number(a.time) - Number(b.time));
+}
+
 /**
  * K线图组件 - 完全按照index.html设计
  */
-export function Chart({ candles, signals: externalSignals, period, onPeriodChange }: ChartProps) {
+export function Chart({ candles, signals: externalSignals, period, onPeriodChange, currentPrice }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const priceLineRef = useRef<IPriceLine | null>(null);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
   // 实时计算信号（仅在1分钟周期）
@@ -63,10 +104,16 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
         borderColor: '#eef3f7',
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 10,
+        rightOffset: 8,
+        barSpacing: 8,
       },
       rightPriceScale: {
         borderColor: '#eef3f7',
+        autoScale: true,
+        scaleMargins: {
+          top: 0.12,
+          bottom: 0.12,
+        },
       },
       crosshair: {
         vertLine: {
@@ -88,11 +135,12 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       borderVisible: false,
       wickUpColor: '#0f9f6e',
       wickDownColor: '#e3342f',
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
     });
-
-    console.log('🔍 [Chart] chart 对象:', chart);
-    console.log('🔍 [Chart] chart 类型:', typeof chart);
-    console.log('🔍 [Chart] chart 方法列表:', Object.getOwnPropertyNames(Object.getPrototypeOf(chart)));
 
     chartRef.current = chart;
     seriesRef.current = candlestickSeries;
@@ -122,64 +170,55 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
   useEffect(() => {
     if (!seriesRef.current || candles.length === 0) return;
 
-    const candlestickData: CandlestickData[] = candles.map((candle, index) => {
-      // 将Unix时间戳转换为业务日时间格式，确保正确显示本地时间
-      let timestamp: number;
-      if (typeof candle.time === 'number') {
-        timestamp = candle.time;
-      } else if (candle.time instanceof Date) {
-        timestamp = candle.time.getTime() / 1000;
-      } else {
-        timestamp = new Date(candle.time).getTime() / 1000;
-      }
-
-      // 转换为UTC时间并加上8小时（北京时间 UTC+8）
-      // 这样图表会正确显示北京时间
-      const adjustedTimestamp = timestamp + 8 * 3600;
-
-      // 调试：打印第一条数据
-      if (index === candles.length - 1) {
-        const date = new Date(timestamp * 1000);
-        const adjustedDate = new Date(adjustedTimestamp * 1000);
-        console.log('📊 [Chart] 最新K线:', {
-          原始时间戳: timestamp,
-          北京时间: date.toLocaleString('zh-CN', { hour12: false }),
-          调整后时间戳: adjustedTimestamp,
-          图表显示时间: adjustedDate.toLocaleString('zh-CN', { hour12: false }),
-        });
-      }
-
-      return {
-        time: adjustedTimestamp as Time,
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-      };
-    });
+    const candlestickData = normalizeCandles(candles);
+    if (candlestickData.length === 0) return;
 
     seriesRef.current.setData(candlestickData);
 
-    // 只在首次加载数据时自动调整视图，之后不再自动调整
     if (!initialDataLoaded && chartRef.current) {
-      chartRef.current.timeScale().fitContent();
-      chartRef.current.timeScale().scrollToPosition(0, false);
+      const visibleBars = 140;
+      chartRef.current.timeScale().setVisibleLogicalRange({
+        from: Math.max(candlestickData.length - visibleBars, 0),
+        to: candlestickData.length + 8,
+      });
       setInitialDataLoaded(true);
+    } else if (chartRef.current) {
+      chartRef.current.timeScale().scrollToRealTime();
     }
   }, [candles, initialDataLoaded]);
 
   useEffect(() => {
+    if (!seriesRef.current || !currentPrice || !Number.isFinite(currentPrice)) return;
+
+    if (priceLineRef.current) {
+      seriesRef.current.removePriceLine(priceLineRef.current);
+    }
+
+    priceLineRef.current = seriesRef.current.createPriceLine({
+      price: currentPrice,
+      color: '#1769e0',
+      lineWidth: 1,
+      lineStyle: 2,
+      lineVisible: true,
+      axisLabelVisible: true,
+      title: '现价',
+    });
+  }, [currentPrice]);
+
+  useEffect(() => {
     if (!seriesRef.current || signals.length === 0) {
-      console.log('⚠️ [Chart] 未设置series或无信号数据', { hasSeries: !!seriesRef.current, signalsLength: signals.length });
+      try {
+        (seriesRef.current as any)?.setMarkers([]);
+      } catch {
+        // lightweight-charts v3 exposes marker APIs dynamically.
+      }
       return;
     }
 
     const currentPeriodSignals = signals.filter(s => s.period === period || period === '1m');
-    console.log(`📊 [Chart] 当前周期 ${period}, 筛选后信号数量: ${currentPeriodSignals.length}`, currentPeriodSignals);
 
     const markers = currentPeriodSignals.map(signal => {
-      const time = (new Date(signal.timestamp).getTime() / 1000) as Time;
-      console.log(`📍 [Chart] 信号时间戳: ${time}, 日期: ${signal.timestamp}`);
+      const time = toUnixSeconds(signal.timestamp) as Time;
 
       let position: 'aboveBar' | 'belowBar';
       let color: string;
@@ -223,13 +262,10 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
       return { time, position, color, shape, text };
     });
 
-    console.log(`🎯 [Chart] 设置 ${markers.length} 个标记`);
-
     try {
       (seriesRef.current as any).setMarkers(markers);
-      console.log('✅ [Chart] 标记设置成功');
     } catch (error) {
-      console.warn('❌ [Chart] 标记设置失败:', error);
+      console.warn('[Chart] 标记设置失败:', error);
     }
   }, [signals, period]);
 
@@ -247,9 +283,12 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
 
   // 手动重置视图
   const handleResetView = () => {
-    if (chartRef.current) {
-      chartRef.current.timeScale().fitContent();
-      chartRef.current.timeScale().scrollToPosition(0, false);
+    if (chartRef.current && candles.length > 0) {
+      const visibleBars = 140;
+      chartRef.current.timeScale().setVisibleLogicalRange({
+        from: Math.max(candles.length - visibleBars, 0),
+        to: candles.length + 8,
+      });
     }
   };
 

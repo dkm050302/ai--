@@ -1,6 +1,5 @@
 import type { Request, Response } from 'express';
 import type { PriceData } from '../types';
-import { sinaGoldService } from '../services/sinaGold';
 import { marketDataService } from '../services/marketData';
 import { logger } from '../utils';
 
@@ -10,23 +9,19 @@ import { logger } from '../utils';
  */
 export async function getPrice(req: Request, res: Response): Promise<void> {
   try {
-    const sinaData = await sinaGoldService.getRealTimePrice();
-
-    if (!sinaData) {
-      throw new Error('新浪黄金数据获取失败');
-    }
+    const quote = await marketDataService.getPriceQuote();
 
     const priceData: PriceData = {
       symbol: 'XAU/USD',
-      price: sinaData.price,
-      change: sinaData.change,
-      changePct: sinaData.changePct,
-      high: sinaData.high,
-      low: sinaData.low,
+      price: quote.price,
+      change: quote.change,
+      changePct: quote.changePct,
+      high: quote.high,
+      low: quote.low,
       timestamp: new Date(),
     };
 
-    logger.info(`Price sent: ${sinaData.price}, 涨跌: ${sinaData.change}, 涨跌幅: ${sinaData.changePct}%`);
+    logger.info(`Price sent: ${quote.price}, source: ${quote.source}, 涨跌: ${quote.change}, 涨跌幅: ${quote.changePct}%`);
 
     res.json({
       success: true,

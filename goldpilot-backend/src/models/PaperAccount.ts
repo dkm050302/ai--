@@ -2,7 +2,7 @@ import mongoose, { Schema, Model, Document } from 'mongoose';
 
 export type PaperProfileId = 'conservative' | 'balanced' | 'aggressive' | 'event';
 export type PaperTradeDirection = 'long' | 'short';
-export type PaperTradeStatus = 'open' | 'closed' | 'skipped';
+export type PaperTradeStatus = 'open' | 'closed' | 'skipped' | 'held';
 
 export interface PaperTrade {
   reportId?: string;
@@ -40,7 +40,7 @@ export interface PaperAccountDocument extends Document {
 const PaperTradeSchema = new Schema<PaperTrade>({
   reportId: { type: String },
   direction: { type: String, enum: ['long', 'short'], required: true },
-  status: { type: String, enum: ['open', 'closed', 'skipped'], required: true },
+  status: { type: String, enum: ['open', 'closed', 'skipped', 'held'], required: true },
   entryPrice: { type: Number, required: true },
   exitPrice: { type: Number },
   volume: { type: Number, required: true },

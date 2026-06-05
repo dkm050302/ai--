@@ -3,6 +3,7 @@
  */
 
 import { authFetch } from '@/utils/apiConfig';
+import type { PaperAccount } from './research';
 
 /**
  * AI分析请求数据
@@ -19,6 +20,7 @@ export interface AIAnalysisRequest {
  * AI分析结果
  */
 export interface AIAnalysisResult {
+  reportId?: string;
   decision: {
     headline: string;
     summary: string;
@@ -41,6 +43,17 @@ export interface AIAnalysisResult {
     title: string;
     text: string;
   }>;
+  paperTrading?: {
+    decisions: Array<{
+      profileId: string;
+      name: string;
+      action: string;
+      direction?: 'long' | 'short';
+      volume?: number;
+      reason: string;
+    }>;
+    accounts: PaperAccount[];
+  };
 }
 
 class AIService {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Space } from 'antd';
 import { DecisionCard } from '@/components/DecisionCard';
 import { ProbCard } from '@/components/ProbCard';
 import { RiskCard } from '@/components/RiskCard';
@@ -7,6 +8,7 @@ import { MiniCard } from '@/components/MiniCard';
 import { WidePanel } from '@/components/WidePanel';
 import { MarketCard } from '@/components/MarketCard';
 import { SimpleAccountCard } from '@/components/SimpleAccountCard';
+import { PageHeader } from '@/components/PageHeader';
 import { createDefaultPriceData } from '@/types/price';
 import { createDefaultDecisionData } from '@/types/decision';
 import { createDefaultEvents, createDefaultFlashes } from '@/types/event';
@@ -92,19 +94,18 @@ export function EventDrivenHome() {
   }, []);
 
   return (
-    <div className="event-driven-home">
-      {/* 页面标题 */}
-      <div className="date-bar">
-        <div className="brand-block">
-          <div className="brand-name">GoldPilot 黄金交易决策驾驶舱</div>
-          <div className="brand-sub">面向金融客户服务团队的事件驱动型交易辅助首页</div>
-        </div>
-        <div className="date-meta">
-          <span className="pill green">免费数据源</span>
-          <div className="status-dot"></div>
-          <span className="date-text">{today}</span>
-        </div>
-      </div>
+    <div className="workspace-page event-driven-home">
+      <PageHeader
+        eyebrow="Event Driven"
+        title="事件驱动首页"
+        description="经济日历、快讯和客户服务动作"
+        meta={(
+          <Space size={8}>
+            <span className="pill blue">免费数据源</span>
+            <span className="date-text">{today}</span>
+          </Space>
+        )}
+      />
 
       {/* 主内容 */}
       <main className="main">

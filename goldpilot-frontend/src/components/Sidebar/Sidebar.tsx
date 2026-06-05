@@ -3,6 +3,8 @@ import type { MenuProps } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, BellOutlined, DatabaseOutlined, ExperimentOutlined } from '@ant-design/icons';
 
+const VERSION = 'v1.1.0';
+
 export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,22 +70,20 @@ export function Sidebar() {
   ];
 
   return (
-    <div className="w-64 h-screen bg-[#0f172a] text-white flex flex-col shadow-2xl">
-      {/* Logo区域 */}
-      <div className="p-6 border-b border-slate-700/50">
+    <aside className="app-sidebar">
+      <div className="sidebar-brand">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/30">
+          <div className="sidebar-logo">
             <LineChartOutlined className="text-xl text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-wide" style={{ color: 'rgba(255, 255, 255, 0.95)', fontSize: '20px' }}>GoldPilot</h1>
-            <p className="mt-0.5" style={{ color: 'rgba(255, 255, 255, 0.75)', fontSize: '13px', fontWeight: 500 }}>黄金交易决策系统</p>
+            <h1 className="sidebar-title">GoldPilot</h1>
+            <p className="sidebar-subtitle">黄金交易决策系统</p>
           </div>
         </div>
       </div>
 
-      {/* 导航菜单 */}
-      <div className="flex-1 py-4 px-3 overflow-y-auto">
+      <div className="sidebar-menu">
         <Menu
           theme="dark"
           mode="inline"
@@ -93,16 +93,15 @@ export function Sidebar() {
         />
       </div>
 
-      {/* 底部信息 */}
-      <div className="p-4 border-t border-slate-700/50">
-        <div className="bg-slate-800/50 rounded-lg p-3 backdrop-blur-sm border border-slate-700/30">
-          <div className="flex items-center gap-2 text-xs mb-1">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span style={{ color: 'rgba(255, 255, 255, 0.85)', fontWeight: 500 }}>系统运行正常</span>
+      <div className="sidebar-footer">
+        <div className="sidebar-status">
+          <div className="flex items-center gap-2 text-xs">
+            <div className="sidebar-status-dot"></div>
+            <span>单人样品运行中</span>
           </div>
-          <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontWeight: 500, fontSize: '12px' }}>v1.0.0</p>
+          <p>{VERSION}</p>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }

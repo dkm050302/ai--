@@ -37,7 +37,7 @@ export interface AnalysisReport {
 export interface PaperTrade {
   reportId?: string;
   direction: 'long' | 'short';
-  status: 'open' | 'closed' | 'skipped';
+  status: 'open' | 'closed' | 'skipped' | 'held';
   entryPrice: number;
   exitPrice?: number;
   volume: number;
@@ -75,7 +75,36 @@ export interface BacktestProfileResult {
   netPnl: number;
   maxDrawdown: number;
   endingBalance: number;
+  profitFactor?: number;
+  avgWin?: number;
+  avgLoss?: number;
+  expectancy?: number;
+  totalCost?: number;
+  robustnessScore?: number;
+  sampleWarning?: boolean;
+  equityCurve?: Array<{
+    time: number;
+    equity: number;
+    drawdownPct: number;
+  }>;
+  stressTests?: Array<{
+    label: string;
+    passed: boolean;
+    trades: number;
+    winRate: number;
+    netPnl: number;
+    maxDrawdown: number;
+    profitFactor: number;
+  }>;
   note: string;
+}
+
+export interface BacktestConfig {
+  period: string;
+  limit: number;
+  exitBars: number;
+  slippagePct: number;
+  commissionPct: number;
 }
 
 export interface BacktestRun {
@@ -84,6 +113,7 @@ export interface BacktestRun {
   period: string;
   candleCount: number;
   assumption: string;
+  config?: BacktestConfig;
   results: BacktestProfileResult[];
   createdAt: string;
 }
@@ -91,6 +121,15 @@ export interface BacktestRun {
 export interface ResearchSummary {
   latestReport: AnalysisReport | null;
   accounts: PaperAccount[];
+  settlements?: Array<{
+    profileId: string;
+    name: string;
+    action: 'closed' | 'mark';
+    direction?: 'long' | 'short';
+    exitPrice?: number;
+    reason: string;
+  }>;
+  markPrice?: number;
   latestBacktest: BacktestRun | null;
 }
 
@@ -111,9 +150,16 @@ export const researchApi = {
     return response.data.reports;
   },
 
-  async getPaperAccounts(): Promise<PaperAccount[]> {
-    const response = await api.get<ApiEnvelope<{ accounts: PaperAccount[] }>>('/api/research/paper-accounts');
-    return response.data.accounts;
+  async getPaperAccounts(): Promise<{ accounts: PaperAccount[]; settlements?: any[]; price?: number }> {
+    const response = await api.get<ApiEnvelope<{ accounts: PaperAccount[]; settlements?: any[]; price?: number }>>('/api/research/paper-accounts');
+    return response.data;
+  },
+
+  async settlePaperAccounts(): Promise<{ accounts: PaperAccount[]; settlements: any[]; price: number }> {
+    const response = await api.post<ApiEnvelope<{ accounts: PaperAccount[]; settlements: any[]; price: number }>>(
+      '/api/research/paper-accounts/settle'
+    );
+    return response.data;
   },
 
   async executePaperTrading(reportId?: string): Promise<{ decisions: any[]; accounts: PaperAccount[] }> {
@@ -129,10 +175,17 @@ export const researchApi = {
     return response.data.accounts;
   },
 
-  async runBacktest(reportId?: string): Promise<BacktestRun> {
+  async runBacktest(reportId?: string, config?: Partial<BacktestConfig>): Promise<BacktestRun> {
     const response = await api.post<ApiEnvelope<{ backtest: BacktestRun }>>(
       '/api/research/backtests/run',
-      reportId ? { reportId, period: '1m', limit: 240 } : { period: '1m', limit: 240 }
+      {
+        reportId,
+        period: config?.period || '1m',
+        limit: config?.limit || 240,
+        exitBars: config?.exitBars || 8,
+        slippagePct: config?.slippagePct ?? 0.03,
+        commissionPct: config?.commissionPct ?? 0.01,
+      }
     );
     return response.data.backtest;
   },

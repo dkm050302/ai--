@@ -6,6 +6,7 @@ import { Request, Response } from 'express';
 import { getUserApiKey } from './ai';
 import { logger } from '../utils/logger';
 import { AnalysisReportModel } from '../models/AnalysisReport';
+import { executePaperTradingForReport } from './research';
 
 /**
  * AI分析请求接口
@@ -94,6 +95,7 @@ export async function analyzeMarket(req: Request, res: Response): Promise<void> 
       signals: signals || [],
       result: analysis,
     });
+    const paperTrading = await executePaperTradingForReport(req.user.accountId, report._id.toString());
 
     logger.info(`[AI分析] 分析完成`);
     res.json({
@@ -101,6 +103,10 @@ export async function analyzeMarket(req: Request, res: Response): Promise<void> 
       data: {
         ...analysis,
         reportId: report._id.toString(),
+        paperTrading: {
+          decisions: paperTrading.decisions,
+          accounts: paperTrading.accounts,
+        },
       }
     });
   } catch (error) {

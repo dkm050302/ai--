@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Card, Button, Form, Input, Modal, message, Descriptions, Tag, Space } from 'antd';
+import { Alert, Card, Button, Form, Input, Modal, message, Descriptions, Tag, Space, Row, Col, Statistic } from 'antd';
 import { EditOutlined, SaveOutlined, LogoutOutlined, ApiOutlined, KeyOutlined, RobotOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { authFetch } from '@/utils/apiConfig';
+import { PageHeader } from '@/components/PageHeader';
 
 interface AIConfig {
   provider: string;
@@ -48,9 +49,7 @@ export function AIAccount() {
 
   const handleConfig = () => {
     form.resetFields();
-    if (aiConfig?.apiKey && aiConfig.apiKey !== '****') {
-      form.setFieldsValue({ apiKey: aiConfig.apiKey });
-    }
+    form.setFieldsValue({ provider: 'deepseek' });
     setConfigModalVisible(true);
   };
 
@@ -135,40 +134,56 @@ export function AIAccount() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between pb-6">
-        <div>
-          <h1 className="text-4xl font-black text-slate-900" style={{ fontFamily: '"Times New Roman", serif' }}>
-            AI配置
-          </h1>
-          <p className="text-sm text-slate-600 font-medium mt-2" style={{ fontFamily: '"Georgia", serif' }}>
-            单人样品模式，无需登录即可使用
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="workspace-page">
+      <PageHeader
+        eyebrow="AI Service"
+        title="AI账号"
+        description="DeepSeek 连接状态和本机密钥配置"
+        meta={aiConfig ? <Tag color="success">已连接</Tag> : <Tag color="warning">未配置</Tag>}
+        actions={(
           <Button
             icon={<ApiOutlined />}
             onClick={() => window.open('https://platform.deepseek.com/api_keys', '_blank')}
           >
             获取API Key
           </Button>
-        </div>
-      </div>
+        )}
+      />
+
+      <Row gutter={[12, 12]}>
+        <Col xs={24} md={8}>
+          <div className="metric-tile">
+            <div className="metric-tile-label">服务商</div>
+            <div className="metric-tile-value">{aiConfig?.provider === 'deepseek' ? 'DeepSeek' : '未配置'}</div>
+          </div>
+        </Col>
+        <Col xs={24} md={8}>
+          <div className="metric-tile">
+            <div className="metric-tile-label">连接状态</div>
+            <div className="metric-tile-value">{aiConfig ? '可用' : '待配置'}</div>
+          </div>
+        </Col>
+        <Col xs={24} md={8}>
+          <div className="metric-tile">
+            <div className="metric-tile-label">样品模式</div>
+            <div className="metric-tile-value">单人</div>
+          </div>
+        </Col>
+      </Row>
 
       {/* AI配置卡片 */}
       <Card
-        className="shadow-lg border-0"
+        className="workspace-card"
         title={
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
-              <RobotOutlined className="text-xl text-white" />
+            <div className="w-9 h-9 rounded-md bg-blue-600 flex items-center justify-center">
+              <RobotOutlined className="text-lg text-white" />
             </div>
             <div>
-              <div className="text-lg font-bold text-slate-900">
+              <div className="text-base font-bold text-slate-900">
                 {aiConfig?.provider === 'deepseek' ? 'DeepSeek' : 'AI服务'}
               </div>
-              <div className="text-sm text-slate-500">大语言模型服务</div>
+              <div className="text-xs text-slate-500">市场分析模型</div>
             </div>
           </div>
         }
@@ -205,14 +220,14 @@ export function AIAccount() {
       >
         {aiConfig ? (
           <>
-            <Descriptions column={1} size="large">
+            <Descriptions column={{ xs: 1, md: 2 }} size="small">
               <Descriptions.Item label={<span className="font-semibold">服务提供商</span>}>
-                <span className="text-lg font-bold text-slate-900">
+                <span className="font-bold text-slate-900">
                   {aiConfig.provider === 'deepseek' ? 'DeepSeek' : aiConfig.provider}
                 </span>
               </Descriptions.Item>
               <Descriptions.Item label={<span className="font-semibold">API Key</span>}>
-                <span className="text-lg text-slate-700 font-mono">
+                <span className="text-slate-700 font-mono">
                   {aiConfig.apiKey || '未配置'}
                 </span>
               </Descriptions.Item>
@@ -223,25 +238,30 @@ export function AIAccount() {
               )}
             </Descriptions>
 
-            <div className="mt-6">
+            <Alert
+              className="mt-4"
+              type="info"
+              showIcon
+              message="完整 API Key 不会在页面回显"
+              description="编辑配置时需要重新输入完整 Key。"
+            />
+
+            <div className="mt-4">
               <Button
                 type="primary"
-                size="large"
                 loading={testing}
                 onClick={handleTest}
-                block
               >
                 测试连接
               </Button>
             </div>
           </>
         ) : (
-          <div className="text-center py-12">
-            <RobotOutlined className="text-6xl text-slate-300 mb-4" />
-            <p className="text-slate-500 mb-6">尚未配置AI服务</p>
+          <div className="text-center py-10">
+            <RobotOutlined className="text-5xl text-slate-300 mb-4" />
+            <p className="text-slate-500 mb-5">尚未配置AI服务</p>
             <Button
               type="primary"
-              size="large"
               icon={<KeyOutlined />}
               onClick={handleConfig}
             >
@@ -253,34 +273,25 @@ export function AIAccount() {
 
       {/* 使用说明卡片 */}
       <Card
-        className="shadow-lg border-0 bg-slate-50"
+        className="workspace-card"
         title={
           <div className="flex items-center gap-2">
             <ApiOutlined className="text-slate-600" />
-            <span className="font-bold text-slate-900">样品说明</span>
+            <span className="font-bold text-slate-900">运行说明</span>
           </div>
         }
       >
-        <div className="space-y-3 text-slate-700">
-          <div>
-            <p className="font-semibold mb-1">1. 无需登录</p>
-            <p className="text-sm text-slate-600">
-              当前版本默认使用本机演示用户，打开交易看板即可运行 AI 分析
-            </p>
-          </div>
-          <div>
-            <p className="font-semibold mb-1">2. AI Key</p>
-            <p className="text-sm text-slate-600">DeepSeek API Key 已加密保存在本机后端，如需更换可在此页编辑</p>
-          </div>
-          <div>
-            <p className="font-semibold mb-1">3. 测试连接</p>
-            <p className="text-sm text-slate-600">配置完成后，点击"测试连接"按钮验证配置是否正确</p>
-          </div>
-          <div>
-            <p className="font-semibold mb-1">4. 开始使用</p>
-            <p className="text-sm text-slate-600">配置成功后，系统将使用您的API额度进行AI分析</p>
-          </div>
-        </div>
+        <Row gutter={[12, 12]}>
+          <Col xs={24} md={8}>
+            <Statistic title="用户模式" value="本机演示" />
+          </Col>
+          <Col xs={24} md={8}>
+            <Statistic title="密钥存储" value="后端加密" />
+          </Col>
+          <Col xs={24} md={8}>
+            <Statistic title="分析入口" value="交易看板" />
+          </Col>
+        </Row>
       </Card>
 
       {/* 配置弹窗 */}
@@ -326,7 +337,7 @@ export function AIAccount() {
               { required: true, message: '请输入API Key' },
               { min: 10, message: 'API Key格式不正确' },
             ]}
-            extra="请输入您的DeepSeek API Key，格式为 sk-xxxxx"
+            extra={aiConfig ? '需要更换时请输入新的完整 Key。' : '请输入您的 DeepSeek API Key。'}
           >
             <Input.Password
               prefix={<KeyOutlined className="text-slate-400" />}
@@ -335,14 +346,11 @@ export function AIAccount() {
             />
           </Form.Item>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-            <p className="font-semibold mb-1">提示：</p>
-            <ul className="list-disc list-inside space-y-1 text-xs">
-              <li>API Key将加密存储在服务器</li>
-              <li>请妥善保管您的API Key</li>
-              <li>如有泄露，请及时在DeepSeek平台重新生成</li>
-            </ul>
-          </div>
+          <Alert
+            type="info"
+            showIcon
+            message="API Key 将加密存储在本机后端"
+          />
         </Form>
       </Modal>
     </div>

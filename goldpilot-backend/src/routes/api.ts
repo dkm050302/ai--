@@ -38,6 +38,7 @@ import {
   getResearchSummary,
   resetPaperAccounts,
   runBacktest,
+  settlePaperAccountsEndpoint,
 } from '../controllers/research';
 import {
   getDataSource,
@@ -95,6 +96,7 @@ router.get('/research/summary', optionalAuth, getResearchSummary);
 router.get('/research/reports', optionalAuth, getAnalysisReports);
 router.get('/research/paper-accounts', optionalAuth, getPaperAccounts);
 router.post('/research/paper-accounts/execute', optionalAuth, executePaperTrading);
+router.post('/research/paper-accounts/settle', optionalAuth, settlePaperAccountsEndpoint);
 router.post('/research/paper-accounts/reset', optionalAuth, resetPaperAccounts);
 router.post('/research/backtests/run', optionalAuth, runBacktest);
 router.get('/research/backtests', optionalAuth, getBacktests);

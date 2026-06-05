@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Radio, Button, Input, Space, Typography, Card, Alert, Statistic, Row, Col, message } from 'antd';
 import { ReloadOutlined, CheckCircleOutlined, ClockCircleOutlined, CopyOutlined } from '@ant-design/icons';
+import { PageHeader } from '@/components/PageHeader';
 
 const { Text, Paragraph } = Typography;
 
@@ -9,6 +10,10 @@ interface QuotaInfo {
   used: number;
   remaining: number;
   resetTime: string;
+  keyCount?: number;
+  activeKeyLabel?: string;
+  activeWindow?: string;
+  rotationMode?: 'single' | 'split_12h';
 }
 
 interface DataSource {
@@ -46,6 +51,11 @@ export function DataSourceSettings() {
 
   // Twelve Data API Key 状态
   const [apiKey, setApiKey] = useState<string>('');
+  const [hasSavedApiKey, setHasSavedApiKey] = useState(false);
+  const [savedApiKeyLabel, setSavedApiKeyLabel] = useState('');
+  const [savedKeyCount, setSavedKeyCount] = useState(0);
+  const [activeKeyLabel, setActiveKeyLabel] = useState('');
+  const [activeWindow, setActiveWindow] = useState('');
   const [savingKey, setSavingKey] = useState(false);
 
   // 配额信息状态
@@ -162,6 +172,7 @@ export function DataSourceSettings() {
       if (data.success) {
         setRefreshInterval(interval);
         setNextRefreshIn(interval === 'never' ? 0 : getIntervalSeconds(interval));
+        window.dispatchEvent(new CustomEvent('goldpilot-refresh-interval-change', { detail: interval }));
         setSuccess('刷新间隔已更新');
         setTimeout(() => setSuccess(null), 3000);
       }
@@ -211,8 +222,12 @@ export function DataSourceSettings() {
       if (response.ok) {
         const data = await response.json();
         // 只显示已配置状态，不加载遮蔽的API Key到输入框
-        if (data.success && data.data.hasKey) {
-          // 设置为空字符串或提示信息，不使用遮蔽值
+        if (data.success) {
+          setHasSavedApiKey(!!data.data.hasKey);
+          setSavedApiKeyLabel(data.data.apiKey || '');
+          setSavedKeyCount(data.data.keyCount || 0);
+          setActiveKeyLabel(data.data.activeKeyLabel || '');
+          setActiveWindow(data.data.activeWindow || '');
           setApiKey('');
         }
       }
@@ -246,9 +261,11 @@ export function DataSourceSettings() {
 
       const data = await response.json();
       if (data.success) {
-        setSuccess('API Key 已保存');
+        setSuccess(data.data.keyCount >= 2 ? '2 个 API Key 已保存，已启用 12 小时轮换' : 'API Key 已保存');
         setTimeout(() => setSuccess(null), 3000);
+        setApiKey('');
         // 重新加载配额信息
+        await loadApiKey();
         loadQuota();
       }
     } catch (err) {
@@ -259,8 +276,8 @@ export function DataSourceSettings() {
   };
 
   const handleTestApiKey = async () => {
-    if (!apiKey.trim()) {
-      setError('请先输入 API Key');
+    if (!apiKey.trim() && !hasSavedApiKey) {
+      setError('请先输入或保存 API Key');
       return;
     }
 
@@ -274,12 +291,12 @@ export function DataSourceSettings() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ apiKey: apiKey.trim() }),
+        body: JSON.stringify(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
       });
 
       const data = await response.json();
       if (data.success) {
-        setSuccess('API Key 验证成功');
+        setSuccess(data.data?.keyCount >= 2 ? '2 个 API Key 验证成功' : (apiKey.trim() ? 'API Key 验证成功' : '已保存 API Key 验证成功'));
         setTimeout(() => setSuccess(null), 3000);
       } else {
         setError(data.error?.message || 'API Key 验证失败');
@@ -371,14 +388,17 @@ export function DataSourceSettings() {
   }
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* 标题和刷新按钮 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <Typography.Title level={4} style={{ margin: 0 }}>数据源设置</Typography.Title>
-            <Typography.Text type="secondary">选择黄金价格数据的来源</Typography.Text>
-          </div>
+    <div className="workspace-page">
+      <PageHeader
+        eyebrow="Market Data"
+        title="数据源设置"
+        description="黄金 K 线来源、API Key 和刷新策略"
+        meta={refreshInterval !== 'never' && nextRefreshIn > 0 ? (
+          <span className="pill blue">下次刷新 {formatTime(nextRefreshIn)}</span>
+        ) : (
+          <span className="pill">手动刷新</span>
+        )}
+        actions={(
           <Button
             icon={<ReloadOutlined spin={refreshing} />}
             onClick={handleManualRefresh}
@@ -386,18 +406,9 @@ export function DataSourceSettings() {
           >
             立即刷新
           </Button>
-        </div>
-
-        {/* 倒计时显示 */}
-        {refreshInterval !== 'never' && nextRefreshIn > 0 && (
-          <Alert
-            message={`下次刷新: ${formatTime(nextRefreshIn)}`}
-            type="info"
-            showIcon={false}
-            style={{ maxWidth: 'fit-content' }}
-          />
         )}
-
+      />
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* 错误和成功提示 */}
         {error && (
           <Alert
@@ -419,11 +430,12 @@ export function DataSourceSettings() {
         )}
 
         {/* 数据源选择 */}
-        <Card title="选择数据源" size="small">
+        <Card className="workspace-card" title="选择数据源" size="small">
           <Radio.Group
             value={currentSource}
             onChange={(e) => handleSourceChange(e.target.value)}
             disabled={switching}
+            style={{ width: '100%' }}
           >
             <Space direction="vertical" style={{ width: '100%' }}>
               {availableSources.map((source) => (
@@ -431,6 +443,7 @@ export function DataSourceSettings() {
                   key={source.id}
                   value={source.id}
                   disabled={!source.enabled}
+                  className="data-source-option"
                 >
                   <Space>
                     <Text strong>{source.name}</Text>
@@ -452,6 +465,7 @@ export function DataSourceSettings() {
         {/* Twelve Data API Key 配置 */}
         {currentSource === 'twelvedata' && (
           <Card
+            className="workspace-card"
             title="Twelve Data API 配置"
             size="small"
             extra={
@@ -467,9 +481,9 @@ export function DataSourceSettings() {
             <Space direction="vertical" style={{ width: '100%' }} size="large">
               {/* 配额信息 */}
               {quotaInfo && (
-                <Card size="small" style={{ background: quotaInfo.remaining === 0 ? '#fff1f0' : '#f6ffed' }}>
+                <div className={quotaInfo.remaining === 0 ? 'quota-panel quota-panel-danger' : 'quota-panel'}>
                   <Row gutter={16}>
-                    <Col span={8}>
+                    <Col span={6}>
                       <Statistic
                         title="每日限制"
                         value={quotaInfo.limit}
@@ -477,7 +491,7 @@ export function DataSourceSettings() {
                         valueStyle={{ color: quotaInfo.remaining === 0 ? '#cf1322' : '#3f8600', fontSize: 14 }}
                       />
                     </Col>
-                    <Col span={8}>
+                    <Col span={6}>
                       <Statistic
                         title="已使用"
                         value={quotaInfo.used}
@@ -485,7 +499,7 @@ export function DataSourceSettings() {
                         valueStyle={{ color: '#1890ff', fontSize: 14 }}
                       />
                     </Col>
-                    <Col span={8}>
+                    <Col span={6}>
                       <Statistic
                         title="剩余次数"
                         value={quotaInfo.remaining}
@@ -497,6 +511,13 @@ export function DataSourceSettings() {
                         }}
                       />
                     </Col>
+                    <Col span={6}>
+                      <Statistic
+                        title="当前账号"
+                        value={quotaInfo.activeKeyLabel || activeKeyLabel || '单 Key'}
+                        valueStyle={{ color: '#1769e0', fontSize: 14, fontWeight: 'bold' }}
+                      />
+                    </Col>
                   </Row>
                   <div style={{ marginTop: '12px', fontSize: '12px', color: '#666' }}>
                     <ClockCircleOutlined style={{ marginRight: '4px' }} />
@@ -506,8 +527,13 @@ export function DataSourceSettings() {
                       hour: '2-digit',
                       minute: '2-digit'
                     })}
+                    {(quotaInfo.keyCount || savedKeyCount) >= 2 && (
+                      <Text type="secondary" style={{ marginLeft: 12 }}>
+                        {quotaInfo.activeWindow || activeWindow}，已配置 {quotaInfo.keyCount || savedKeyCount} 个 Key
+                      </Text>
+                    )}
                   </div>
-                </Card>
+                </div>
               )}
 
               <div>
@@ -515,13 +541,26 @@ export function DataSourceSettings() {
                   API Key <Text type="danger">*</Text>
                 </Text>
                 <Space direction="vertical" style={{ width: '100%' }}>
+                  {hasSavedApiKey && (
+                    <Alert
+                      type="success"
+                      showIcon
+                      message={`API Key 已保存${savedApiKeyLabel ? `：${savedApiKeyLabel}` : ''}`}
+                      description={(savedKeyCount >= 2 || activeKeyLabel)
+                        ? `双 Key 模式：北京时间 00:00-11:59 使用 A，12:00-23:59 使用 B。当前 ${activeKeyLabel || '自动选择'}，${activeWindow || '按北京时间切换'}。`
+                        : '为安全起见，页面不会回显完整 Key；需要更换时输入新的完整 Key 再保存。'}
+                    />
+                  )}
                   <Input.TextArea
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="请输入 Twelve Data API Key"
-                    autoSize={{ minRows: 2, maxRows: 4 }}
+                    placeholder={hasSavedApiKey ? '已保存 API Key。如需更换，请输入 1 个或 2 个完整 Key' : '请输入 Twelve Data API Key；两个 Key 可用换行、逗号或分号分隔'}
+                    autoSize={{ minRows: 2, maxRows: 5 }}
                     style={{ maxWidth: '600px', fontFamily: 'monospace', fontSize: '13px' }}
                   />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    输入 2 个 Key 时，系统会按北京时间自动轮换：第 1 个用于 00:00-11:59，第 2 个用于 12:00-23:59。
+                  </Text>
                   <Space>
                     <Button
                       icon={<CopyOutlined />}
@@ -533,7 +572,7 @@ export function DataSourceSettings() {
                       }}
                       disabled={!apiKey}
                     >
-                      复制完整 Key
+                      复制当前输入
                     </Button>
                   </Space>
                 </Space>
@@ -551,9 +590,9 @@ export function DataSourceSettings() {
                 <Button
                   onClick={handleTestApiKey}
                   loading={savingKey}
-                  disabled={!apiKey.trim()}
+                  disabled={!apiKey.trim() && !hasSavedApiKey}
                 >
-                  验证 API Key
+                  {apiKey.trim() ? '验证输入 Key' : '验证已保存 Key'}
                 </Button>
                 <Button
                   onClick={loadQuota}
@@ -567,12 +606,12 @@ export function DataSourceSettings() {
         )}
 
         {/* 自动刷新间隔 */}
-        <Card title="自动刷新间隔" size="small">
+        <Card className="workspace-card" title="自动刷新间隔" size="small">
           <Radio.Group
             value={refreshInterval}
             onChange={(e) => handleRefreshIntervalChange(e.target.value)}
           >
-            <Space>
+            <Space wrap>
               <Radio.Button value="1m">1分钟</Radio.Button>
               <Radio.Button value="5m">5分钟</Radio.Button>
               <Radio.Button value="10m">10分钟</Radio.Button>
@@ -582,7 +621,7 @@ export function DataSourceSettings() {
         </Card>
 
         {/* 数据源说明 */}
-        <Card title="数据源说明" size="small">
+        <Card className="workspace-card" title="数据源说明" size="small">
           <Paragraph style={{ marginBottom: 0 }}>
             <ul style={{ paddingLeft: '20px', margin: 0 }}>
               <li><strong>模拟数据</strong>：用于演示的生成数据，价格为美元/盎司</li>

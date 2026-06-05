@@ -12,6 +12,14 @@ const DEFAULT_TABS: TabItem[] = [
   { key: '/', label: '首页', closable: false },
 ];
 
+const TAB_LABELS: Record<string, string> = {
+  '/': '首页',
+  '/event-driven': '事件驱动',
+  '/ai-account': 'AI账号',
+  '/datasource-settings': '数据源',
+  '/research-center': '策略研究',
+};
+
 export function Tabs() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -22,29 +30,15 @@ export function Tabs() {
   useEffect(() => {
     const path = location.pathname;
 
-    // 更新activeKey
     setActiveKey(path);
 
-    // 检查当前路径是否已在tabs中
-    const existingTab = items.find(item => item.key === path);
-
-    if (!existingTab) {
-      // 添加新tab
-      let label = '新页面';
-      if (path === '/mt4-account') {
-        label = 'MT4账号管理';
-      } else if (path === '/event-driven') {
-        label = '事件驱动首页';
-      } else if (path === '/ai-account') {
-        label = 'AI账号';
-      } else if (path === '/datasource-settings') {
-        label = '数据源设置';
-      } else if (path === '/research-center') {
-        label = '策略研究';
+    setItems((currentItems) => {
+      if (currentItems.some(item => item.key === path)) {
+        return currentItems;
       }
 
-      setItems([...items, { key: path, label, closable: true }]);
-    }
+      return [...currentItems, { key: path, label: TAB_LABELS[path] || '新页面', closable: path !== '/' }];
+    });
   }, [location.pathname]);
 
   const onEdit = (targetKey: string | React.MouseEvent | React.KeyboardEvent, action: 'add' | 'remove') => {
@@ -70,7 +64,7 @@ export function Tabs() {
   };
 
   return (
-    <div className="bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
+    <div className="workspace-tabs">
       <AntTabs
         type="editable-card"
         activeKey={activeKey}
@@ -78,8 +72,7 @@ export function Tabs() {
         onChange={onChange}
         onEdit={onEdit}
         hideAdd
-        className="px-6"
-        style={{ minHeight: '48px' }}
+        className="workspace-tabs-inner"
       />
     </div>
   );

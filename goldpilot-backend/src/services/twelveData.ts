@@ -9,8 +9,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils';
 
+interface ActiveApiKeyInfo {
+  apiKey: string;
+  keyCount: number;
+  activeKeyIndex: number;
+  activeKeyLabel: string;
+  activeWindow: string;
+  rotationMode: 'single' | 'split_12h';
+}
+
 class TwelveDataService {
-  private apiKey: string;
+  private apiKey: string = '';
+  private apiKeys: string[] = [];
   private baseUrl = 'https://api.twelvedata.com';
   // 缓存
   private candlesCache: Map<string, { candles: any[]; timestamp: number }> = new Map();
@@ -29,34 +39,129 @@ class TwelveDataService {
 
   // API Key 文件路径
   private readonly API_KEY_FILE = path.join(process.cwd(), '.twelvedata-apikey');
+  private readonly API_KEYS_FILE = path.join(process.cwd(), '.twelvedata-apikeys');
 
   constructor() {
-    // 从环境变量获取API密钥（支持两种命名方式）
-    this.apiKey = process.env.TWELVEDATA_API_KEY || process.env.TWELVE_DATA_API_KEY || '';
+    this.apiKeys = this.loadApiKeys();
+    this.apiKey = this.getActiveKeyInfo().apiKey;
 
-    // 如果环境变量没有，尝试从文件读取
-    if (!this.apiKey) {
-      try {
-        if (fs.existsSync(this.API_KEY_FILE)) {
-          this.apiKey = fs.readFileSync(this.API_KEY_FILE, 'utf-8').trim();
-          logger.info('[Twelve Data] 从文件加载 API Key');
-        }
-      } catch (error) {
-        logger.warn('[Twelve Data] 读取 API Key 文件失败:', error);
-      }
-    }
-
-    if (!this.apiKey) {
+    if (this.apiKeys.length === 0) {
       logger.warn('[Twelve Data] 未配置 TWELVEDATA_API_KEY');
+    } else if (this.apiKeys.length >= 2) {
+      const active = this.getActiveKeyInfo();
+      logger.info(`[Twelve Data] 双 Key 12小时轮换已启用，当前使用 ${active.activeKeyLabel} (${active.activeWindow})`);
     } else {
       logger.info('[Twelve Data] API Key 已配置');
     }
   }
 
+  private parseApiKeys(raw: string): string[] {
+    return raw
+      .split(/[\n,;]+/)
+      .map((key) => key.trim())
+      .filter(Boolean);
+  }
+
+  private loadApiKeys(): string[] {
+    const envMulti = process.env.TWELVEDATA_API_KEYS || process.env.TWELVE_DATA_API_KEYS || '';
+    if (envMulti.trim()) {
+      return this.parseApiKeys(envMulti);
+    }
+
+    const envSingle = process.env.TWELVEDATA_API_KEY || process.env.TWELVE_DATA_API_KEY || '';
+    if (envSingle.trim()) {
+      return [envSingle.trim()];
+    }
+
+    try {
+      if (fs.existsSync(this.API_KEYS_FILE)) {
+        const raw = fs.readFileSync(this.API_KEYS_FILE, 'utf-8').trim();
+        if (!raw) {
+          return [];
+        }
+
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            logger.info('[Twelve Data] 从双 Key 文件加载 API Keys');
+            return parsed.map((key) => String(key).trim()).filter(Boolean);
+          }
+        } catch {
+          // 兼容纯文本：换行、逗号或分号分隔
+        }
+
+        logger.info('[Twelve Data] 从双 Key 文本文件加载 API Keys');
+        return this.parseApiKeys(raw);
+      }
+
+      if (fs.existsSync(this.API_KEY_FILE)) {
+        const apiKey = fs.readFileSync(this.API_KEY_FILE, 'utf-8').trim();
+        logger.info('[Twelve Data] 从文件加载 API Key');
+        return apiKey ? [apiKey] : [];
+      }
+    } catch (error) {
+      logger.warn('[Twelve Data] 读取 API Key 文件失败:', error);
+    }
+
+    return [];
+  }
+
+  private getBeijingHour(date: Date = new Date()): number {
+    const hourPart = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Shanghai',
+      hour: '2-digit',
+      hour12: false,
+    }).formatToParts(date).find((part) => part.type === 'hour')?.value;
+
+    return Number(hourPart || '0');
+  }
+
+  private getActiveKeyInfo(): ActiveApiKeyInfo {
+    if (this.apiKeys.length >= 2) {
+      const beijingHour = this.getBeijingHour();
+      const activeKeyIndex = beijingHour < 12 ? 0 : 1;
+      const activeKeyLabel = activeKeyIndex === 0 ? 'A' : 'B';
+
+      return {
+        apiKey: this.apiKeys[activeKeyIndex],
+        keyCount: this.apiKeys.length,
+        activeKeyIndex,
+        activeKeyLabel,
+        activeWindow: activeKeyIndex === 0 ? '北京时间 00:00-11:59' : '北京时间 12:00-23:59',
+        rotationMode: 'split_12h',
+      };
+    }
+
+    return {
+      apiKey: this.apiKeys[0] || '',
+      keyCount: this.apiKeys.length,
+      activeKeyIndex: 0,
+      activeKeyLabel: this.apiKeys.length === 1 ? '单 Key' : '未配置',
+      activeWindow: '全天',
+      rotationMode: 'single',
+    };
+  }
+
+  private getActiveApiKey(): string {
+    const active = this.getActiveKeyInfo();
+    this.apiKey = active.apiKey;
+    return active.apiKey;
+  }
+
   /**
    * 获取剩余配额（从响应头获取的真实数据）
    */
-  getRemainingQuota(): { limit: number; used: number; remaining: number; resetTime: string } {
+  getRemainingQuota(): {
+    limit: number;
+    used: number;
+    remaining: number;
+    resetTime: string;
+    keyCount: number;
+    activeKeyIndex: number;
+    activeKeyLabel: string;
+    activeWindow: string;
+    rotationMode: 'single' | 'split_12h';
+  } {
     const now = new Date();
     const today = now.getDate();
 
@@ -76,11 +181,18 @@ class TwelveDataService {
     const remaining = this.apiCreditsLeft > 0 ? this.apiCreditsLeft : this.dailyLimit;
     const limit = used + remaining;
 
+    const active = this.getActiveKeyInfo();
+
     return {
       limit,
       used,
       remaining: Math.max(0, remaining),
       resetTime,
+      keyCount: active.keyCount,
+      activeKeyIndex: active.activeKeyIndex,
+      activeKeyLabel: active.activeKeyLabel,
+      activeWindow: active.activeWindow,
+      rotationMode: active.rotationMode,
     };
   }
 
@@ -153,7 +265,8 @@ class TwelveDataService {
    */
   async getCandles(interval: string = '1m', limit: number = 100): Promise<any[] | null> {
     try {
-      if (!this.apiKey) {
+      const activeApiKey = this.getActiveApiKey();
+      if (!activeApiKey) {
         throw new Error('Twelve Data API Key 未配置');
       }
 
@@ -172,6 +285,16 @@ class TwelveDataService {
       // Twelve Data 使用 XAU/USD 作为黄金交易对
       const symbol = 'XAU/USD';
       const intervalStr = this.mapInterval(interval);
+
+      const recentCandles = await this.getRecentCandles(symbol, intervalStr, limit);
+      if (recentCandles.length > 0) {
+        logger.info(`✅ [Twelve Data] 最近K线数据: ${recentCandles.length}条 for ${interval}`);
+        this.candlesCache.set(cacheKey, { candles: recentCandles, timestamp: Date.now() });
+        return recentCandles;
+      }
+
+      logger.warn('[Twelve Data] 最近K线为空，停止本次请求以保护API额度');
+      return [];
 
       const allCandles: any[] = [];
 
@@ -208,7 +331,7 @@ class TwelveDataService {
               start_date: startStr,
               end_date: endStr,
               timezone: 'UTC',
-              apikey: this.apiKey,
+              apikey: activeApiKey,
             },
             timeout: 30000,
           });
@@ -252,7 +375,7 @@ class TwelveDataService {
             logger.info(`[Twelve Data] 已获取足够数据: ${allCandles.length} 条`);
             break;
           }
-        } catch (error) {
+        } catch (error: any) {
           if (axios.isAxiosError(error)) {
             if (error.response?.status === 429) {
               logger.error(`[Twelve Data] API 请求次数超限，等待后重试...`);
@@ -324,12 +447,71 @@ class TwelveDataService {
     }
   }
 
+  private async getRecentCandles(symbol: string, interval: string, limit: number): Promise<any[]> {
+    try {
+      const activeApiKey = this.getActiveApiKey();
+      if (!activeApiKey) {
+        throw new Error('Twelve Data API Key 未配置');
+      }
+
+      await this.waitForRateLimit();
+
+      const response = await axios.get(`${this.baseUrl}/time_series`, {
+        params: {
+          symbol,
+          interval,
+          outputsize: Math.min(Math.max(limit, 1), 5000),
+          timezone: 'UTC',
+          apikey: activeApiKey,
+        },
+        timeout: 30000,
+      });
+
+      this.updateQuotaFromHeaders(response.headers);
+
+      if (response.data.status === 'error') {
+        logger.warn(`[Twelve Data] 最近K线请求错误: ${response.data.message}`);
+        return [];
+      }
+
+      if (!response.data.values || !Array.isArray(response.data.values)) {
+        logger.warn('[Twelve Data] 最近K线返回格式无效');
+        return [];
+      }
+
+      return this.convertValuesToCandles(response.data.values, limit);
+    } catch (error) {
+      logger.warn('[Twelve Data] 最近K线请求失败，准备回退到按天获取:', error);
+      return [];
+    }
+  }
+
+  private convertValuesToCandles(values: any[], limit: number): any[] {
+    const candles = values
+      .map((item) => {
+        const datetime = item.datetime;
+        const open = parseFloat(item.open);
+        const high = parseFloat(item.high);
+        const low = parseFloat(item.low);
+        const close = parseFloat(item.close);
+        const volume = parseFloat(item.volume || '0');
+        const date = new Date(`${datetime}Z`);
+        const time = Math.floor(date.getTime() / 1000);
+
+        return { time, open, high, low, close, volume };
+      })
+      .filter((item) => item.time && [item.open, item.high, item.low, item.close].every(Number.isFinite))
+      .sort((a, b) => a.time - b.time);
+
+    return candles.slice(-limit);
+  }
+
   /**
    * 获取实时价格
    */
   async getRealTimePrice(): Promise<{ price: number; change: number; changePct: number; high: number; low: number } | null> {
     try {
-      if (!this.apiKey) {
+      if (!this.getActiveApiKey()) {
         throw new Error('Twelve Data API Key 未配置');
       }
 
@@ -447,8 +629,45 @@ class TwelveDataService {
    * 更新 API Key
    */
   updateApiKey(apiKey: string): void {
-    this.apiKey = apiKey;
+    this.updateApiKeys(apiKey ? [apiKey] : []);
     logger.info('[Twelve Data] API Key 已更新');
+  }
+
+  /**
+   * 更新多个 API Key。2个及以上时按北京时间 0-12 / 12-24 自动切换前两个 Key。
+   */
+  updateApiKeys(apiKeys: string[]): void {
+    this.apiKeys = apiKeys.map((key) => key.trim()).filter(Boolean);
+    this.apiKey = this.getActiveKeyInfo().apiKey;
+    this.dailyLimit = 800;
+    this.apiCreditsUsed = 0;
+    this.apiCreditsLeft = 800;
+    this.lastResetDate = new Date().getDate();
+    this.rateLimitRequests = [];
+    this.clearCache();
+
+    if (this.apiKeys.length >= 2) {
+      const active = this.getActiveKeyInfo();
+      logger.info(`[Twelve Data] API Keys 已更新，双 Key 12小时轮换启用，当前使用 ${active.activeKeyLabel}`);
+    } else {
+      logger.info('[Twelve Data] API Key 已更新');
+    }
+  }
+
+  getApiKeyStatus(): Omit<ActiveApiKeyInfo, 'apiKey'> & { hasKey: boolean } {
+    const active = this.getActiveKeyInfo();
+    return {
+      hasKey: !!active.apiKey,
+      keyCount: active.keyCount,
+      activeKeyIndex: active.activeKeyIndex,
+      activeKeyLabel: active.activeKeyLabel,
+      activeWindow: active.activeWindow,
+      rotationMode: active.rotationMode,
+    };
+  }
+
+  getConfiguredApiKeys(): string[] {
+    return [...this.apiKeys];
   }
 
   /**
@@ -456,7 +675,7 @@ class TwelveDataService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      if (!this.apiKey) {
+      if (!this.getActiveApiKey()) {
         return false;
       }
       const result = await this.getCandles('1day', 1);

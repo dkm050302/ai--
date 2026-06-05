@@ -18,7 +18,7 @@ class MarketDataService {
   // 缓存机制，减少API调用
   private priceCache: { price: number; timestamp: number; source: string } | null = null;
   private candlesCache: Map<string, { candles: any[]; timestamp: number; source: string }> = new Map();
-  private readonly CACHE_DURATION = 5000; // 缓存5秒，确保K线时间同步
+  private readonly CACHE_DURATION = 60 * 1000;
 
   /**
    * 设置数据源
@@ -61,40 +61,91 @@ class MarketDataService {
    * 获取实时价格（始终使用新浪黄金）
    */
   async getPrice(): Promise<number> {
-    // 检查缓存
+    const quote = await this.getPriceQuote();
+    return quote.price;
+  }
+
+  async getPriceQuote(): Promise<{ price: number; change: number; changePct: number; high: number; low: number; source: string }> {
     if (this.priceCache && (Date.now() - this.priceCache.timestamp) < this.CACHE_DURATION) {
       logger.info(`📦 [缓存] 使用缓存价格: ${this.priceCache.price} (来源: ${this.priceCache.source})`);
-      return this.priceCache.price;
+      const candles = await this.getCandles('1m', 360);
+      return this.buildQuoteFromCandles(candles, this.priceCache.source);
     }
 
-    let price = 0;
+    if (this.currentSource === 'twelvedata') {
+      const candles = await this.getCandles('1m', 360);
+      const quote = this.buildQuoteFromCandles(candles, 'Twelve Data');
+      this.priceCache = {
+        price: quote.price,
+        timestamp: Date.now(),
+        source: quote.source,
+      };
+      return quote;
+    }
 
-    // 始终使用新浪黄金获取价格
     const sinaData = await sinaGoldService.getRealTimePrice();
     if (!sinaData || sinaData.price <= 0) {
       logger.warn('[新浪黄金] 价格数据获取失败或为空，使用模拟数据');
-      price = this.getMockPrice();
-    } else {
-      price = sinaData.price;
+      const candles = await this.getCandles('1m', 120);
+      const quote = this.buildQuoteFromCandles(candles, '模拟数据');
+      this.priceCache = {
+        price: quote.price,
+        timestamp: Date.now(),
+        source: quote.source,
+      };
+      return quote;
     }
 
-    logger.info(`✅ [新浪黄金] Price: ${price}`);
+    logger.info(`✅ [新浪黄金] Price: ${sinaData.price}`);
 
-    // 更新缓存
     this.priceCache = {
-      price,
+      price: sinaData.price,
       timestamp: Date.now(),
       source: '新浪黄金',
     };
 
-    return price;
+    return {
+      ...sinaData,
+      source: '新浪黄金',
+    };
+  }
+
+  private buildQuoteFromCandles(candles: any[], source: string): { price: number; change: number; changePct: number; high: number; low: number; source: string } {
+    if (!candles || candles.length === 0) {
+      const price = this.getMockPrice();
+      return {
+        price,
+        change: 0,
+        changePct: 0,
+        high: price,
+        low: price,
+        source,
+      };
+    }
+
+    const latest = candles[candles.length - 1];
+    const previous = candles.length > 1 ? candles[candles.length - 2] : latest;
+    const price = Number(latest.close || 0);
+    const previousClose = Number(previous.close || price);
+    const change = Number((price - previousClose).toFixed(2));
+    const changePct = previousClose > 0 ? Number(((change / previousClose) * 100).toFixed(2)) : 0;
+    const recent = candles.slice(-120);
+
+    return {
+      price,
+      change,
+      changePct,
+      high: Number(Math.max(...recent.map((item) => Number(item.high || price))).toFixed(2)),
+      low: Number(Math.min(...recent.map((item) => Number(item.low || price))).toFixed(2)),
+      source,
+    };
   }
 
   /**
    * 获取模拟价格
    */
   private getMockPrice(): number {
-    const basePrice = 2380;
+    const basePrice = this.priceCache?.price || 4450;
     const timeVariation = Math.sin(Date.now() / 300000) * 15;
     return basePrice + timeVariation;
   }
@@ -126,7 +177,7 @@ class MarketDataService {
         const twelveDataCandles = await twelveDataService.getCandles(interval, limit);
         if (!twelveDataCandles || twelveDataCandles.length === 0) {
           logger.warn('[Twelve Data] K线数据获取失败或为空');
-          candles = [];
+          candles = this.getCachedCandlesForInterval(interval, limit) || this.generateMockCandles(interval, limit);
         } else {
           candles = twelveDataCandles;
         }
@@ -156,7 +207,7 @@ class MarketDataService {
     const now = Date.now();
     const intervalMs = this.getIntervalMs(interval);
 
-    let basePrice = 2380;
+    let basePrice = this.priceCache?.price || 4450;
 
     for (let i = limit - 1; i >= 0; i--) {
       const time = Math.floor((now - i * intervalMs) / 1000);
@@ -175,6 +226,21 @@ class MarketDataService {
     }
 
     return candles;
+  }
+
+  private getCachedCandlesForInterval(interval: string, limit: number): any[] | null {
+    const prefix = `${interval}_`;
+    const candidates = [...this.candlesCache.entries()]
+      .filter(([key, cached]) => key.startsWith(prefix) && cached.candles.length > 0)
+      .sort((a, b) => b[1].timestamp - a[1].timestamp);
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const cached = candidates[0][1].candles;
+    logger.warn(`[缓存] Twelve Data 暂无新K线，回退到最近可用缓存: ${cached.length}条`);
+    return cached.slice(-limit);
   }
 
   /**
