@@ -1,7 +1,7 @@
 import { Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, BellOutlined, DatabaseOutlined, ExperimentOutlined } from '@ant-design/icons';
+import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, DatabaseOutlined, ExperimentOutlined } from '@ant-design/icons';
 
 const VERSION = 'v1.1.0';
 
@@ -13,9 +13,6 @@ export function Sidebar() {
   const getSelectedKey = () => {
     if (location.pathname === '/ai-account') {
       return ['ai-account'];
-    }
-    if (location.pathname === '/event-driven') {
-      return ['event-driven'];
     }
     if (location.pathname === '/datasource-settings') {
       return ['datasource-settings'];
@@ -34,15 +31,9 @@ export function Sidebar() {
       onClick: () => navigate('/'),
     },
     {
-      key: 'event-driven',
-      icon: <BellOutlined className="text-lg" />,
-      label: <span className="ml-2 font-medium">事件驱动首页</span>,
-      onClick: () => navigate('/event-driven'),
-    },
-    {
       key: 'research-center',
       icon: <ExperimentOutlined className="text-lg" />,
-      label: <span className="ml-2 font-medium">策略研究</span>,
+      label: <span className="ml-2 font-medium">量化策略</span>,
       onClick: () => navigate('/research-center'),
     },
     {

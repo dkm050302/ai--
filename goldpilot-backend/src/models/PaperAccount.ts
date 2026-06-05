@@ -115,12 +115,12 @@ const PaperAccountSchema = new Schema<PaperAccountDocument>({
   balance: {
     type: Number,
     required: true,
-    default: 10000,
+    default: 1_000_000,
   },
   equity: {
     type: Number,
     required: true,
-    default: 10000,
+    default: 1_000_000,
   },
   realizedPnl: {
     type: Number,

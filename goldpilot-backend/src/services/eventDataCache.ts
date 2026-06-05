@@ -30,8 +30,7 @@ interface EventCacheFile {
 }
 
 const CACHE_FILE = path.resolve(process.cwd(), 'data/event-cache.json');
-const CALENDAR_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const NEWS_CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+const EVENT_CACHE_MAX_AGE_MS = 60 * 60 * 1000;
 
 function isMockData<T extends { source?: string }>(items: T[]): boolean {
   return items.length > 0 && items.every((item) => item.source === '模拟数据');
@@ -87,7 +86,7 @@ class EventDataCacheService {
     }
 
     const cached = await this.readCalendar(dateKey);
-    if (cached && isCacheFresh(cached, CALENDAR_CACHE_MAX_AGE_MS)) {
+    if (cached && isCacheFresh(cached, EVENT_CACHE_MAX_AGE_MS)) {
       return {
         data: cached.data,
         meta: createMeta('cache', cached.updatedAt, true, '实时抓取失败，使用最近一次本地JSON缓存'),
@@ -113,7 +112,7 @@ class EventDataCacheService {
     }
 
     const cached = await this.readNews();
-    if (cached && isCacheFresh(cached, NEWS_CACHE_MAX_AGE_MS)) {
+    if (cached && isCacheFresh(cached, EVENT_CACHE_MAX_AGE_MS)) {
       return {
         data: cached.data,
         meta: createMeta('cache', cached.updatedAt, true, '实时抓取失败，使用最近一次本地JSON缓存'),

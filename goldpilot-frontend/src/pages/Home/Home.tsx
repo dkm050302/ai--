@@ -13,7 +13,7 @@ import { MiniCard } from '@/components/MiniCard';
 import { ActionPanel } from '@/components/ActionPanel';
 import { EventList } from '@/components/EventList';
 import { createDefaultPriceData } from '@/types/price';
-import { createDefaultEvents, createDefaultFlashes } from '@/types/event';
+import { createDefaultFlashes } from '@/types/event';
 import { createDefaultDecisionData } from '@/types/decision';
 import type { PriceData, Candle, Signal, DailyStats, Event, Flash } from '@/types';
 import {
@@ -53,6 +53,17 @@ function getDataMetaColor(meta: EventDataMeta | null, fallback: 'blue' | 'amber'
   if (meta.source === 'live') return 'green';
   if (meta.source === 'cache') return 'amber';
   return 'red';
+}
+
+function formatLocalDateParam(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function hasUsableEventRows(items: Event[], meta: EventDataMeta | null): boolean {
+  return meta?.source !== 'mock' && items.some((item) => item.source !== '模拟数据');
 }
 
 function countVisibleChars(value: string): number {
@@ -125,10 +136,13 @@ export function Home() {
   const [marketRefreshMs, setMarketRefreshMs] = useState<number | null>(5 * 60 * 1000);
 
   // 真实数据状态
-  const [events, setEvents] = useState<Event[]>(createDefaultEvents());
+  const [events, setEvents] = useState<Event[]>([]);
   const [flashes, setFlashes] = useState<Flash[]>(createDefaultFlashes());
   const [calendarMeta, setCalendarMeta] = useState<EventDataMeta | null>(null);
   const [newsMeta, setNewsMeta] = useState<EventDataMeta | null>(null);
+  const hasCalendarData = useMemo(() => hasUsableEventRows(events, calendarMeta), [events, calendarMeta]);
+  const importantDataItems = useMemo(() => hasCalendarData ? events.slice(0, 3) : [], [events, hasCalendarData]);
+  const importantMatterItems = useMemo(() => hasCalendarData ? events.slice(3, 6) : [], [events, hasCalendarData]);
 
   // AI分析相关状态
   const [analyzing, setAnalyzing] = useState(false);
@@ -306,7 +320,7 @@ export function Home() {
     const loadEventData = async () => {
       try {
         // 格式化今天日期
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatLocalDateParam(new Date());
 
         // 并行请求经济日历和市场快讯
         const [calendarRes, newsRes] = await Promise.all([
@@ -314,8 +328,11 @@ export function Home() {
           dataApi.getMarketNews().catch(() => ({ success: false, data: [] })),
         ]);
 
-        // 转换经济日历数据格式
-        if (calendarRes.success && calendarRes.data.length > 0) {
+        const nextCalendarMeta = 'meta' in calendarRes ? calendarRes.meta || null : null;
+        const nextNewsMeta = 'meta' in newsRes ? newsRes.meta || null : null;
+
+        // 转换经济日历数据格式。mock 只表示源不可用，不在首页占位展示。
+        if (calendarRes.success && calendarRes.data.length > 0 && nextCalendarMeta?.source !== 'mock') {
           const convertedEvents: Event[] = calendarRes.data
             .slice(0, 10) // 只取前10条
             .map((item: EconomicEvent) => ({
@@ -327,8 +344,10 @@ export function Home() {
               sourceUrl: item.sourceUrl,
           }));
           setEvents(convertedEvents);
-          setCalendarMeta('meta' in calendarRes ? calendarRes.meta || null : null);
+        } else {
+          setEvents([]);
         }
+        setCalendarMeta(nextCalendarMeta);
 
         // 转换市场快讯数据格式
         if (newsRes.success && newsRes.data.length > 0) {
@@ -343,15 +362,16 @@ export function Home() {
               sourceUrl: item.sourceUrl,
           }));
           setFlashes(convertedFlashes);
-          setNewsMeta('meta' in newsRes ? newsRes.meta || null : null);
         }
+        setNewsMeta(nextNewsMeta);
 
         console.log('✅ [事件数据] 加载成功');
       } catch (error) {
         console.error('❌ [事件数据] 加载失败:', error);
-        // 失败时使用默认数据
-        setEvents(createDefaultEvents());
+        setEvents([]);
         setFlashes(createDefaultFlashes());
+        setCalendarMeta(null);
+        setNewsMeta(null);
       }
     };
 
@@ -533,57 +553,65 @@ export function Home() {
           </article>
 
           <div className="home-under-chart" aria-label="市场信息流">
-            <div className="home-mini-grid">
-              <MiniCard
-                title="当天重要数据"
-                pillText={getDataMetaLabel(calendarMeta, '三星以上')}
-                pillColor={getDataMetaColor(calendarMeta, 'amber')}
-                items={events.slice(0, 3).map(e => ({
-                  date: e.date,
-                  time: e.time,
-                  star: e.star,
-                  text: e.text,
-                  source: e.source,
-                  sourceUrl: e.sourceUrl,
-                }))}
-              />
+            {hasCalendarData && (
+              <div className="home-mini-grid">
+                {importantDataItems.length > 0 && (
+                  <MiniCard
+                    title="当天重要数据"
+                    pillText={getDataMetaLabel(calendarMeta, '三星以上')}
+                    pillColor={getDataMetaColor(calendarMeta, 'amber')}
+                    items={importantDataItems.map(e => ({
+                      date: e.date,
+                      time: e.time,
+                      star: e.star,
+                      text: e.text,
+                      source: e.source,
+                      sourceUrl: e.sourceUrl,
+                    }))}
+                  />
+                )}
 
-              <MiniCard
-                title="当天重要事项"
-                pillText={getDataMetaLabel(calendarMeta, '18:00-05:00')}
-                pillColor={getDataMetaColor(calendarMeta, 'amber')}
-                items={events.slice(3, 6).map(e => ({
-                  date: e.date,
-                  time: e.time,
-                  star: e.star,
-                  text: e.text,
-                  source: e.source,
-                  sourceUrl: e.sourceUrl,
-                }))}
-              />
+                {importantMatterItems.length > 0 && (
+                  <MiniCard
+                    title="当天重要事项"
+                    pillText={getDataMetaLabel(calendarMeta, '18:00-05:00')}
+                    pillColor={getDataMetaColor(calendarMeta, 'amber')}
+                    items={importantMatterItems.map(e => ({
+                      date: e.date,
+                      time: e.time,
+                      star: e.star,
+                      text: e.text,
+                      source: e.source,
+                      sourceUrl: e.sourceUrl,
+                    }))}
+                  />
+                )}
 
-              <MiniCard
-                title="实时市场快讯"
-                pillText={getDataMetaLabel(newsMeta, '1小时刷新')}
-                pillColor={getDataMetaColor(newsMeta, 'red')}
-                items={flashes.slice(0, 3).map(f => ({
-                  date: f.date,
-                  time: f.time,
-                  text: f.text,
-                  hot: f.hot,
-                  source: f.source,
-                  sourceUrl: f.sourceUrl,
-                }))}
-              />
-            </div>
+                <MiniCard
+                  title="实时市场快讯"
+                  pillText={getDataMetaLabel(newsMeta, '1小时刷新')}
+                  pillColor={getDataMetaColor(newsMeta, 'red')}
+                  items={flashes.slice(0, 3).map(f => ({
+                    date: f.date,
+                    time: f.time,
+                    text: f.text,
+                    hot: f.hot,
+                    source: f.source,
+                    sourceUrl: f.sourceUrl,
+                  }))}
+                />
+              </div>
+            )}
 
-            <div className="home-feed-grid">
-              <EventList
-                events={events}
-                flashes={[]}
-                showFlashes={false}
-                title={calendarMeta?.source === 'mock' ? '经济日历源状态' : '美国重要事件明细'}
-              />
+            <div className={`home-feed-grid ${hasCalendarData ? '' : 'no-calendar'}`}>
+              {hasCalendarData && (
+                <EventList
+                  events={events}
+                  flashes={[]}
+                  showFlashes={false}
+                  title="美国重要事件明细"
+                />
+              )}
               <EventList events={[]} flashes={flashes} showEvents={false} />
               <ActionPanel actions={aiActions} />
             </div>

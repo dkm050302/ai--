@@ -17,7 +17,27 @@ interface RiskProfile {
   rewardRisk: number;
 }
 
-const INITIAL_BALANCE = 10000;
+type QuantInterventionMode = 'normal' | 'paused' | 'reduce_risk';
+
+interface QuantInterventionState {
+  mode: QuantInterventionMode;
+  note: string;
+  updatedAt: string;
+  updatedBy: 'human' | 'model';
+}
+
+interface QuantAllocationItem {
+  profileId: PaperProfileId;
+  name: string;
+  role: string;
+  baseWeight: number;
+  suggestedWeight: number;
+  score: number;
+  basis: string;
+  capital: number;
+}
+
+const INITIAL_BALANCE = 1_000_000;
 const EQUITY_SNAPSHOT_LIMIT = 2880;
 export const PAPER_TRADING_AUTO_INTERVAL_MS = 60 * 1000;
 
@@ -35,6 +55,7 @@ export interface PaperTradingAutoStatus {
   skipped: number;
   held: number;
   alreadyEvaluated: number;
+  paused: number;
   errors: string[];
 }
 
@@ -49,10 +70,12 @@ const emptyAutoStatus = (): PaperTradingAutoStatus => ({
   skipped: 0,
   held: 0,
   alreadyEvaluated: 0,
+  paused: 0,
   errors: [],
 });
 
 let paperTradingAutoStatus: PaperTradingAutoStatus = emptyAutoStatus();
+const quantInterventionStates = new Map<string, QuantInterventionState>();
 
 const RISK_PROFILES: RiskProfile[] = [
   {
@@ -101,6 +124,50 @@ const RISK_PROFILES: RiskProfile[] = [
   },
 ];
 
+const ALLOCATION_BASELINE: Array<{
+  profileId: PaperProfileId;
+  name: string;
+  weight: number;
+  role: string;
+}> = [
+  { profileId: 'conservative', name: '保守型', weight: 20, role: '防守仓，低风险过滤' },
+  { profileId: 'balanced', name: '稳健型', weight: 35, role: '主仓，趋势确认后参与' },
+  { profileId: 'aggressive', name: '进取型', weight: 25, role: '弹性仓，捕捉强信号' },
+  { profileId: 'event', name: '事件型', weight: 20, role: '新闻/事件驱动机会' },
+];
+
+const ALLOCATION_LIMITS: Record<PaperProfileId, { min: number; max: number }> = {
+  conservative: { min: 10, max: 45 },
+  balanced: { min: 15, max: 50 },
+  aggressive: { min: 5, max: 35 },
+  event: { min: 5, max: 35 },
+};
+
+function getQuantInterventionState(userAccountId: string): QuantInterventionState {
+  return quantInterventionStates.get(userAccountId) || {
+    mode: 'normal',
+    note: '',
+    updatedAt: new Date(0).toISOString(),
+    updatedBy: 'human',
+  };
+}
+
+function setQuantInterventionState(
+  userAccountId: string,
+  mode: QuantInterventionMode,
+  note = '',
+  updatedBy: 'human' | 'model' = 'human'
+): QuantInterventionState {
+  const state = {
+    mode,
+    note: String(note || '').slice(0, 160),
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
+  quantInterventionStates.set(userAccountId, state);
+  return state;
+}
+
 function getUserAccountId(req: Request): string | null {
   return req.user?.accountId || null;
 }
@@ -127,6 +194,21 @@ async function ensurePaperAccounts(userAccountId: string): Promise<PaperAccountD
         realizedPnl: 0,
         tradeLog: [],
       });
+      continue;
+    }
+
+    const isLegacyEmptyAccount =
+      !existing.openTrade &&
+      (!existing.tradeLog || existing.tradeLog.length === 0) &&
+      Number(existing.balance) === 10000 &&
+      Number(existing.equity) === 10000;
+
+    if (isLegacyEmptyAccount) {
+      existing.balance = INITIAL_BALANCE;
+      existing.equity = INITIAL_BALANCE;
+      existing.realizedPnl = 0;
+      existing.equitySnapshots = [];
+      await existing.save();
     }
   }
 
@@ -158,7 +240,8 @@ function buildTrade(
   account: PaperAccountDocument,
   report: AnalysisReportDocument | any,
   profile: RiskProfile,
-  executionPrice?: number
+  executionPrice?: number,
+  riskScale = 1
 ): PaperTrade {
   const direction = getReportDirection(report);
   const confidence = getConfidence(report);
@@ -168,9 +251,9 @@ function buildTrade(
   const baseStopPct = Math.max(Number(report.result?.risk?.stopLoss || 2), 0.5);
   const stopPct = baseStopPct * profile.stopMultiplier;
   const stopDistance = currentPrice * (stopPct / 100);
-  const riskBudget = account.balance * (profile.riskPerTradePct / 100);
+  const riskBudget = account.balance * (profile.riskPerTradePct / 100) * riskScale;
   const volumeByRisk = riskBudget / Math.max(stopDistance, 0.01);
-  const maxNotional = account.balance * (profile.maxPositionPct / 100);
+  const maxNotional = account.balance * (profile.maxPositionPct / 100) * riskScale;
   const volumeByCap = maxNotional / Math.max(currentPrice, 0.01);
   const volume = Number(Math.max(0, Math.min(volumeByRisk, volumeByCap)).toFixed(4));
   const takeDistance = stopDistance * profile.rewardRisk;
@@ -183,6 +266,7 @@ function buildTrade(
     : currentPrice - takeDistance;
 
   const shouldTrade = confidence >= profile.minConfidence && aiRisk <= profile.maxRiskScore && volume > 0;
+  const interventionText = riskScale < 1 ? `，干预缩放${Math.round(riskScale * 100)}%` : '';
   const reason = shouldTrade
     ? `${profile.name}执行${direction === 'long' ? '做多' : '做空'}：置信差${confidence}，AI风险${aiRisk}`
     : `${profile.name}跳过：置信差${confidence}/${profile.minConfidence}，AI风险${aiRisk}/${profile.maxRiskScore}`;
@@ -196,7 +280,7 @@ function buildTrade(
     stopLoss: Number(stopLoss.toFixed(2)),
     takeProfit: Number(takeProfit.toFixed(2)),
     pnl: 0,
-    reason,
+    reason: `${reason}${interventionText}`,
     openedAt: new Date(),
   };
 }
@@ -358,7 +442,32 @@ export async function executePaperTradingForReport(userAccountId: string, report
   const settlementResult = await settlePaperAccounts(userAccountId, currentPrice);
   const accounts = await ensurePaperAccounts(userAccountId);
   const currentReportId = report._id.toString();
+  const intervention = getQuantInterventionState(userAccountId);
+  const riskScale = intervention.mode === 'reduce_risk' ? 0.5 : 1;
   const decisions = [];
+
+  if (intervention.mode === 'paused') {
+    for (const account of accounts) {
+      markAccountToMarket(account, currentPrice);
+      appendEquitySnapshot(account, currentPrice, '人工/模型干预暂停开新仓', true);
+      decisions.push({
+        profileId: account.profileId,
+        name: account.name,
+        action: 'paused',
+        reason: intervention.note || '干预状态为暂停，只结算和盯市，不开新仓',
+      });
+      await account.save();
+    }
+
+    const updatedAccounts = await PaperAccountModel.find({ userAccountId }).sort({ profileId: 1 }).lean();
+    return {
+      report,
+      decisions,
+      settlements: settlementResult.settlements,
+      price: currentPrice,
+      accounts: updatedAccounts,
+    };
+  }
 
   for (const account of accounts) {
     const alreadyEvaluated = account.tradeLog?.some((trade) => trade.reportId === currentReportId);
@@ -376,7 +485,7 @@ export async function executePaperTradingForReport(userAccountId: string, report
     }
 
     const profile = getProfile(account.profileId);
-    const nextTrade = buildTrade(account, report, profile, currentPrice);
+    const nextTrade = buildTrade(account, report, profile, currentPrice, riskScale);
 
     if (account.openTrade?.status === 'open') {
       if (account.openTrade.direction !== nextTrade.direction && nextTrade.status === 'open') {
@@ -453,6 +562,8 @@ function countDecision(status: PaperTradingAutoStatus, action?: string): void {
     status.held += 1;
   } else if (action === 'already_evaluated') {
     status.alreadyEvaluated += 1;
+  } else if (action === 'paused') {
+    status.paused += 1;
   }
 }
 
@@ -920,6 +1031,344 @@ function runProfileBacktest(
   };
 }
 
+function getCandleClose(candle: any): number {
+  const close = Number(candle?.close);
+  return Number.isFinite(close) ? close : 0;
+}
+
+function getCandleRange(candle: any): number {
+  const high = Number(candle?.high);
+  const low = Number(candle?.low);
+  if (!Number.isFinite(high) || !Number.isFinite(low)) {
+    return 0;
+  }
+  return Math.max(0, high - low);
+}
+
+function standardDeviation(values: number[]): number {
+  if (values.length <= 1) {
+    return 0;
+  }
+
+  const mean = average(values);
+  const variance = average(values.map((value) => (value - mean) ** 2));
+  return Math.sqrt(variance);
+}
+
+function calculateKalmanPrice(closes: number[]): number {
+  if (closes.length === 0) {
+    return 0;
+  }
+
+  let estimate = closes[0];
+  let errorCovariance = 1;
+  const processNoise = 0.03;
+  const measurementNoise = 0.8;
+
+  for (const close of closes.slice(1)) {
+    errorCovariance += processNoise;
+    const gain = errorCovariance / (errorCovariance + measurementNoise);
+    estimate += gain * (close - estimate);
+    errorCovariance = (1 - gain) * errorCovariance;
+  }
+
+  return Number(estimate.toFixed(2));
+}
+
+function buildMarketState(candles: any[]) {
+  const cleanCandles = candles.filter((candle) => getCandleClose(candle) > 0);
+  const closes = cleanCandles.map(getCandleClose);
+
+  if (closes.length < 30) {
+    return {
+      state: 'insufficient_data',
+      stateLabel: '数据不足',
+      source: `${closes.length} 根K线`,
+      lastPrice: closes[closes.length - 1] || 0,
+      kalmanPrice: closes[closes.length - 1] || 0,
+      trendScore: 0,
+      volatilityPct: 0,
+      transitionProbabilities: [
+        { name: '等待数据', probability: 100 },
+      ],
+      recommendation: 'K线不足，暂不切换策略。',
+    };
+  }
+
+  const lastPrice = closes[closes.length - 1];
+  const kalmanPrice = calculateKalmanPrice(closes.slice(-120));
+  const recentReturns = closes.slice(-60).map((close, index, list) => {
+    if (index === 0) return 0;
+    const previous = list[index - 1] || close;
+    return previous > 0 ? ((close - previous) / previous) * 100 : 0;
+  }).slice(1);
+  const volatilityPct = Number(standardDeviation(recentReturns).toFixed(4));
+  const recentRanges = cleanCandles.slice(-30).map(getCandleRange);
+  const avgRange = Math.max(average(recentRanges), lastPrice * 0.00012, 0.01);
+  const trendScore = Number(((lastPrice - kalmanPrice) / avgRange).toFixed(2));
+  const absTrend = Math.abs(trendScore);
+
+  let state: 'trend_up' | 'trend_down' | 'range' | 'high_volatility';
+  let stateLabel: string;
+  let recommendation: string;
+
+  if (volatilityPct >= 0.08 && absTrend < 1.2) {
+    state = 'high_volatility';
+    stateLabel = '高波动震荡';
+    recommendation = '降低网格密度和仓位，等待方向确认。';
+  } else if (trendScore >= 0.65) {
+    state = 'trend_up';
+    stateLabel = '上行趋势';
+    recommendation = '趋势跟随优先，回撤分批承接。';
+  } else if (trendScore <= -0.65) {
+    state = 'trend_down';
+    stateLabel = '下行趋势';
+    recommendation = '防守优先，反弹分批减仓或做空。';
+  } else {
+    state = 'range';
+    stateLabel = '区间震荡';
+    recommendation = '高抛低吸优先，控制追涨杀跌。';
+  }
+
+  const trendContinuation = clampNumber(45 + Math.min(absTrend, 2.5) * 16 - volatilityPct * 90, 12, 78, 45);
+  const meanReversion = clampNumber(65 - Math.min(absTrend, 2.5) * 14 + volatilityPct * 80, 14, 76, 45);
+  const highVolatility = clampNumber(volatilityPct * 620, 5, 68, 18);
+  const wait = clampNumber(100 - Math.max(trendContinuation, meanReversion) - highVolatility * 0.35, 6, 45, 15);
+  const total = trendContinuation + meanReversion + highVolatility + wait;
+  const normalize = (value: number) => Number(((value / total) * 100).toFixed(1));
+
+  return {
+    state,
+    stateLabel,
+    source: `${closes.length} 根K线 / Kalman-lite + Markov转移概率`,
+    lastPrice: Number(lastPrice.toFixed(2)),
+    kalmanPrice,
+    trendScore,
+    volatilityPct,
+    transitionProbabilities: [
+      { name: '趋势延续', probability: normalize(trendContinuation) },
+      { name: '均值回归', probability: normalize(meanReversion) },
+      { name: '高波动', probability: normalize(highVolatility) },
+      { name: '观望', probability: normalize(wait) },
+    ],
+    recommendation,
+  };
+}
+
+function buildAlphaState(report: AnalysisReportDocument | any | null) {
+  if (!report) {
+    return {
+      usable: false,
+      status: 'waiting_report',
+      direction: 'neutral',
+      confidence: 0,
+      riskScore: 0,
+      headline: '等待AI报告',
+      source: '东方财富快讯、经济日历、K线和信号输入尚未形成报告',
+      updatedAt: null,
+    };
+  }
+
+  const upProb = Number(report.result?.probability?.upProb || 0);
+  const downProb = Number(report.result?.probability?.downProb || 0);
+  const direction = upProb > downProb ? 'long' : upProb < downProb ? 'short' : 'neutral';
+  const confidence = Math.abs(upProb - downProb);
+  const riskScore = Number(report.result?.risk?.risk || 0);
+
+  return {
+    usable: true,
+    status: 'ready',
+    direction,
+    confidence,
+    riskScore,
+    headline: report.result?.decision?.headline || 'AI报告已生成',
+    source: '最新AI报告已融合东方财富快讯、经济日历、K线与技术信号',
+    updatedAt: report.createdAt,
+  };
+}
+
+function normalizeAllocationWithLimits(items: QuantAllocationItem[]): QuantAllocationItem[] {
+  const positiveItems = items.filter((item) => item.score > 0);
+  if (positiveItems.length === 0) {
+    return items;
+  }
+
+  const weights = new Map<PaperProfileId, number>();
+  for (const item of items) {
+    weights.set(item.profileId, ALLOCATION_LIMITS[item.profileId].min);
+  }
+
+  let remaining = 100 - items.reduce((sum, item) => sum + ALLOCATION_LIMITS[item.profileId].min, 0);
+  let guard = 0;
+
+  while (remaining > 0.01 && guard < 12) {
+    guard += 1;
+    const candidates = positiveItems.filter((item) => {
+      const currentWeight = weights.get(item.profileId) || 0;
+      return currentWeight < ALLOCATION_LIMITS[item.profileId].max - 0.01;
+    });
+
+    if (candidates.length === 0) {
+      break;
+    }
+
+    const totalScore = candidates.reduce((sum, item) => sum + item.score, 0);
+    if (totalScore <= 0) {
+      break;
+    }
+
+    let distributed = 0;
+    for (const item of candidates) {
+      const currentWeight = weights.get(item.profileId) || 0;
+      const room = ALLOCATION_LIMITS[item.profileId].max - currentWeight;
+      const addWeight = Math.min(room, remaining * (item.score / totalScore));
+      weights.set(item.profileId, currentWeight + addWeight);
+      distributed += addWeight;
+    }
+
+    if (distributed <= 0.01) {
+      break;
+    }
+    remaining -= distributed;
+  }
+
+  if (remaining > 0.01) {
+    for (const item of items) {
+      const currentWeight = weights.get(item.profileId) || 0;
+      const room = ALLOCATION_LIMITS[item.profileId].max - currentWeight;
+      if (room <= 0) {
+        continue;
+      }
+      const addWeight = Math.min(room, remaining);
+      weights.set(item.profileId, currentWeight + addWeight);
+      remaining -= addWeight;
+      if (remaining <= 0.01) {
+        break;
+      }
+    }
+  }
+
+  const rounded = items.map((item) => ({
+    ...item,
+    suggestedWeight: Number((weights.get(item.profileId) || item.suggestedWeight).toFixed(1)),
+  }));
+  const roundedTotal = rounded.reduce((sum, item) => sum + item.suggestedWeight, 0);
+  const diff = Number((100 - roundedTotal).toFixed(1));
+
+  if (Math.abs(diff) >= 0.1) {
+    const adjustable = [...rounded]
+      .sort((a, b) => b.score - a.score)
+      .find((item) => {
+        const limit = ALLOCATION_LIMITS[item.profileId];
+        const nextWeight = item.suggestedWeight + diff;
+        return nextWeight >= limit.min && nextWeight <= limit.max;
+      });
+
+    if (adjustable) {
+      adjustable.suggestedWeight = Number((adjustable.suggestedWeight + diff).toFixed(1));
+    }
+  }
+
+  return rounded.map((item) => ({
+    ...item,
+    capital: Number(((INITIAL_BALANCE * item.suggestedWeight) / 100).toFixed(2)),
+    basis: `${item.basis} / 约束${ALLOCATION_LIMITS[item.profileId].min}-${ALLOCATION_LIMITS[item.profileId].max}%`,
+  }));
+}
+
+function calculateAllocationSuggestion(latestBacktest: any | null): QuantAllocationItem[] {
+  const latestResults = latestBacktest?.results || [];
+  const scored = ALLOCATION_BASELINE.map((item) => {
+    const result = latestResults.find((entry: any) => entry.profileId === item.profileId);
+    if (!result) {
+      return {
+        profileId: item.profileId,
+        name: item.name,
+        role: item.role,
+        baseWeight: item.weight,
+        suggestedWeight: item.weight,
+        score: 0,
+        basis: '人工初始，等待批量回测',
+        capital: Number(((INITIAL_BALANCE * item.weight) / 100).toFixed(2)),
+      };
+    }
+
+    const robustness = Math.max(0, Number(result.robustnessScore || 0)) / 100;
+    const profitFactor = Math.min(Math.max(Number(result.profitFactor || 0), 0), 3) / 3;
+    const netPnlScore = Number(result.netPnl || 0) > 0 ? 1 : 0;
+    const drawdownPenalty = Math.max(0.25, 1 - Math.min(Number(result.maxDrawdown || 0), 50) / 60);
+    const samplePenalty = result.sampleWarning ? 0.5 : 1;
+    const score = Number(((robustness * 0.45 + profitFactor * 0.35 + netPnlScore * 0.2) * drawdownPenalty * samplePenalty).toFixed(4));
+
+    return {
+      profileId: item.profileId,
+      name: item.name,
+      role: item.role,
+      baseWeight: item.weight,
+      suggestedWeight: item.weight,
+      score,
+      basis: `稳健度${result.robustnessScore || 0}% / PF ${Number(result.profitFactor || 0).toFixed(2)} / 回撤${Number(result.maxDrawdown || 0).toFixed(1)}%`,
+      capital: Number(((INITIAL_BALANCE * item.weight) / 100).toFixed(2)),
+    };
+  });
+
+  const totalScore = scored.reduce((sum, item) => sum + item.score, 0);
+  if (totalScore <= 0) {
+    return scored;
+  }
+
+  return normalizeAllocationWithLimits(scored);
+}
+
+function buildExecutionState(intervention: QuantInterventionState, marketState: ReturnType<typeof buildMarketState>) {
+  const riskScale = intervention.mode === 'reduce_risk' ? 0.5 : 1;
+  const modeLabel = intervention.mode === 'paused'
+    ? '暂停开新仓'
+    : intervention.mode === 'reduce_risk'
+      ? '减仓运行'
+      : '正常运行';
+
+  return {
+    mode: intervention.mode,
+    modeLabel,
+    note: intervention.note,
+    updatedAt: intervention.updatedAt,
+    updatedBy: intervention.updatedBy,
+    canOpenNewTrades: intervention.mode !== 'paused',
+    riskScale,
+    gridHint: marketState.state === 'range'
+      ? '区间状态：允许轻量网格高抛低吸'
+      : marketState.state === 'high_volatility'
+        ? '高波动：缩小下单频率，优先风控'
+        : '趋势状态：顺势分批，不逆势加码',
+  };
+}
+
+async function buildQuantChain(userAccountId: string) {
+  const [latestReport, latestBacktest, candles] = await Promise.all([
+    AnalysisReportModel.findOne({ userAccountId }).sort({ createdAt: -1 }).lean(),
+    BacktestRunModel.findOne({ userAccountId }).sort({ createdAt: -1 }).lean(),
+    marketDataService.getCandles('1m', 240).catch((error) => {
+      logger.warn('[Research] 获取量化链路K线失败:', error);
+      return [];
+    }),
+  ]);
+
+  const marketState = buildMarketState(candles || []);
+  const intervention = getQuantInterventionState(userAccountId);
+  const allocation = calculateAllocationSuggestion(latestBacktest);
+
+  return {
+    updatedAt: new Date().toISOString(),
+    version: 'quant-chain-v1',
+    initialBalance: INITIAL_BALANCE,
+    alpha: buildAlphaState(latestReport),
+    marketState,
+    allocation,
+    execution: buildExecutionState(intervention, marketState),
+  };
+}
+
 export async function runBacktest(req: Request, res: Response): Promise<void> {
   try {
     const userAccountId = getUserAccountId(req);
@@ -1003,6 +1452,50 @@ export async function getBacktests(req: Request, res: Response): Promise<void> {
   } catch (error) {
     logger.error('[Research] 获取回测记录失败:', error);
     res.status(500).json({ success: false, message: '获取回测记录失败' });
+  }
+}
+
+export async function getQuantChain(req: Request, res: Response): Promise<void> {
+  try {
+    const userAccountId = getUserAccountId(req);
+    if (!userAccountId) {
+      res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    const chain = await buildQuantChain(userAccountId);
+    res.json({ success: true, data: chain });
+  } catch (error) {
+    logger.error('[Research] 获取量化链路失败:', error);
+    res.status(500).json({ success: false, message: '获取量化链路失败' });
+  }
+}
+
+export async function updateQuantIntervention(req: Request, res: Response): Promise<void> {
+  try {
+    const userAccountId = getUserAccountId(req);
+    if (!userAccountId) {
+      res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    const mode = req.body?.mode;
+    if (!['normal', 'paused', 'reduce_risk'].includes(mode)) {
+      res.status(400).json({ success: false, message: '干预模式无效' });
+      return;
+    }
+
+    setQuantInterventionState(
+      userAccountId,
+      mode as QuantInterventionMode,
+      req.body?.note,
+      req.body?.updatedBy === 'model' ? 'model' : 'human'
+    );
+    const chain = await buildQuantChain(userAccountId);
+    res.json({ success: true, data: chain });
+  } catch (error) {
+    logger.error('[Research] 更新量化干预失败:', error);
+    res.status(500).json({ success: false, message: '更新量化干预失败' });
   }
 }
 

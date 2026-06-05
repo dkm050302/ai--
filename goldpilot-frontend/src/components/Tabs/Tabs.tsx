@@ -14,10 +14,9 @@ const DEFAULT_TABS: TabItem[] = [
 
 const TAB_LABELS: Record<string, string> = {
   '/': '首页',
-  '/event-driven': '事件驱动',
   '/ai-account': 'AI账号',
   '/datasource-settings': '数据源',
-  '/research-center': '策略研究',
+  '/research-center': '量化策略',
 };
 
 export function Tabs() {

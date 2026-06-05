@@ -24,7 +24,7 @@ export function Header() {
     <header className="date-bar">
       <div className="brand-block">
         <div className="brand-name">GoldPilot 黄金交易决策驾驶舱</div>
-        <div className="brand-sub">面向金融客户服务团队的事件驱动型交易辅助首页</div>
+        <div className="brand-sub">实时行情、市场快讯和交易决策工作台</div>
       </div>
       <div className="date-meta">
         <span className="pill green">演示模式</span>

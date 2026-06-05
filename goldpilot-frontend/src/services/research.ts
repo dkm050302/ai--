@@ -157,9 +157,62 @@ export interface ResearchSummary {
     skipped: number;
     held: number;
     alreadyEvaluated: number;
+    paused: number;
     errors: string[];
   };
   latestBacktest: BacktestRun | null;
+}
+
+export type QuantInterventionMode = 'normal' | 'paused' | 'reduce_risk';
+
+export interface QuantChain {
+  updatedAt: string;
+  version: string;
+  initialBalance: number;
+  alpha: {
+    usable: boolean;
+    status: string;
+    direction: 'long' | 'short' | 'neutral';
+    confidence: number;
+    riskScore: number;
+    headline: string;
+    source: string;
+    updatedAt: string | null;
+  };
+  marketState: {
+    state: 'trend_up' | 'trend_down' | 'range' | 'high_volatility' | 'insufficient_data';
+    stateLabel: string;
+    source: string;
+    lastPrice: number;
+    kalmanPrice: number;
+    trendScore: number;
+    volatilityPct: number;
+    transitionProbabilities: Array<{
+      name: string;
+      probability: number;
+    }>;
+    recommendation: string;
+  };
+  allocation: Array<{
+    profileId: 'conservative' | 'balanced' | 'aggressive' | 'event';
+    name: string;
+    role: string;
+    baseWeight: number;
+    suggestedWeight: number;
+    score: number;
+    basis: string;
+    capital: number;
+  }>;
+  execution: {
+    mode: QuantInterventionMode;
+    modeLabel: string;
+    note: string;
+    updatedAt: string;
+    updatedBy: 'human' | 'model';
+    canOpenNewTrades: boolean;
+    riskScale: number;
+    gridHint: string;
+  };
 }
 
 interface ApiEnvelope<T> {
@@ -222,5 +275,22 @@ export const researchApi = {
   async getBacktests(): Promise<BacktestRun[]> {
     const response = await api.get<ApiEnvelope<{ runs: BacktestRun[] }>>('/api/research/backtests');
     return response.data.runs;
+  },
+
+  async getQuantChain(): Promise<QuantChain> {
+    const response = await api.get<ApiEnvelope<QuantChain>>('/api/research/quant-chain');
+    return response.data;
+  },
+
+  async updateQuantIntervention(
+    mode: QuantInterventionMode,
+    note?: string,
+    updatedBy: 'human' | 'model' = 'human'
+  ): Promise<QuantChain> {
+    const response = await api.post<ApiEnvelope<QuantChain>>(
+      '/api/research/quant-chain/intervention',
+      { mode, note, updatedBy }
+    );
+    return response.data;
   },
 };

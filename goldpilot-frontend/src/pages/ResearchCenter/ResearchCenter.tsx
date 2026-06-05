@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Descriptions, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Col, Descriptions, Input, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ExperimentOutlined, FundProjectionScreenOutlined, LoadingOutlined, ReloadOutlined, RiseOutlined, RobotOutlined, UndoOutlined } from '@ant-design/icons';
-import { researchApi, type AnalysisReport, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type ResearchSummary } from '@/services/research';
+import { researchApi, type AnalysisReport, type BacktestConfig, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type QuantChain, type QuantInterventionMode, type ResearchSummary } from '@/services/research';
 import { aiService, type AIAnalysisResult } from '@/services/ai';
 import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
 import { fetchCandles, fetchRealTimePrice } from '@/services/marketData';
@@ -11,7 +11,7 @@ import { EquityCurveChart, type EquityCurveSeries } from '@/components/EquityCur
 import { PageHeader } from '@/components/PageHeader';
 
 const { Text, Title } = Typography;
-const INITIAL_BALANCE = 10000;
+const INITIAL_BALANCE = 1_000_000;
 
 function formatMoney(value: number): string {
   return `$${Number(value || 0).toFixed(2)}`;
@@ -38,6 +38,13 @@ function statusTag(status?: PaperTrade['status']) {
   if (status === 'skipped') return <Tag color="warning">跳过</Tag>;
   if (status === 'held') return <Tag color="blue">继续持有</Tag>;
   return <Tag>未知</Tag>;
+}
+
+function quantStatusColor(status: string): string {
+  if (['已接入', '已运行', '可执行', '正常运行'].includes(status)) return 'success';
+  if (['待接入', '待数据', '等待报告', '待回测'].includes(status)) return 'warning';
+  if (['已暂停', '暂停开新仓'].includes(status)) return 'error';
+  return 'processing';
 }
 
 function riskColor(level?: string): 'success' | 'normal' | 'exception' {
@@ -89,6 +96,81 @@ const profileColors: Record<string, string> = {
   event: '#7c3aed',
 };
 
+const quantPipeline = [
+  {
+    title: '新闻与事件 Alpha',
+    tools: 'LLM / RAG / 新闻情绪',
+    status: '已接入',
+    text: '东方财富快讯、经济日历和AI报告形成方向、概率、风险三类输入。',
+  },
+  {
+    title: '市场状态识别',
+    tools: 'HMM / Markov / Kalman',
+    status: '待接入',
+    text: '识别趋势、震荡、高波动状态，决定高抛低吸或趋势跟随是否开启。',
+  },
+  {
+    title: '资金权重优化',
+    tools: 'Black-Litterman / Convex',
+    status: '规划中',
+    text: '把AI观点和回测表现翻译成策略权重，约束最大回撤、单笔风险和仓位上限。',
+  },
+  {
+    title: '执行与干预',
+    tools: 'MCTS / 网格拆单 / 人工确认',
+    status: '规划中',
+    text: '把100万拆成多份，在不同价位执行高抛低吸，允许人工或大模型暂停、减仓、换策略。',
+  },
+];
+
+const allocationDraft = [
+  { profileId: 'conservative', name: '保守型', weight: 20, role: '防守仓，低风险过滤' },
+  { profileId: 'balanced', name: '稳健型', weight: 35, role: '主仓，趋势确认后参与' },
+  { profileId: 'aggressive', name: '进取型', weight: 25, role: '弹性仓，捕捉强信号' },
+  { profileId: 'event', name: '事件型', weight: 20, role: '新闻/事件驱动机会' },
+];
+
+const roadmap = [
+  'V0：用现有AI报告驱动四账号模拟盘与回测，模拟资金池统一为100万。',
+  'V1：增加策略参数面板，支持不同风险偏好、滑点、手续费、止盈止损组合批量回测。',
+  'V2：接入HMM/马尔科夫状态识别，按趋势/震荡切换策略开关。',
+  'V3：接入凸优化资金分配，基于回测收益、波动、回撤和AI观点自动给权重。',
+];
+
+interface BacktestPreset {
+  id: string;
+  name: string;
+  description: string;
+  config: Partial<BacktestConfig>;
+}
+
+const backtestPresets: BacktestPreset[] = [
+  {
+    id: 'baseline',
+    name: '基准短线',
+    description: '1分钟K线、8根K持仓，作为当前默认策略基线。',
+    config: { period: '1m', limit: 360, exitBars: 8, slippagePct: 0.03, commissionPct: 0.01 },
+  },
+  {
+    id: 'friction',
+    name: '高摩擦压力',
+    description: '滑点和手续费翻倍，用来筛掉纸面收益脆弱的组合。',
+    config: { period: '1m', limit: 360, exitBars: 8, slippagePct: 0.08, commissionPct: 0.03 },
+  },
+  {
+    id: 'swing',
+    name: '波段持有',
+    description: '5分钟K线、16根K持仓，验证稍长周期的方向稳定性。',
+    config: { period: '5m', limit: 480, exitBars: 16, slippagePct: 0.04, commissionPct: 0.01 },
+  },
+  {
+    id: 'fast',
+    name: '快进快出',
+    description: '更短持仓窗口，观察高抛低吸是否容易被成本吞掉。',
+    config: { period: '1m', limit: 240, exitBars: 4, slippagePct: 0.03, commissionPct: 0.01 },
+  },
+];
+
 interface TradeRecord extends PaperTrade {
   key: string;
   accountName: string;
@@ -115,13 +197,34 @@ export function ResearchCenter() {
   const [backtestExitBars, setBacktestExitBars] = useState(8);
   const [backtestSlippagePct, setBacktestSlippagePct] = useState(0.03);
   const [backtestCommissionPct, setBacktestCommissionPct] = useState(0.01);
+  const [batchBacktesting, setBatchBacktesting] = useState(false);
+  const [batchBacktests, setBatchBacktests] = useState<Array<{ preset: BacktestPreset; run: BacktestRun }>>([]);
+  const [quantChain, setQuantChain] = useState<QuantChain | null>(null);
+  const [interventionMode, setInterventionMode] = useState<QuantInterventionMode>('normal');
+  const [interventionNote, setInterventionNote] = useState('');
+  const [interventionSaving, setInterventionSaving] = useState(false);
+
+  const applyQuantChain = (chain: QuantChain | null) => {
+    setQuantChain(chain);
+    if (chain?.execution) {
+      setInterventionMode(chain.execution.mode);
+      setInterventionNote(chain.execution.note || '');
+    }
+  };
+
+  const refreshQuantChain = async () => {
+    const chain = await researchApi.getQuantChain();
+    applyQuantChain(chain);
+    return chain;
+  };
 
   const loadSummary = async () => {
     try {
       setLoading(true);
-      const [summary, reportList] = await Promise.all([
+      const [summary, reportList, chain] = await Promise.all([
         researchApi.getSummary(),
         researchApi.getReports(),
+        researchApi.getQuantChain().catch(() => null),
       ]);
       setLatestReport(summary.latestReport);
       setReports(reportList);
@@ -129,6 +232,7 @@ export function ResearchCenter() {
       setLatestBacktest(summary.latestBacktest);
       setMarkPrice(summary.markPrice ?? null);
       setAutoTrading(summary.autoTrading);
+      applyQuantChain(chain);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载研究中心失败');
     } finally {
@@ -322,11 +426,111 @@ export function ResearchCenter() {
       }));
   }, [latestBacktest]);
 
+  const allocationSuggestion = useMemo(() => {
+    if (quantChain?.allocation?.length) {
+      return quantChain.allocation.map((item) => ({
+        ...item,
+        weight: item.baseWeight,
+        suggestedWeight: item.suggestedWeight,
+        basis: item.basis,
+      }));
+    }
+
+    const latestResults = latestBacktest?.results || [];
+    const scored = allocationDraft.map((item) => {
+      const result = latestResults.find((entry) => entry.profileId === item.profileId);
+      if (!result) {
+        return {
+          ...item,
+          suggestedWeight: item.weight,
+          score: 0,
+          basis: '人工初始',
+        };
+      }
+
+      const robustness = Math.max(0, Number(result.robustnessScore || 0)) / 100;
+      const profitFactor = Math.min(Math.max(Number(result.profitFactor || 0), 0), 3) / 3;
+      const netPnlScore = Number(result.netPnl || 0) > 0 ? 1 : 0;
+      const drawdownPenalty = Math.max(0.25, 1 - Math.min(Number(result.maxDrawdown || 0), 50) / 60);
+      const samplePenalty = result.sampleWarning ? 0.5 : 1;
+      const score = Number(((robustness * 0.45 + profitFactor * 0.35 + netPnlScore * 0.2) * drawdownPenalty * samplePenalty).toFixed(4));
+
+      return {
+        ...item,
+        suggestedWeight: item.weight,
+        score,
+        basis: `稳健度${result.robustnessScore || 0}% / PF ${Number(result.profitFactor || 0).toFixed(2)} / 回撤${Number(result.maxDrawdown || 0).toFixed(1)}%`,
+      };
+    });
+
+    const totalScore = scored.reduce((sum, item) => sum + item.score, 0);
+    if (totalScore <= 0) {
+      return scored;
+    }
+
+    return scored.map((item) => ({
+      ...item,
+      suggestedWeight: Number(((item.score / totalScore) * 100).toFixed(1)),
+      basis: item.basis,
+    }));
+  }, [latestBacktest, quantChain]);
+
+  const quantPipelineView = useMemo(() => {
+    const alphaStatus = quantChain?.alpha.usable ? '已运行' : latestReport ? '已接入' : '等待报告';
+    const marketStatus = quantChain?.marketState.state === 'insufficient_data'
+      ? '待数据'
+      : quantChain?.marketState
+        ? '已运行'
+        : '待数据';
+    const allocationStatus = quantChain?.allocation?.some((item) => item.score > 0)
+      ? '已运行'
+      : latestBacktest
+        ? '待回测'
+        : '待回测';
+    const executionStatus = quantChain?.execution.mode === 'paused'
+      ? '已暂停'
+      : quantChain?.execution.mode === 'reduce_risk'
+        ? '减仓运行'
+        : '可执行';
+
+    return [
+      {
+        ...quantPipeline[0],
+        status: alphaStatus,
+        text: quantChain?.alpha.usable
+          ? `${quantChain.alpha.headline}；方向 ${quantChain.alpha.direction === 'long' ? '做多' : quantChain.alpha.direction === 'short' ? '做空' : '中性'}，置信差 ${quantChain.alpha.confidence}，风险 ${quantChain.alpha.riskScore}。`
+          : quantPipeline[0].text,
+      },
+      {
+        ...quantPipeline[1],
+        status: marketStatus,
+        text: quantChain?.marketState
+          ? `${quantChain.marketState.stateLabel}；趋势分 ${quantChain.marketState.trendScore}，波动 ${quantChain.marketState.volatilityPct}%。${quantChain.marketState.recommendation}`
+          : quantPipeline[1].text,
+      },
+      {
+        ...quantPipeline[2],
+        status: allocationStatus,
+        text: quantChain?.allocation?.length
+          ? '已按回测稳健度、PF、收益、最大回撤和样本惩罚生成权重。'
+          : quantPipeline[2].text,
+      },
+      {
+        ...quantPipeline[3],
+        status: executionStatus,
+        text: quantChain?.execution
+          ? `${quantChain.execution.modeLabel}；风险缩放 ${Math.round(quantChain.execution.riskScale * 100)}%。${quantChain.execution.gridHint}`
+          : quantPipeline[3].text,
+      },
+    ];
+  }, [latestBacktest, latestReport, quantChain]);
+
   const handleExecute = async () => {
     try {
       setActing(true);
       const result = await researchApi.executePaperTrading(latestReport?._id);
       setAccounts(result.accounts);
+      await refreshQuantChain().catch(() => undefined);
       message.success('四个模拟账号已完成本轮决策');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '模拟交易失败');
@@ -342,6 +546,7 @@ export function ResearchCenter() {
       const closedCount = result.settlements.filter((item) => item.action === 'closed').length;
       setAccounts(result.accounts);
       setMarkPrice(result.price);
+      await refreshQuantChain().catch(() => undefined);
       message.success(closedCount > 0 ? `已自动平仓 ${closedCount} 笔` : '未触发止盈止损，已更新权益');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '结算持仓失败');
@@ -450,6 +655,7 @@ export function ResearchCenter() {
         commissionPct: backtestCommissionPct,
       });
       setLatestBacktest(backtest);
+      await refreshQuantChain().catch(() => undefined);
       message.success('升级回测完成');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '回测失败');
@@ -458,11 +664,51 @@ export function ResearchCenter() {
     }
   };
 
+  const handleBatchBacktest = async () => {
+    if (!latestReport) {
+      message.warning('请先生成或选择一份AI报告');
+      return;
+    }
+
+    try {
+      setBatchBacktesting(true);
+      const runs: Array<{ preset: BacktestPreset; run: BacktestRun }> = [];
+
+      for (const preset of backtestPresets) {
+        const run = await researchApi.runBacktest(latestReport._id, preset.config);
+        runs.push({ preset, run });
+      }
+
+      setBatchBacktests(runs);
+      setLatestBacktest(runs[runs.length - 1]?.run || null);
+      await refreshQuantChain().catch(() => undefined);
+      message.success(`已完成 ${runs.length} 组策略组合回测`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '批量回测失败');
+    } finally {
+      setBatchBacktesting(false);
+    }
+  };
+
+  const handleInterventionUpdate = async () => {
+    try {
+      setInterventionSaving(true);
+      const chain = await researchApi.updateQuantIntervention(interventionMode, interventionNote);
+      applyQuantChain(chain);
+      message.success(`干预模式已切换为：${chain.execution.modeLabel}`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存干预失败');
+    } finally {
+      setInterventionSaving(false);
+    }
+  };
+
   const handleReset = async () => {
     try {
       setActing(true);
       const nextAccounts = await researchApi.resetPaperAccounts();
       setAccounts(nextAccounts);
+      await refreshQuantChain().catch(() => undefined);
       message.success('模拟账号已重置');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '重置失败');
@@ -757,8 +1003,8 @@ export function ResearchCenter() {
     <div className="workspace-page">
       <PageHeader
         eyebrow="Strategy Lab"
-        title="策略研究"
-        description="AI报告、四账号模拟交易和回测结果"
+        title="量化策略实验室"
+        description="AI观点、新闻事件、回测盘、模拟盘和风险偏好组合"
         meta={(
           <Space wrap>
             <span className={autoTrading?.errors?.length ? 'pill amber' : 'pill green'}>自动实时交易</span>
@@ -782,11 +1028,220 @@ export function ResearchCenter() {
             结算持仓
           </Button>
           <Button icon={<UndoOutlined />} onClick={handleReset} loading={acting}>
-            重置账号
+            重置100万账号
           </Button>
           </Space>
         )}
       />
+
+      <Card
+        className="workspace-card quant-lab-card"
+        title="量化交易蓝图"
+        extra={<Tag color="blue">100万模拟资金池</Tag>}
+      >
+        <Row gutter={[12, 12]} className="quant-summary-row">
+          <Col xs={24} md={6}>
+            <div className="metric-tile quant-metric">
+              <div className="metric-tile-label">初始模拟资金</div>
+              <div className="metric-tile-value">{formatMoney(INITIAL_BALANCE)}</div>
+              <Text type="secondary">重置账号后生效</Text>
+            </div>
+          </Col>
+          <Col xs={24} md={6}>
+            <div className="metric-tile quant-metric">
+              <div className="metric-tile-label">策略账户</div>
+              <div className="metric-tile-value">4 组</div>
+              <Text type="secondary">保守、稳健、进取、事件</Text>
+            </div>
+          </Col>
+          <Col xs={24} md={6}>
+            <div className="metric-tile quant-metric">
+              <div className="metric-tile-label">当前可运行</div>
+              <div className="metric-tile-value">{quantChain ? '四层链路' : 'AI + 回测'}</div>
+              <Text type="secondary">{quantChain?.version || '先验证，再上实盘'}</Text>
+            </div>
+          </Col>
+          <Col xs={24} md={6}>
+            <div className="metric-tile quant-metric">
+              <div className="metric-tile-label">人工/模型干预</div>
+              <div className="metric-tile-value">{quantChain?.execution.modeLabel || '预留'}</div>
+              <Text type="secondary">{quantChain?.execution.canOpenNewTrades === false ? '只盯市不新开仓' : '暂停、减仓、换策略'}</Text>
+            </div>
+          </Col>
+        </Row>
+
+        <div className="quant-section-grid">
+          <div className="quant-panel">
+            <div className="quant-panel-title">四层计算链路</div>
+            <div className="quant-pipeline">
+              {quantPipelineView.map((item) => (
+                <div className="quant-stage" key={item.title}>
+                  <div className="quant-stage-head">
+                    <strong>{item.title}</strong>
+                    <Tag color={quantStatusColor(item.status)}>{item.status}</Tag>
+                  </div>
+                  <Text className="quant-stage-tools">{item.tools}</Text>
+                  <p>{item.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="quant-panel">
+            <div className="quant-panel-title">资金拆分建议</div>
+            <div className="quant-allocation-grid">
+              {allocationSuggestion.map((item) => (
+                <div className="quant-allocation" key={item.name}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <Text type="secondary">{item.basis || item.role}</Text>
+                  </div>
+                  <div className="quant-weight-wrap">
+                    <div className="quant-weight">{item.suggestedWeight}%</div>
+                    {'capital' in item && <Text type="secondary">{formatMoney(Number(item.capital || 0))}</Text>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Alert
+              type={latestBacktest ? 'success' : 'info'}
+              showIcon
+              message={latestBacktest ? '已按最近回测结果生成权重建议' : '当前权重是人工初始方案'}
+              description="这里先用稳健度、PF、净收益和最大回撤做轻量打分；下一步再接入正式凸优化。"
+            />
+          </div>
+        </div>
+
+        <div className="quant-control-grid">
+          <div className="quant-panel">
+            <div className="quant-panel-title">市场状态识别</div>
+            {quantChain?.marketState ? (
+              <>
+                <div className="quant-state-metrics">
+                  <div className="quant-state-metric">
+                    <Text type="secondary">状态</Text>
+                    <strong>{quantChain.marketState.stateLabel}</strong>
+                  </div>
+                  <div className="quant-state-metric">
+                    <Text type="secondary">Kalman价</Text>
+                    <strong>{quantChain.marketState.kalmanPrice.toFixed(2)}</strong>
+                  </div>
+                  <div className="quant-state-metric">
+                    <Text type="secondary">趋势分</Text>
+                    <strong>{quantChain.marketState.trendScore}</strong>
+                  </div>
+                  <div className="quant-state-metric">
+                    <Text type="secondary">波动</Text>
+                    <strong>{quantChain.marketState.volatilityPct}%</strong>
+                  </div>
+                </div>
+                <div className="quant-transition-list">
+                  {quantChain.marketState.transitionProbabilities.map((item) => (
+                    <div className="quant-transition-row" key={item.name}>
+                      <span>{item.name}</span>
+                      <Progress percent={item.probability} size="small" showInfo={false} />
+                      <strong>{item.probability}%</strong>
+                    </div>
+                  ))}
+                </div>
+                <Alert
+                  type="info"
+                  showIcon
+                  message={quantChain.marketState.recommendation}
+                  description={quantChain.marketState.source}
+                />
+              </>
+            ) : (
+              <Alert type="warning" showIcon message="等待K线数据" description="链路接口暂未返回市场状态。" />
+            )}
+          </div>
+
+          <div className="quant-panel">
+            <div className="quant-panel-title">执行与干预</div>
+            <div className="quant-intervention-actions">
+              <Select<QuantInterventionMode>
+                value={interventionMode}
+                onChange={setInterventionMode}
+                options={[
+                  { value: 'normal', label: '正常运行' },
+                  { value: 'reduce_risk', label: '减仓运行 50%' },
+                  { value: 'paused', label: '暂停开新仓' },
+                ]}
+              />
+              <Input
+                value={interventionNote}
+                onChange={(event) => setInterventionNote(event.target.value)}
+                maxLength={160}
+                placeholder="干预原因，可留空"
+              />
+              <Button type="primary" onClick={handleInterventionUpdate} loading={interventionSaving}>
+                保存干预
+              </Button>
+            </div>
+            <Alert
+              type={quantChain?.execution.mode === 'paused' ? 'warning' : 'success'}
+              showIcon
+              message={quantChain?.execution.modeLabel || '等待执行状态'}
+              description={quantChain?.execution
+                ? `${quantChain.execution.gridHint} 新开仓风险缩放 ${Math.round(quantChain.execution.riskScale * 100)}%。`
+                : '保存后会写入后端，并影响模拟盘是否开新仓。'}
+            />
+          </div>
+        </div>
+
+        <div className="quant-batch-panel">
+          <div className="quant-panel-title">策略组合批量回测</div>
+          <div className="quant-batch-head">
+            <Text type="secondary">一次跑多组参数，用成本压力和持仓周期验证策略是否稳健。</Text>
+            <Button
+              type="primary"
+              icon={<ExperimentOutlined />}
+              onClick={handleBatchBacktest}
+              loading={batchBacktesting}
+              disabled={!latestReport}
+            >
+              运行4组批量回测
+            </Button>
+          </div>
+          <div className="quant-preset-grid">
+            {backtestPresets.map((preset) => {
+              const run = batchBacktests.find((item) => item.preset.id === preset.id)?.run;
+              const best = run?.results
+                ?.filter((item) => item.trades > 0)
+                .sort((a, b) => Number(b.robustnessScore || 0) - Number(a.robustnessScore || 0))[0];
+
+              return (
+                <div className="quant-preset" key={preset.id}>
+                  <div className="quant-preset-title">
+                    <strong>{preset.name}</strong>
+                    <Tag color={run ? 'success' : 'default'}>{run ? '已跑' : '待跑'}</Tag>
+                  </div>
+                  <p>{preset.description}</p>
+                  <div className="quant-preset-meta">
+                    <span>{preset.config.period}</span>
+                    <span>{preset.config.limit} K</span>
+                    <span>持仓 {preset.config.exitBars} K</span>
+                    <span>滑点 {preset.config.slippagePct}%</span>
+                  </div>
+                  {best && (
+                    <div className="quant-preset-result">
+                      <span>最佳：{best.name}</span>
+                      <span>稳健度 {best.robustnessScore || 0}%</span>
+                      <span className={best.netPnl >= 0 ? 'green' : 'red'}>{formatMoney(best.netPnl)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="quant-roadmap">
+          {roadmap.map((item) => (
+            <div className="quant-roadmap-item" key={item}>{item}</div>
+          ))}
+        </div>
+      </Card>
 
       <Row gutter={[12, 12]}>
         <Col xs={24} sm={12} xl={6}>

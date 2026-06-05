@@ -36,10 +36,12 @@ import {
   getAnalysisReports,
   getBacktests,
   getPaperAccounts,
+  getQuantChain,
   getResearchSummary,
   resetPaperAccounts,
   runBacktest,
   settlePaperAccountsEndpoint,
+  updateQuantIntervention,
 } from '../controllers/research';
 import {
   getDataSource,
@@ -102,6 +104,8 @@ router.post('/research/paper-accounts/settle', optionalAuth, settlePaperAccounts
 router.post('/research/paper-accounts/reset', optionalAuth, resetPaperAccounts);
 router.post('/research/backtests/run', optionalAuth, runBacktest);
 router.get('/research/backtests', optionalAuth, getBacktests);
+router.get('/research/quant-chain', optionalAuth, getQuantChain);
+router.post('/research/quant-chain/intervention', optionalAuth, updateQuantIntervention);
 
 // 数据源相关路由
 router.get('/datasource', getDataSource);
