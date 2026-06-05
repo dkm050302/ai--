@@ -40,16 +40,16 @@ export function Sidebar() {
       onClick: () => navigate('/event-driven'),
     },
     {
-      key: 'ai-account',
-      icon: <RobotOutlined className="text-lg" />,
-      label: <span className="ml-2 font-medium">AI账号</span>,
-      onClick: () => navigate('/ai-account'),
-    },
-    {
       key: 'research-center',
       icon: <ExperimentOutlined className="text-lg" />,
       label: <span className="ml-2 font-medium">策略研究</span>,
       onClick: () => navigate('/research-center'),
+    },
+    {
+      key: 'ai-account',
+      icon: <RobotOutlined className="text-lg" />,
+      label: <span className="ml-2 font-medium">AI账号</span>,
+      onClick: () => navigate('/ai-account'),
     },
     {
       type: 'divider' as const,

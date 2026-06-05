@@ -3,6 +3,7 @@
  */
 
 import { Request, Response } from 'express';
+import { TextDecoder } from 'util';
 import { getUserApiKey } from './ai';
 import { logger } from '../utils/logger';
 import { AnalysisReportModel } from '../models/AnalysisReport';
@@ -85,18 +86,7 @@ export async function analyzeMarket(req: Request, res: Response): Promise<void> 
 
     // 调用DeepSeek API
     const analysis = await callDeepSeekAPI(apiKey, prompt);
-    const report = await AnalysisReportModel.create({
-      userAccountId: req.user.accountId,
-      modelName: DEEPSEEK_MODEL,
-      promptVersion: 'goldpilot-analysis-v1',
-      currentPrice: currentPrice || candles?.[candles.length - 1]?.close || 0,
-      candleCount: candles?.length || 0,
-      events: events || [],
-      flashes: flashes || [],
-      signals: signals || [],
-      result: analysis,
-    });
-    const paperTrading = await executePaperTradingForReport(req.user.accountId, report._id.toString());
+    const { report, paperTrading } = await saveAnalysisReportAndPaperTrading(req.user.accountId, req.body as AnalysisRequest, analysis);
 
     logger.info(`[AI分析] 分析完成`);
     res.json({
@@ -117,6 +107,182 @@ export async function analyzeMarket(req: Request, res: Response): Promise<void> 
       message: error instanceof Error ? error.message : 'AI分析失败'
     });
   }
+}
+
+/**
+ * 执行AI市场分析（流式）
+ * POST /api/ai/analyze-stream
+ */
+export async function analyzeMarketStream(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, message: '未授权' });
+    return;
+  }
+
+  const requestData = req.body as AnalysisRequest;
+  const { candles, currentPrice, events, flashes, signals } = requestData;
+
+  try {
+    const apiKey = await getUserApiKey(req.user.accountId);
+
+    if (!apiKey) {
+      res.status(400).json({
+        success: false,
+        message: '未配置AI服务，请先在AI账号页面配置DeepSeek API Key'
+      });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    sendStreamEvent(res, 'status', { message: '正在整理K线、事件和交易信号...' });
+
+    const prompt = buildAnalysisPrompt({
+      candles: candles?.slice(-50),
+      currentPrice,
+      events: events?.slice(0, 5),
+      flashes: flashes?.slice(0, 5),
+      signals: signals?.slice(-3),
+    });
+
+    sendStreamEvent(res, 'status', { message: `正在调用 ${DEEPSEEK_MODEL} 进行流式分析...` });
+
+    const response = await fetch(getDeepSeekChatCompletionsUrl(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok || !response.body) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(errorText || `API请求失败: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let content = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+      const blocks = buffer.split(/\n\n/);
+      buffer = blocks.pop() || '';
+
+      for (const block of blocks) {
+        const lines = block.split('\n').filter((line) => line.startsWith('data:'));
+
+        for (const line of lines) {
+          const data = line.replace(/^data:\s*/, '').trim();
+
+          if (!data || data === '[DONE]') {
+            continue;
+          }
+
+          const parsed = JSON.parse(data);
+          const token = parsed.choices?.[0]?.delta?.content || '';
+
+          if (token) {
+            content += token;
+            sendStreamEvent(res, 'token', { token });
+          }
+        }
+      }
+    }
+
+    const analysis = parseAnalysisContent(content);
+    const { report, paperTrading } = await saveAnalysisReportAndPaperTrading(req.user.accountId, requestData, analysis);
+
+    sendStreamEvent(res, 'result', {
+      ...analysis,
+      reportId: report._id.toString(),
+      createdAt: report.createdAt,
+      paperTrading: {
+        decisions: paperTrading.decisions,
+        accounts: paperTrading.accounts,
+      },
+    });
+    sendStreamEvent(res, 'done', { message: 'AI分析完成' });
+    res.end();
+  } catch (error) {
+    logger.error('[AI分析] 流式分析失败:', error);
+    const message = error instanceof Error ? error.message : 'AI分析失败';
+
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message });
+      return;
+    }
+
+    sendStreamEvent(res, 'error', { message });
+    res.end();
+  }
+}
+
+function sendStreamEvent(res: Response, event: string, data: unknown): void {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+async function saveAnalysisReportAndPaperTrading(
+  userAccountId: string,
+  requestData: AnalysisRequest,
+  analysis: AnalysisResult
+) {
+  const { candles, currentPrice, events, flashes, signals } = requestData;
+  const report = await AnalysisReportModel.create({
+    userAccountId,
+    modelName: DEEPSEEK_MODEL,
+    promptVersion: 'goldpilot-analysis-v1',
+    currentPrice: currentPrice || candles?.[candles.length - 1]?.close || 0,
+    candleCount: candles?.length || 0,
+    events: events || [],
+    flashes: flashes || [],
+    signals: signals || [],
+    result: analysis,
+  });
+  const paperTrading = await executePaperTradingForReport(userAccountId, report._id.toString());
+
+  return { report, paperTrading };
+}
+
+function parseAnalysisContent(content: string): AnalysisResult {
+  const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) ||
+                   content.match(/\{[\s\S]*\}/);
+
+  if (!jsonMatch) {
+    throw new Error('AI返回内容格式错误');
+  }
+
+  const result = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+
+  if (!result.decision || !result.probability || !result.risk || !result.actions) {
+    throw new Error('AI返回数据结构不完整');
+  }
+
+  return result;
 }
 
 /**
@@ -238,20 +404,5 @@ async function callDeepSeekAPI(apiKey: string, prompt: string): Promise<Analysis
   const data: any = await response.json();
   const content = data.choices[0]?.message?.content || '';
 
-  // 提取JSON内容
-  const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) ||
-                   content.match(/\{[\s\S]*\}/);
-
-  if (!jsonMatch) {
-    throw new Error('AI返回内容格式错误');
-  }
-
-  const result = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-
-  // 验证返回数据结构
-  if (!result.decision || !result.probability || !result.risk || !result.actions) {
-    throw new Error('AI返回数据结构不完整');
-  }
-
-  return result;
+  return parseAnalysisContent(content);
 }

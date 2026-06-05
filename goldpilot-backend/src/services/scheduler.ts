@@ -1,6 +1,9 @@
 import { signalService } from './signal';
-import { scraperService } from './scraper';
+import { eventDataCacheService } from './eventDataCache';
 import { logger } from '../utils';
+import { PAPER_TRADING_AUTO_INTERVAL_MS, runRealtimePaperTradingTick } from '../controllers/research';
+
+const EVENT_DATA_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
  * 定时任务调度器
@@ -101,17 +104,13 @@ class SchedulerService {
    * 启动事件数据刷新定时任务
    */
   startEventDataRefresh(): void {
-    // 每5分钟刷新一次经济日历和快讯数据（预热缓存）
-    this.schedule('event-data-refresh', 5 * 60 * 1000, async () => {
+    // 每小时刷新一次经济日历和快讯数据（预热本地JSON缓存）
+    this.schedule('event-data-refresh', EVENT_DATA_REFRESH_INTERVAL_MS, async () => {
       try {
         logger.debug('Refreshing event data cache');
 
-        // 刷新经济日历
         const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-        await scraperService.getEconomicCalendar(today);
-
-        // 刷新市场快讯
-        await scraperService.getMarketNews();
+        await eventDataCacheService.refreshAll(today);
 
         logger.debug('Event data cache refreshed');
       } catch (error) {
@@ -120,6 +119,25 @@ class SchedulerService {
     });
 
     logger.info('Event data refresh scheduler started');
+  }
+
+  /**
+   * 启动四账号实时模拟交易任务
+   */
+  startRealtimePaperTrading(): void {
+    this.schedule('paper-trading-realtime', PAPER_TRADING_AUTO_INTERVAL_MS, async () => {
+      try {
+        const status = await runRealtimePaperTradingTick();
+        logger.debug(
+          `Realtime paper trading tick: users=${status.usersProcessed}, ` +
+          `opened=${status.opened}, closed=${status.closed}, marked=${status.marked}, skipped=${status.skipped}`
+        );
+      } catch (error) {
+        logger.error('Error in realtime paper trading:', error);
+      }
+    });
+
+    logger.info('Realtime paper trading scheduler started');
   }
 
   /**
@@ -132,6 +150,7 @@ class SchedulerService {
     this.startPendingSignalCheck();
     this.startCleanupTask();
     this.startEventDataRefresh();
+    this.startRealtimePaperTrading();
 
     logger.info('All schedulers started');
   }

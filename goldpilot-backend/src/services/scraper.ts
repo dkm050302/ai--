@@ -15,6 +15,10 @@ import { logger } from '../utils/logger';
  */
 const TE_API_KEY = process.env.TRADING_ECONOMICS_KEY || 'guest';
 const TE_API_BASE = 'https://api.tradingeconomics.com';
+const TRADING_ECONOMICS_CALENDAR_URL = 'https://tradingeconomics.com/calendar';
+const EASTMONEY_FLASH_URL = 'https://kuaixun.eastmoney.com/index.html';
+const EASTMONEY_FAST_NEWS_API = 'https://np-weblist.eastmoney.com/comm/web/getFastNewsList';
+const EASTMONEY_ARTICLE_BASE_URL = 'https://finance.eastmoney.com/a/';
 
 /**
  * 经济事件类型
@@ -36,18 +40,28 @@ export interface EconomicEvent {
   forecast?: string;
   /** 前值 */
   previous?: string;
+  /** 数据来源 */
+  source?: string;
+  /** 来源链接 */
+  sourceUrl?: string;
 }
 
 /**
  * 市场快讯类型
  */
 export interface MarketFlash {
+  /** 日期 */
+  date: string;
   /** 时间 */
   time: string;
   /** 内容 */
   content: string;
   /** 是否热门 */
   hot?: boolean;
+  /** 数据来源 */
+  source?: string;
+  /** 来源链接 */
+  sourceUrl?: string;
 }
 
 /**
@@ -56,6 +70,24 @@ export interface MarketFlash {
 class ScraperService {
   private readonly USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
   private readonly TIMEOUT = 10000; // 10秒超时
+
+  private formatDate(date: Date = new Date()): string {
+    const formatter = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(date).replace(/\//g, '-');
+  }
+
+  private normalizeDate(date: string = ''): string {
+    if (!date) return this.formatDate();
+    if (/^\d{8}$/.test(date)) {
+      return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+    }
+    return date;
+  }
 
   /**
    * 获取经济日历数据（多数据源降级）
@@ -93,8 +125,7 @@ class ScraperService {
       }
 
       // 使用免费的 Trading Economics 日历端点
-      const url = 'https://tradingeconomics.com/calendar';
-      const response = await axios.get(url, {
+      const response = await axios.get(TRADING_ECONOMICS_CALENDAR_URL, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'text/html',
@@ -122,7 +153,7 @@ class ScraperService {
 
           if (event) {
             events.push({
-              date: date || new Date().toISOString().split('T')[0],
+              date: this.normalizeDate(date),
               time: time || '00:00',
               country,
               event,
@@ -130,6 +161,8 @@ class ScraperService {
               actual: actual || undefined,
               forecast: forecast || undefined,
               previous: previous || undefined,
+              source: 'Trading Economics',
+              sourceUrl: TRADING_ECONOMICS_CALENDAR_URL,
             });
           }
         } catch (err) {
@@ -151,127 +184,22 @@ class ScraperService {
 
   /**
    * 获取模拟经济事件数据（降级方案）
-   * 返回更真实和完整的经济日历数据
+   * 只返回不可用提示，避免把过时样例误当作真实日历。
    */
   private getMockEconomicEvents(): EconomicEvent[] {
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
+    const dateStr = this.formatDate();
 
-    // 模拟一周的重要经济事件
-    const mockEvents: EconomicEvent[] = [
-      // 今天的事件
+    return [
       {
         date: dateStr,
-        time: '09:00',
-        country: '中国',
-        event: '5月LPR报价',
-        importance: 4,
-        actual: '3.45%',
-        forecast: '3.45%',
-        previous: '3.45%',
-      },
-      {
-        date: dateStr,
-        time: '15:00',
-        country: '瑞士',
-        event: '5月贸易账',
-        importance: 2,
-        forecast: '35.0亿瑞郎',
-        previous: '38.2亿瑞郎',
-      },
-      {
-        date: dateStr,
-        time: '16:30',
-        country: '英国',
-        event: '5月零售销售月率',
-        importance: 3,
-        forecast: '0.2%',
-        previous: '-0.3%',
-      },
-      {
-        date: dateStr,
-        time: '20:30',
-        country: '美国',
-        event: '5月17日当周初请失业金人数',
-        importance: 3,
-        actual: '21.5万',
-        forecast: '22.0万',
-        previous: '22.3万',
-      },
-      {
-        date: dateStr,
-        time: '22:00',
-        country: '美国',
-        event: '美联储理事讲话',
-        importance: 4,
-      },
-      {
-        date: dateStr,
-        time: '22:00',
-        country: '美国',
-        event: '5月堪萨斯联储制造业指数',
-        importance: 2,
-        forecast: '5',
-        previous: '4',
-      },
-      // 明天的事件
-      {
-        date: this.addDays(dateStr, 1),
-        time: '07:50',
-        country: '日本',
-        event: '4月核心CPI年率',
-        importance: 3,
-        forecast: '2.2%',
-        previous: '2.4%',
-      },
-      {
-        date: this.addDays(dateStr, 1),
-        time: '14:00',
-        country: '德国',
-        event: '5月PPI月率',
-        importance: 2,
-        forecast: '0.1%',
-        previous: '-0.2%',
-      },
-      {
-        date: this.addDays(dateStr, 1),
-        time: '20:30',
-        country: '加拿大',
-        event: '4月零售销售月率',
-        importance: 3,
-        forecast: '0.3%',
-        previous: '-0.1%',
-      },
-      {
-        date: this.addDays(dateStr, 1),
-        time: '22:00',
-        country: '美国',
-        event: '5月密歇根大学消费者信心指数',
-        importance: 4,
-        forecast: '67.5',
-        previous: '67.4',
-      },
-      // 周末的事件
-      {
-        date: this.addDays(dateStr, 2),
-        time: '00:00',
-        country: '欧盟',
-        event: '欧洲议会选举',
-        importance: 5,
+        time: '--:--',
+        country: '系统',
+        event: '实时经济日历暂不可用，点击查看 Trading Economics 日历源头',
+        importance: 1,
+        source: '模拟数据',
+        sourceUrl: TRADING_ECONOMICS_CALENDAR_URL,
       },
     ];
-
-    // 只返回今天和未来3天的事件
-    return mockEvents.filter(e => new Date(e.date) >= new Date(dateStr)).slice(0, 12);
-  }
-
-  /**
-   * 日期辅助函数：增加天数
-   */
-  private addDays(dateStr: string, days: number): string {
-    const date = new Date(dateStr);
-    date.setDate(date.getDate() + days);
-    return date.toISOString().split('T')[0];
   }
 
   /**
@@ -281,9 +209,12 @@ class ScraperService {
     try {
       logger.info('[Scraper] 开始获取市场快讯');
 
-      const url = 'https://kuaixun.eastmoney.com/index.html';
+      const apiFlashes = await this.getEastmoneyFastNewsByApi();
+      if (apiFlashes.length > 0) {
+        return apiFlashes;
+      }
 
-      const response = await axios.get(url, {
+      const response = await axios.get(EASTMONEY_FLASH_URL, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -319,7 +250,16 @@ class ScraperService {
               const time = timeText.match(/\d{1,2}:\d{2}/) ? timeText.match(/\d{1,2}:\d{2}/)![0] : this.formatTime(new Date());
 
               // 获取内容 - 通常在a标签中
-              const content = $item.find('a').text().trim() || $item.text().trim();
+              const $link = $item.find('a').first();
+              const content = $link.text().trim() || $item.text().trim();
+              const href = $link.attr('href');
+              let sourceUrl = EASTMONEY_FLASH_URL;
+              if (href) {
+                const parsedUrl = new URL(href, EASTMONEY_FLASH_URL);
+                if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+                  sourceUrl = parsedUrl.toString();
+                }
+              }
 
               // 检查是否热门（通过class或文字判断）
               const hot = $item.find('[class*="hot"], [class*="urgent"], [class*="important"]').length > 0 ||
@@ -327,9 +267,12 @@ class ScraperService {
 
               if (content && content.length > 5) {
                 flashes.push({
+                  date: this.formatDate(),
                   time,
                   content: content.substring(0, 100), // 限制长度
                   hot,
+                  source: '东方财富快讯',
+                  sourceUrl,
                 });
               }
             } catch (err) {
@@ -359,6 +302,63 @@ class ScraperService {
     }
   }
 
+  private async getEastmoneyFastNewsByApi(): Promise<MarketFlash[]> {
+    try {
+      const response = await axios.get(EASTMONEY_FAST_NEWS_API, {
+        params: {
+          client: 'web',
+          biz: 'web_724',
+          fastColumn: '102',
+          sortEnd: '',
+          pageSize: 10,
+          req_trace: Date.now().toString(),
+        },
+        headers: {
+          'User-Agent': this.USER_AGENT,
+          'Accept': 'application/json,text/plain,*/*',
+          'Referer': EASTMONEY_FLASH_URL,
+        },
+        timeout: this.TIMEOUT,
+      });
+
+      const items = response.data?.data?.fastNewsList;
+      if (!Array.isArray(items)) return [];
+
+      const flashes: MarketFlash[] = items
+        .map<MarketFlash | null>((item: any) => {
+          const showTime = String(item.showTime || '');
+          const date = showTime.slice(0, 10) || this.formatDate();
+          const time = showTime.slice(11, 16) || this.formatTime(new Date());
+          const code = String(item.code || '');
+          const summary = this.cleanText(String(item.summary || item.title || ''));
+          const sourceUrl = code ? `${EASTMONEY_ARTICLE_BASE_URL}${code}.html` : EASTMONEY_FLASH_URL;
+          const hot = Number(item.titleColor || 0) > 0 ||
+            summary.includes('重要') ||
+            summary.includes('突发') ||
+            summary.includes('涨幅') ||
+            summary.includes('跌幅');
+
+          if (!summary) return null;
+
+          return {
+            date,
+            time,
+            content: summary.substring(0, 180),
+            hot,
+            source: '东方财富快讯',
+            sourceUrl,
+          } satisfies MarketFlash;
+        })
+        .filter((item: MarketFlash | null): item is MarketFlash => item !== null);
+
+      logger.info(`[Scraper] 东方财富API: 成功获取 ${flashes.length} 条快讯`);
+      return flashes;
+    } catch (error) {
+      logger.warn(`[Scraper] 东方财富API获取快讯失败，尝试HTML降级: ${error}`);
+      return [];
+    }
+  }
+
   /**
    * 获取模拟市场快讯（降级方案）
    */
@@ -368,29 +368,12 @@ class ScraperService {
 
     return [
       {
+        date: this.formatDate(now),
         time,
-        content: '现货黄金短线拉升，突破2390美元/盎司，日内涨幅扩大',
-        hot: true,
-      },
-      {
-        time,
-        content: '美联储官员表示：通胀水平仍然偏高，需要继续观察经济数据',
+        content: '实时市场快讯暂不可用，点击查看东方财富快讯源头',
         hot: false,
-      },
-      {
-        time,
-        content: '美元指数小幅回落，非美货币普遍反弹',
-        hot: false,
-      },
-      {
-        time,
-        content: '市场等待本周五的非农就业数据，预计将对金价走势产生重要影响',
-        hot: true,
-      },
-      {
-        time,
-        content: '欧洲央行行长：将根据通胀情况适时调整货币政策',
-        hot: false,
+        source: '模拟数据',
+        sourceUrl: EASTMONEY_FLASH_URL,
       },
     ];
   }
@@ -402,6 +385,13 @@ class ScraperService {
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
     return `${hours}:${minutes}`;
+  }
+
+  private cleanText(text: string): string {
+    return text
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }
 

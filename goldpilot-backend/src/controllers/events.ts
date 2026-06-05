@@ -3,7 +3,7 @@
  */
 
 import { Request, Response } from 'express';
-import { scraperService } from '../services/scraper';
+import { eventDataCacheService } from '../services/eventDataCache';
 import { logger } from '../utils/logger';
 
 /**
@@ -23,11 +23,12 @@ export async function getEconomicCalendar(req: Request, res: Response): Promise<
 
     logger.info(`[Events] 获取经济日历: ${dateParam || '今天'}`);
 
-    const events = await scraperService.getEconomicCalendar(dateParam);
+    const result = await eventDataCacheService.getEconomicCalendar(dateParam);
 
     res.json({
       success: true,
-      data: events,
+      data: result.data,
+      meta: result.meta,
     });
   } catch (error) {
     logger.error('[Events] 获取经济日历失败:', error);
@@ -49,11 +50,12 @@ export async function getMarketNews(req: Request, res: Response): Promise<void> 
   try {
     logger.info('[Events] 获取市场快讯');
 
-    const news = await scraperService.getMarketNews();
+    const result = await eventDataCacheService.getMarketNews();
 
     res.json({
       success: true,
-      data: news,
+      data: result.data,
+      meta: result.meta,
     });
   } catch (error) {
     logger.error('[Events] 获取市场快讯失败:', error);

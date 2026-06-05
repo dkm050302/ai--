@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Col, Descriptions, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ExperimentOutlined, FundProjectionScreenOutlined, ReloadOutlined, RiseOutlined, UndoOutlined } from '@ant-design/icons';
-import { researchApi, type AnalysisReport, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade } from '@/services/research';
+import { ExperimentOutlined, FundProjectionScreenOutlined, LoadingOutlined, ReloadOutlined, RiseOutlined, RobotOutlined, UndoOutlined } from '@ant-design/icons';
+import { researchApi, type AnalysisReport, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type ResearchSummary } from '@/services/research';
+import { aiService, type AIAnalysisResult } from '@/services/ai';
+import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
+import { fetchCandles, fetchRealTimePrice } from '@/services/marketData';
+import { detectSignals } from '@/utils/signalCalculator';
 import { EquityCurveChart, type EquityCurveSeries } from '@/components/EquityCurveChart';
 import { PageHeader } from '@/components/PageHeader';
 
@@ -48,6 +52,29 @@ function toSeconds(value?: string): number {
   return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : Math.floor(Date.now() / 1000);
 }
 
+function countVisibleChars(value: string): number {
+  return Array.from(value.replace(/\s/g, '')).length;
+}
+
+function formatStreamResult(result: AIAnalysisResult): string {
+  return [
+    '',
+    '--- 结构化报告 ---',
+    `结论：${result.decision.headline}`,
+    `摘要：${result.decision.summary}`,
+    `重点：${result.decision.eventCountdown}`,
+    `依据：${result.decision.aiReason}`,
+    `上涨概率：${result.probability.upProb}%`,
+    `下跌概率：${result.probability.downProb}%`,
+    `概率依据：${result.probability.reason}`,
+    `风险：${result.risk.risk} / ${result.risk.riskLevel}`,
+    `建议仓位：${result.risk.positionAdvice}%`,
+    `止损：${result.risk.stopLoss}%`,
+    `风险依据：${result.risk.reason}`,
+    ...result.actions.map((action) => `${action.title}：${action.text}`),
+  ].join('\n');
+}
+
 const profileOrder: Record<string, number> = {
   conservative: 0,
   balanced: 1,
@@ -76,6 +103,13 @@ export function ResearchCenter() {
   const [accounts, setAccounts] = useState<PaperAccount[]>([]);
   const [latestBacktest, setLatestBacktest] = useState<BacktestRun | null>(null);
   const [markPrice, setMarkPrice] = useState<number | null>(null);
+  const [autoTrading, setAutoTrading] = useState<ResearchSummary['autoTrading']>(undefined);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [streamText, setStreamText] = useState('');
+  const [streamStatus, setStreamStatus] = useState('等待发起分析');
+  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
+  const [streamElapsedSeconds, setStreamElapsedSeconds] = useState(0);
+  const [lastStreamResult, setLastStreamResult] = useState<AIAnalysisResult | null>(null);
   const [backtestPeriod, setBacktestPeriod] = useState('1m');
   const [backtestLimit, setBacktestLimit] = useState(240);
   const [backtestExitBars, setBacktestExitBars] = useState(8);
@@ -94,6 +128,7 @@ export function ResearchCenter() {
       setAccounts(summary.accounts || []);
       setLatestBacktest(summary.latestBacktest);
       setMarkPrice(summary.markPrice ?? null);
+      setAutoTrading(summary.autoTrading);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载研究中心失败');
     } finally {
@@ -104,6 +139,20 @@ export function ResearchCenter() {
   useEffect(() => {
     loadSummary();
   }, []);
+
+  useEffect(() => {
+    if (!analyzing || !streamStartedAt) {
+      return undefined;
+    }
+
+    const updateElapsed = () => {
+      setStreamElapsedSeconds(Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000)));
+    };
+
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [analyzing, streamStartedAt]);
 
   const confidence = useMemo(() => {
     if (!latestReport) return 0;
@@ -174,8 +223,52 @@ export function ResearchCenter() {
     };
   }, [orderedAccounts, reports.length]);
 
+  const autoTradingDescription = useMemo(() => {
+    const intervalMinutes = Math.max(1, Math.round((autoTrading?.intervalMs || 60000) / 60000));
+
+    if (!autoTrading?.lastRunAt) {
+      return `后端已配置为每 ${intervalMinutes} 分钟自动读取一次行情，生成报告后会自动评估四个模拟账号。`;
+    }
+
+    const priceText = autoTrading.lastPrice ? `，最近结算价 ${autoTrading.lastPrice.toFixed(2)}` : '';
+    const sourceText = autoTrading.lastSource ? `，来源 ${autoTrading.lastSource}` : '';
+    return `后端每 ${intervalMinutes} 分钟自动盯市，最近运行 ${formatDate(autoTrading.lastRunAt)}${priceText}${sourceText}。`;
+  }, [autoTrading]);
+
+  const streamCharCount = useMemo(() => countVisibleChars(streamText), [streamText]);
+  const streamSpeed = streamCharCount > 0 && streamElapsedSeconds > 0
+    ? Number((streamCharCount / streamElapsedSeconds).toFixed(1))
+    : 0;
+  const streamProgressText = streamCharCount > 0
+    ? `已输出 ${streamCharCount} 字，${streamElapsedSeconds > 0 ? `用时 ${streamElapsedSeconds} 秒，约 ${streamSpeed} 字/秒` : '用时不足 1 秒'}`
+    : `等待首字中，用时 ${streamElapsedSeconds} 秒`;
+  const streamTimeText = streamCharCount > 0 && streamElapsedSeconds > 0
+    ? `${streamElapsedSeconds}s / ${streamSpeed} 字/秒`
+    : `${streamElapsedSeconds}s`;
+
   const accountEquitySeries = useMemo<EquityCurveSeries[]>(() => {
     return orderedAccounts.map((account) => {
+      const snapshots = [...(account.equitySnapshots || [])]
+        .sort((a, b) => toSeconds(a.time) - toSeconds(b.time));
+
+      if (snapshots.length > 0) {
+        const snapshotData = snapshots.map((snapshot) => ({
+          time: toSeconds(snapshot.time),
+          value: Number(snapshot.equity || account.equity || INITIAL_BALANCE),
+        }));
+
+        const data = snapshotData.length === 1
+          ? [{ time: snapshotData[0].time - 60, value: INITIAL_BALANCE }, ...snapshotData]
+          : snapshotData;
+
+        return {
+          id: account.profileId,
+          name: account.name,
+          color: profileColors[account.profileId],
+          data,
+        };
+      }
+
       const chronologicalTrades = [...(account.tradeLog || [])]
         .sort((a, b) => toSeconds(a.openedAt) - toSeconds(b.openedAt));
       const firstTime = chronologicalTrades[0]?.openedAt
@@ -254,6 +347,95 @@ export function ResearchCenter() {
       message.error(error instanceof Error ? error.message : '结算持仓失败');
     } finally {
       setActing(false);
+    }
+  };
+
+  const handleAIAnalyze = async () => {
+    try {
+      setAnalyzing(true);
+      setStreamText('');
+      setLastStreamResult(null);
+      setStreamStatus('准备行情、事件和信号数据...');
+      setStreamStartedAt(Date.now());
+      setStreamElapsedSeconds(0);
+      message.loading({ content: 'AI正在流式分析市场...', key: 'research-ai-analysis', duration: 0 });
+
+      const today = new Date().toISOString().split('T')[0];
+      const [candles, priceQuote, calendarRes, newsRes] = await Promise.all([
+        fetchCandles('1m', 360),
+        fetchRealTimePrice().catch(() => null),
+        dataApi.getEconomicCalendar(today).catch(() => ({ success: false, data: [] })),
+        dataApi.getMarketNews().catch(() => ({ success: false, data: [] })),
+      ]);
+
+      const latestCandle = candles[candles.length - 1];
+      const currentPrice = Number(
+        priceQuote?.price ||
+        latestCandle?.close ||
+        markPrice ||
+        latestReport?.currentPrice ||
+        0
+      );
+      const detectedSignals = candles.length >= 233 ? detectSignals(candles).slice(-5) : [];
+      const analysisEvents = calendarRes.success
+        ? calendarRes.data.slice(0, 10).map((item: EconomicEvent) => ({
+          date: item.date,
+          time: item.time,
+          text: `${item.country} ${item.event}`,
+          source: item.source,
+          sourceUrl: item.sourceUrl,
+        }))
+        : [];
+      const analysisFlashes = newsRes.success
+        ? newsRes.data.slice(0, 10).map((item: MarketFlash) => ({
+          date: item.date,
+          time: item.time,
+          hot: item.hot || false,
+          text: item.content,
+          source: item.source,
+          sourceUrl: item.sourceUrl,
+        }))
+        : [];
+
+      setStreamStatus(`已读取 ${candles.length} 根K线，正在等待模型流式回复...`);
+
+      const result = await aiService.analyzeMarketStream(
+        {
+          candles: candles.slice(-100),
+          currentPrice,
+          events: analysisEvents,
+          flashes: analysisFlashes,
+          signals: detectedSignals,
+        },
+        {
+          onStatus: (status) => setStreamStatus(status),
+          onToken: (token) => setStreamText((prev) => `${prev}${token}`),
+          onResult: (nextResult) => {
+            setLastStreamResult(nextResult);
+            setStreamText((prev) => `${prev}${formatStreamResult(nextResult)}`);
+          },
+          onDone: () => setStreamStatus('分析完成，报告已保存到历史记录'),
+        }
+      );
+
+      setLastStreamResult(result);
+      await loadSummary();
+
+      message.success({
+        content: result.paperTrading ? 'AI分析完成，四账号已自动评估' : 'AI分析完成',
+        key: 'research-ai-analysis',
+        duration: 2,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'AI分析失败';
+      setStreamStatus(errorMessage);
+      message.error({
+        content: errorMessage.includes('未配置AI服务') ? '请先在AI账号页面配置DeepSeek API Key' : errorMessage,
+        key: 'research-ai-analysis',
+        duration: 4,
+      });
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -577,9 +759,22 @@ export function ResearchCenter() {
         eyebrow="Strategy Lab"
         title="策略研究"
         description="AI报告、四账号模拟交易和回测结果"
-        meta={markPrice !== null ? <span className="pill blue">结算价 {markPrice.toFixed(2)}</span> : <span className="pill">等待结算</span>}
+        meta={(
+          <Space wrap>
+            <span className={autoTrading?.errors?.length ? 'pill amber' : 'pill green'}>自动实时交易</span>
+            {markPrice !== null ? <span className="pill blue">结算价 {markPrice.toFixed(2)}</span> : <span className="pill">等待结算</span>}
+          </Space>
+        )}
         actions={(
           <Space wrap>
+          <Button
+            type="primary"
+            icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />}
+            onClick={handleAIAnalyze}
+            loading={analyzing}
+          >
+            {analyzing ? 'AI分析中' : 'AI分析'}
+          </Button>
           <Button icon={<ReloadOutlined />} onClick={loadSummary} loading={loading}>
             刷新
           </Button>
@@ -627,7 +822,7 @@ export function ResearchCenter() {
           type="info"
           showIcon
           message={`最近模拟结算价：${markPrice.toFixed(2)}`}
-          description="系统会在加载研究中心、新AI报告生成、手动结算时检查模拟持仓是否触发止盈或止损。"
+          description={autoTradingDescription}
         />
       )}
 
@@ -636,8 +831,46 @@ export function ResearchCenter() {
           type="warning"
           showIcon
           message="还没有AI分析报告"
-          description="先回到首页点击一次“AI 智能分析”，这里会自动读取最新报告。"
+          description="点击右上角“AI分析”，系统会读取最新行情并把报告保存到历史记录。"
         />
+      )}
+
+      {(analyzing || streamText || lastStreamResult) && (
+        <Card
+          className="workspace-card"
+          title="AI流式回复"
+          extra={(
+            <Space wrap size={6}>
+              <Tag color={analyzing ? 'processing' : 'success'}>{streamStatus}</Tag>
+              <Tag color={streamCharCount > 0 ? 'blue' : 'default'}>已输出 {streamCharCount} 字</Tag>
+              <Tag color="geekblue">{streamTimeText}</Tag>
+            </Space>
+          )}
+        >
+          <Alert
+            type={streamCharCount > 0 ? 'success' : 'info'}
+            showIcon
+            message={streamProgressText}
+            style={{ marginBottom: 12 }}
+          />
+          <div
+            style={{
+              minHeight: 180,
+              maxHeight: 360,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              lineHeight: 1.72,
+              border: '1px solid #dbe6f2',
+              borderRadius: 8,
+              background: '#f8fbff',
+              padding: 16,
+            }}
+          >
+            {streamText || `等待模型开始输出...\n${streamProgressText}`}
+          </div>
+        </Card>
       )}
 
       <Row gutter={[16, 16]}>

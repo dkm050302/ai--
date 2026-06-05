@@ -19,6 +19,18 @@ export interface PaperTrade {
   closedAt?: Date;
 }
 
+export interface EquitySnapshot {
+  time: Date;
+  price: number;
+  balance: number;
+  equity: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  openDirection?: PaperTradeDirection;
+  openVolume?: number;
+  reason: string;
+}
+
 export interface PaperAccountDocument extends Document {
   userAccountId: string;
   profileId: PaperProfileId;
@@ -33,6 +45,7 @@ export interface PaperAccountDocument extends Document {
   realizedPnl: number;
   openTrade?: PaperTrade;
   tradeLog: PaperTrade[];
+  equitySnapshots: EquitySnapshot[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,6 +63,18 @@ const PaperTradeSchema = new Schema<PaperTrade>({
   reason: { type: String, required: true },
   openedAt: { type: Date, required: true, default: Date.now },
   closedAt: { type: Date },
+}, { _id: false });
+
+const EquitySnapshotSchema = new Schema<EquitySnapshot>({
+  time: { type: Date, required: true, default: Date.now },
+  price: { type: Number, required: true },
+  balance: { type: Number, required: true },
+  equity: { type: Number, required: true },
+  realizedPnl: { type: Number, required: true },
+  unrealizedPnl: { type: Number, required: true },
+  openDirection: { type: String, enum: ['long', 'short'] },
+  openVolume: { type: Number },
+  reason: { type: String, required: true },
 }, { _id: false });
 
 const PaperAccountSchema = new Schema<PaperAccountDocument>({
@@ -108,6 +133,10 @@ const PaperAccountSchema = new Schema<PaperAccountDocument>({
   },
   tradeLog: {
     type: [PaperTradeSchema],
+    default: [],
+  },
+  equitySnapshots: {
+    type: [EquitySnapshotSchema],
     default: [],
   },
 }, {

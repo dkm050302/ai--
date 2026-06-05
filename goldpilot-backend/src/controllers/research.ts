@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { AnalysisReportModel, BacktestRunModel, PaperAccountModel } from '../models';
 import type { AnalysisReportDocument } from '../models/AnalysisReport';
-import type { PaperAccountDocument, PaperProfileId, PaperTrade } from '../models/PaperAccount';
+import type { EquitySnapshot, PaperAccountDocument, PaperProfileId, PaperTrade } from '../models/PaperAccount';
 import { marketDataService } from '../services/marketData';
 import { logger } from '../utils/logger';
 
@@ -18,6 +18,41 @@ interface RiskProfile {
 }
 
 const INITIAL_BALANCE = 10000;
+const EQUITY_SNAPSHOT_LIMIT = 2880;
+export const PAPER_TRADING_AUTO_INTERVAL_MS = 60 * 1000;
+
+export interface PaperTradingAutoStatus {
+  enabled: boolean;
+  intervalMs: number;
+  lastRunAt?: string;
+  lastPrice?: number;
+  lastSource?: string;
+  usersProcessed: number;
+  reportsEvaluated: number;
+  opened: number;
+  closed: number;
+  marked: number;
+  skipped: number;
+  held: number;
+  alreadyEvaluated: number;
+  errors: string[];
+}
+
+const emptyAutoStatus = (): PaperTradingAutoStatus => ({
+  enabled: true,
+  intervalMs: PAPER_TRADING_AUTO_INTERVAL_MS,
+  usersProcessed: 0,
+  reportsEvaluated: 0,
+  opened: 0,
+  closed: 0,
+  marked: 0,
+  skipped: 0,
+  held: 0,
+  alreadyEvaluated: 0,
+  errors: [],
+});
+
+let paperTradingAutoStatus: PaperTradingAutoStatus = emptyAutoStatus();
 
 const RISK_PROFILES: RiskProfile[] = [
   {
@@ -119,10 +154,16 @@ function calculatePnl(direction: 'long' | 'short', entryPrice: number, exitPrice
   return Number((diff * volume).toFixed(2));
 }
 
-function buildTrade(account: PaperAccountDocument, report: AnalysisReportDocument | any, profile: RiskProfile): PaperTrade {
+function buildTrade(
+  account: PaperAccountDocument,
+  report: AnalysisReportDocument | any,
+  profile: RiskProfile,
+  executionPrice?: number
+): PaperTrade {
   const direction = getReportDirection(report);
   const confidence = getConfidence(report);
-  const currentPrice = Number(report.currentPrice || 0);
+  const rawPrice = executionPrice ?? Number(report.currentPrice || 0);
+  const currentPrice = Number.isFinite(rawPrice) ? Number(rawPrice) : 0;
   const aiRisk = Number(report.result?.risk?.risk || 0);
   const baseStopPct = Math.max(Number(report.result?.risk?.stopLoss || 2), 0.5);
   const stopPct = baseStopPct * profile.stopMultiplier;
@@ -169,6 +210,43 @@ function markAccountToMarket(account: PaperAccountDocument, currentPrice: number
 
   const unrealized = calculatePnl(openTrade.direction, openTrade.entryPrice, currentPrice, openTrade.volume);
   account.equity = Number((account.balance + unrealized).toFixed(2));
+}
+
+function appendEquitySnapshot(
+  account: PaperAccountDocument,
+  currentPrice: number,
+  reason: string,
+  force = false
+): void {
+  const now = new Date();
+  const latestSnapshot = account.equitySnapshots?.[0];
+  const latestSnapshotTime = latestSnapshot?.time ? new Date(latestSnapshot.time).getTime() : 0;
+
+  if (!force && latestSnapshotTime && now.getTime() - latestSnapshotTime < 55 * 1000) {
+    return;
+  }
+
+  const openTrade = account.openTrade?.status === 'open' ? account.openTrade : undefined;
+  const unrealizedPnl = openTrade
+    ? calculatePnl(openTrade.direction, openTrade.entryPrice, currentPrice, openTrade.volume)
+    : 0;
+
+  const snapshot: EquitySnapshot = {
+    time: now,
+    price: Number(currentPrice.toFixed(2)),
+    balance: Number((account.balance || 0).toFixed(2)),
+    equity: Number((account.equity || 0).toFixed(2)),
+    realizedPnl: Number((account.realizedPnl || 0).toFixed(2)),
+    unrealizedPnl,
+    reason,
+  };
+
+  if (openTrade) {
+    snapshot.openDirection = openTrade.direction;
+    snapshot.openVolume = openTrade.volume;
+  }
+
+  account.equitySnapshots = [snapshot, ...(account.equitySnapshots || [])].slice(0, EQUITY_SNAPSHOT_LIMIT);
 }
 
 function closeOpenTrade(account: PaperAccountDocument, currentPrice: number, reason: string): void {
@@ -228,6 +306,7 @@ export async function settlePaperAccounts(userAccountId: string, currentPrice?: 
     const openTrade = account.openTrade;
     if (!openTrade || openTrade.status !== 'open') {
       account.equity = account.balance;
+      appendEquitySnapshot(account, price, '空仓，记录实时权益');
       await account.save();
       continue;
     }
@@ -235,6 +314,7 @@ export async function settlePaperAccounts(userAccountId: string, currentPrice?: 
     const settlement = getSettlementPriceAndReason(openTrade, price);
     if (settlement) {
       closeOpenTrade(account, settlement.price, settlement.reason);
+      appendEquitySnapshot(account, settlement.price, settlement.reason, true);
       settlements.push({
         profileId: account.profileId,
         name: account.name,
@@ -245,6 +325,7 @@ export async function settlePaperAccounts(userAccountId: string, currentPrice?: 
       });
     } else {
       markAccountToMarket(account, price);
+      appendEquitySnapshot(account, price, '持仓按实时价更新权益');
       settlements.push({
         profileId: account.profileId,
         name: account.name,
@@ -261,7 +342,7 @@ export async function settlePaperAccounts(userAccountId: string, currentPrice?: 
   return { price, settlements, accounts: updatedAccounts };
 }
 
-export async function executePaperTradingForReport(userAccountId: string, reportId?: string) {
+export async function executePaperTradingForReport(userAccountId: string, reportId?: string, executionPrice?: number) {
   const report = reportId
     ? await AnalysisReportModel.findOne({ _id: reportId, userAccountId })
     : await AnalysisReportModel.findOne({ userAccountId }).sort({ createdAt: -1 });
@@ -270,8 +351,11 @@ export async function executePaperTradingForReport(userAccountId: string, report
     throw new Error('还没有AI分析报告，请先运行AI分析');
   }
 
-  const currentPrice = Number(report.currentPrice);
-  await settlePaperAccounts(userAccountId, currentPrice);
+  const rawCurrentPrice = Number(executionPrice ?? report.currentPrice);
+  const currentPrice = Number.isFinite(rawCurrentPrice) && rawCurrentPrice > 0
+    ? rawCurrentPrice
+    : await marketDataService.getPrice();
+  const settlementResult = await settlePaperAccounts(userAccountId, currentPrice);
   const accounts = await ensurePaperAccounts(userAccountId);
   const currentReportId = report._id.toString();
   const decisions = [];
@@ -292,7 +376,7 @@ export async function executePaperTradingForReport(userAccountId: string, report
     }
 
     const profile = getProfile(account.profileId);
-    const nextTrade = buildTrade(account, report, profile);
+    const nextTrade = buildTrade(account, report, profile, currentPrice);
 
     if (account.openTrade?.status === 'open') {
       if (account.openTrade.direction !== nextTrade.direction && nextTrade.status === 'open') {
@@ -319,6 +403,7 @@ export async function executePaperTradingForReport(userAccountId: string, report
           openedAt: new Date(),
         };
         account.tradeLog = [heldTrade, ...account.tradeLog].slice(0, 100);
+        appendEquitySnapshot(account, currentPrice, '同向持仓继续观察', true);
         decisions.push({
           profileId: account.profileId,
           name: account.name,
@@ -336,6 +421,7 @@ export async function executePaperTradingForReport(userAccountId: string, report
 
     account.tradeLog = [nextTrade, ...account.tradeLog].slice(0, 100);
     markAccountToMarket(account, currentPrice);
+    appendEquitySnapshot(account, currentPrice, nextTrade.reason, true);
     await account.save();
 
     decisions.push({
@@ -349,7 +435,89 @@ export async function executePaperTradingForReport(userAccountId: string, report
   }
 
   const updatedAccounts = await PaperAccountModel.find({ userAccountId }).sort({ profileId: 1 }).lean();
-  return { report, decisions, accounts: updatedAccounts };
+  return {
+    report,
+    decisions,
+    settlements: settlementResult.settlements,
+    price: currentPrice,
+    accounts: updatedAccounts,
+  };
+}
+
+function countDecision(status: PaperTradingAutoStatus, action?: string): void {
+  if (action === 'open') {
+    status.opened += 1;
+  } else if (action === 'skip') {
+    status.skipped += 1;
+  } else if (action === 'hold') {
+    status.held += 1;
+  } else if (action === 'already_evaluated') {
+    status.alreadyEvaluated += 1;
+  }
+}
+
+function countSettlement(status: PaperTradingAutoStatus, action?: string): void {
+  if (action === 'closed') {
+    status.closed += 1;
+  } else if (action === 'mark') {
+    status.marked += 1;
+  }
+}
+
+async function getPaperTradingUserAccountIds(): Promise<string[]> {
+  const [accountUserIds, reportUserIds] = await Promise.all([
+    PaperAccountModel.distinct('userAccountId'),
+    AnalysisReportModel.distinct('userAccountId'),
+  ]);
+
+  return Array.from(new Set([...accountUserIds, ...reportUserIds]))
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
+}
+
+export function getPaperTradingAutoStatus(): PaperTradingAutoStatus {
+  return { ...paperTradingAutoStatus, errors: [...paperTradingAutoStatus.errors] };
+}
+
+export async function runRealtimePaperTradingTick(): Promise<PaperTradingAutoStatus> {
+  const status = {
+    ...emptyAutoStatus(),
+    lastRunAt: new Date().toISOString(),
+  };
+
+  try {
+    const userAccountIds = await getPaperTradingUserAccountIds();
+    status.usersProcessed = userAccountIds.length;
+
+    if (userAccountIds.length === 0) {
+      paperTradingAutoStatus = status;
+      return getPaperTradingAutoStatus();
+    }
+
+    const quote = await marketDataService.getPriceQuote();
+    status.lastPrice = quote.price;
+    status.lastSource = quote.source;
+
+    for (const userAccountId of userAccountIds) {
+      const latestReport = await AnalysisReportModel.findOne({ userAccountId }).sort({ createdAt: -1 });
+
+      if (latestReport) {
+        status.reportsEvaluated += 1;
+        const result = await executePaperTradingForReport(userAccountId, latestReport._id.toString(), quote.price);
+        result.settlements.forEach((settlement) => countSettlement(status, settlement.action));
+        result.decisions.forEach((decision) => countDecision(status, decision.action));
+      } else {
+        const settlementResult = await settlePaperAccounts(userAccountId, quote.price);
+        settlementResult.settlements.forEach((settlement) => countSettlement(status, settlement.action));
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '自动实时模拟交易失败';
+    status.errors.push(message);
+    logger.error('[Research] 自动实时模拟交易失败:', error);
+  }
+
+  paperTradingAutoStatus = status;
+  return getPaperTradingAutoStatus();
 }
 
 export async function getAnalysisReports(req: Request, res: Response): Promise<void> {
@@ -859,6 +1027,7 @@ export async function getResearchSummary(req: Request, res: Response): Promise<v
         accounts: settlementResult.accounts,
         settlements: settlementResult.settlements,
         markPrice: settlementResult.price,
+        autoTrading: getPaperTradingAutoStatus(),
         latestBacktest,
       },
     });

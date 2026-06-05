@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Button, Space, message } from 'antd';
+import { Alert, Button, Card, Space, Tag, message } from 'antd';
 import { RobotOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
 import { PageHeader } from '@/components/PageHeader';
 import { PriceCard } from '@/components/PriceCard';
@@ -24,13 +24,58 @@ import {
 } from '@/services/marketData';
 import { detectSignals } from '@/utils/signalCalculator';
 import type { Period } from '@/services/marketData';
-import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
+import { dataApi, type EconomicEvent, type EventDataMeta, type MarketFlash } from '@/services/data';
 import { aiService, type AIAnalysisResult } from '@/services/ai';
+
+const EVENT_DATA_REFRESH_MS = 60 * 60 * 1000;
 
 function getCandleLimit(period: Period): number {
   if (period === '1d') return 220;
   if (period === '4h' || period === '1h') return 260;
   return 360;
+}
+
+function formatRefreshLabel(intervalMs: number | null): string {
+  if (!intervalMs) return '手动刷新';
+  const minutes = Math.max(1, Math.round(intervalMs / 60000));
+  return `${minutes}分钟刷新`;
+}
+
+function getDataMetaLabel(meta: EventDataMeta | null, fallback: string): string {
+  if (!meta) return fallback;
+  if (meta.source === 'live') return '实时';
+  if (meta.source === 'cache') return '缓存';
+  return '模拟';
+}
+
+function getDataMetaColor(meta: EventDataMeta | null, fallback: 'blue' | 'amber' | 'red' | 'green') {
+  if (!meta) return fallback;
+  if (meta.source === 'live') return 'green';
+  if (meta.source === 'cache') return 'amber';
+  return 'red';
+}
+
+function countVisibleChars(value: string): number {
+  return Array.from(value.replace(/\s/g, '')).length;
+}
+
+function formatStreamResult(result: AIAnalysisResult): string {
+  return [
+    '',
+    '--- 结构化报告 ---',
+    `结论：${result.decision.headline}`,
+    `摘要：${result.decision.summary}`,
+    `重点：${result.decision.eventCountdown}`,
+    `依据：${result.decision.aiReason}`,
+    `上涨概率：${result.probability.upProb}%`,
+    `下跌概率：${result.probability.downProb}%`,
+    `概率依据：${result.probability.reason}`,
+    `风险：${result.risk.risk} / ${result.risk.riskLevel}`,
+    `建议仓位：${result.risk.positionAdvice}%`,
+    `止损：${result.risk.stopLoss}%`,
+    `风险依据：${result.risk.reason}`,
+    ...result.actions.map((action) => `${action.title}：${action.text}`),
+  ].join('\n');
 }
 
 /**
@@ -82,11 +127,18 @@ export function Home() {
   // 真实数据状态
   const [events, setEvents] = useState<Event[]>(createDefaultEvents());
   const [flashes, setFlashes] = useState<Flash[]>(createDefaultFlashes());
+  const [calendarMeta, setCalendarMeta] = useState<EventDataMeta | null>(null);
+  const [newsMeta, setNewsMeta] = useState<EventDataMeta | null>(null);
 
   // AI分析相关状态
   const [analyzing, setAnalyzing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
   const [showAnalysisButton, setShowAnalysisButton] = useState(true);
+  const [streamText, setStreamText] = useState('');
+  const [streamStatus, setStreamStatus] = useState('等待发起分析');
+  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
+  const [streamElapsedSeconds, setStreamElapsedSeconds] = useState(0);
+  const [lastStreamResult, setLastStreamResult] = useState<AIAnalysisResult | null>(null);
   const todayText = useMemo(() => new Date().toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -158,6 +210,31 @@ export function Home() {
       window.removeEventListener('goldpilot-refresh-interval-change', handleRefreshIntervalChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!analyzing || !streamStartedAt) {
+      return undefined;
+    }
+
+    const updateElapsed = () => {
+      setStreamElapsedSeconds(Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000)));
+    };
+
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [analyzing, streamStartedAt]);
+
+  const streamCharCount = useMemo(() => countVisibleChars(streamText), [streamText]);
+  const streamSpeed = streamCharCount > 0 && streamElapsedSeconds > 0
+    ? Number((streamCharCount / streamElapsedSeconds).toFixed(1))
+    : 0;
+  const streamProgressText = streamCharCount > 0
+    ? `已输出 ${streamCharCount} 字，${streamElapsedSeconds > 0 ? `用时 ${streamElapsedSeconds} 秒，约 ${streamSpeed} 字/秒` : '用时不足 1 秒'}`
+    : `等待首字中，用时 ${streamElapsedSeconds} 秒`;
+  const streamTimeText = streamCharCount > 0 && streamElapsedSeconds > 0
+    ? `${streamElapsedSeconds}s / ${streamSpeed} 字/秒`
+    : `${streamElapsedSeconds}s`;
 
   // AI建议（优先使用AI分析结果）
   const aiActions = useMemo(() => {
@@ -242,11 +319,15 @@ export function Home() {
           const convertedEvents: Event[] = calendarRes.data
             .slice(0, 10) // 只取前10条
             .map((item: EconomicEvent) => ({
+              date: item.date,
               time: item.time,
               star: '⭐'.repeat(item.importance),
               text: `${item.country} ${item.event}`,
-            }));
+              source: item.source,
+              sourceUrl: item.sourceUrl,
+          }));
           setEvents(convertedEvents);
+          setCalendarMeta('meta' in calendarRes ? calendarRes.meta || null : null);
         }
 
         // 转换市场快讯数据格式
@@ -254,11 +335,15 @@ export function Home() {
           const convertedFlashes: Flash[] = newsRes.data
             .slice(0, 10) // 只取前10条
             .map((item: MarketFlash) => ({
+              date: item.date,
               time: item.time,
               hot: item.hot || false,
               text: item.content,
-            }));
+              source: item.source,
+              sourceUrl: item.sourceUrl,
+          }));
           setFlashes(convertedFlashes);
+          setNewsMeta('meta' in newsRes ? newsRes.meta || null : null);
         }
 
         console.log('✅ [事件数据] 加载成功');
@@ -273,8 +358,8 @@ export function Home() {
     // 初始加载
     loadEventData();
 
-    // 每5分钟刷新一次
-    const interval = setInterval(loadEventData, 5 * 60 * 1000);
+    // 每小时刷新一次事件和快讯，减少外部数据源压力
+    const interval = setInterval(loadEventData, EVENT_DATA_REFRESH_MS);
 
     return () => clearInterval(interval);
   }, []);
@@ -311,17 +396,34 @@ export function Home() {
   const handleAIAnalyze = async () => {
     try {
       setAnalyzing(true);
-      message.loading({ content: 'AI正在分析市场数据...', key: 'ai-analysis', duration: 0 });
+      setStreamText('');
+      setLastStreamResult(null);
+      setStreamStatus('准备行情、事件和信号数据...');
+      setStreamStartedAt(Date.now());
+      setStreamElapsedSeconds(0);
+      message.loading({ content: 'AI正在流式分析市场...', key: 'ai-analysis', duration: 0 });
 
-      const result = await aiService.analyzeMarket({
-        candles: candles.slice(-100), // 最近100根K线
-        currentPrice: priceData.price,
-        events: events.slice(0, 10),
-        flashes: flashes.slice(0, 10),
-        signals: signals.slice(-5),
-      });
+      const result = await aiService.analyzeMarketStream(
+        {
+          candles: candles.slice(-100), // 最近100根K线
+          currentPrice: priceData.price,
+          events: events.slice(0, 10),
+          flashes: flashes.slice(0, 10),
+          signals: signals.slice(-5),
+        },
+        {
+          onStatus: (status) => setStreamStatus(status),
+          onToken: (token) => setStreamText((prev) => `${prev}${token}`),
+          onResult: (nextResult) => {
+            setLastStreamResult(nextResult);
+            setStreamText((prev) => `${prev}${formatStreamResult(nextResult)}`);
+          },
+          onDone: () => setStreamStatus('分析完成，报告已保存'),
+        }
+      );
 
       setAiAnalysis(result);
+      setLastStreamResult(result);
       setShowAnalysisButton(false);
 
       message.success({
@@ -352,6 +454,11 @@ export function Home() {
    */
   const handleResetAnalysis = () => {
     setAiAnalysis(null);
+    setStreamText('');
+    setStreamStatus('等待发起分析');
+    setStreamStartedAt(null);
+    setStreamElapsedSeconds(0);
+    setLastStreamResult(null);
     setShowAnalysisButton(true);
     message.info('已重置为默认数据');
   };
@@ -364,7 +471,8 @@ export function Home() {
         description="实时行情、信号统计和 AI 决策"
         meta={(
           <Space size={8}>
-            <span className="pill green">实时</span>
+            <span className="pill green">行情{formatRefreshLabel(marketRefreshMs)}</span>
+            <span className="pill blue">消息1小时刷新</span>
             <span className="date-text">{todayText}</span>
           </Space>
         )}
@@ -385,7 +493,7 @@ export function Home() {
       />
 
       {/* 主内容区 - 左边K线，右边信息 */}
-      <main className="main">
+      <main className="main home-main">
         {/* 左侧区域：实时行情K线图 */}
         <section className="left" aria-label="实时行情K线图">
           {/* 市场卡片 - 报价条 + K线图 */}
@@ -423,12 +531,144 @@ export function Home() {
               />
             )}
           </article>
+
+          <div className="home-under-chart" aria-label="市场信息流">
+            <div className="home-mini-grid">
+              <MiniCard
+                title="当天重要数据"
+                pillText={getDataMetaLabel(calendarMeta, '三星以上')}
+                pillColor={getDataMetaColor(calendarMeta, 'amber')}
+                items={events.slice(0, 3).map(e => ({
+                  date: e.date,
+                  time: e.time,
+                  star: e.star,
+                  text: e.text,
+                  source: e.source,
+                  sourceUrl: e.sourceUrl,
+                }))}
+              />
+
+              <MiniCard
+                title="当天重要事项"
+                pillText={getDataMetaLabel(calendarMeta, '18:00-05:00')}
+                pillColor={getDataMetaColor(calendarMeta, 'amber')}
+                items={events.slice(3, 6).map(e => ({
+                  date: e.date,
+                  time: e.time,
+                  star: e.star,
+                  text: e.text,
+                  source: e.source,
+                  sourceUrl: e.sourceUrl,
+                }))}
+              />
+
+              <MiniCard
+                title="实时市场快讯"
+                pillText={getDataMetaLabel(newsMeta, '1小时刷新')}
+                pillColor={getDataMetaColor(newsMeta, 'red')}
+                items={flashes.slice(0, 3).map(f => ({
+                  date: f.date,
+                  time: f.time,
+                  text: f.text,
+                  hot: f.hot,
+                  source: f.source,
+                  sourceUrl: f.sourceUrl,
+                }))}
+              />
+            </div>
+
+            <div className="home-feed-grid">
+              <EventList
+                events={events}
+                flashes={[]}
+                showFlashes={false}
+                title={calendarMeta?.source === 'mock' ? '经济日历源状态' : '美国重要事件明细'}
+              />
+              <EventList events={[]} flashes={flashes} showEvents={false} />
+              <ActionPanel actions={aiActions} />
+            </div>
+          </div>
         </section>
 
         {/* 右侧区域：信息咨询与分析 */}
         <section className="right" aria-label="信息咨询与分析">
           {/* 今日信号统计 */}
           <SignalPanel signals={signals} stats={stats} />
+
+          {(analyzing || streamText || lastStreamResult) && (
+            <Card
+              className="workspace-card"
+              title="AI回复看板"
+              extra={(
+                <Space wrap size={6}>
+                  <Tag color={analyzing ? 'processing' : 'success'}>{streamStatus}</Tag>
+                  <Tag color={streamCharCount > 0 ? 'blue' : 'default'}>已输出 {streamCharCount} 字</Tag>
+                  <Tag color="geekblue">{streamTimeText}</Tag>
+                </Space>
+              )}
+            >
+              <Alert
+                type={streamCharCount > 0 ? 'success' : 'info'}
+                showIcon
+                message={streamProgressText}
+                style={{ marginBottom: 12 }}
+              />
+              {lastStreamResult && (
+                <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+                    {lastStreamResult.decision.headline}
+                  </div>
+                  <div style={{ color: '#475569', lineHeight: 1.7 }}>
+                    {lastStreamResult.decision.summary}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                    <div className="metric-tile" style={{ padding: 10 }}>
+                      <div className="metric-tile-label">上涨概率</div>
+                      <div className="metric-tile-value red" style={{ fontSize: 18 }}>{lastStreamResult.probability.upProb}%</div>
+                    </div>
+                    <div className="metric-tile" style={{ padding: 10 }}>
+                      <div className="metric-tile-label">下跌概率</div>
+                      <div className="metric-tile-value green" style={{ fontSize: 18 }}>{lastStreamResult.probability.downProb}%</div>
+                    </div>
+                    <div className="metric-tile" style={{ padding: 10 }}>
+                      <div className="metric-tile-label">风险</div>
+                      <div className="metric-tile-value" style={{ fontSize: 18 }}>{lastStreamResult.risk.risk}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {lastStreamResult.actions.map((action) => (
+                      <div key={action.title} className="action-item">
+                        <strong>{action.title}</strong>
+                        <div className="sub">{action.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <details open={analyzing || !lastStreamResult}>
+                <summary style={{ cursor: 'pointer', color: '#2563eb', fontWeight: 600, marginBottom: 8 }}>
+                  {lastStreamResult ? '查看原始模型输出' : '模型输出'}
+                </summary>
+                <div
+                  style={{
+                    minHeight: 140,
+                    maxHeight: 260,
+                    overflow: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                    lineHeight: 1.72,
+                    border: '1px solid #dbe6f2',
+                    borderRadius: 8,
+                    background: '#f8fbff',
+                    padding: 16,
+                  }}
+                >
+                  {streamText || `等待模型开始输出...\n${streamProgressText}`}
+                </div>
+              </details>
+            </Card>
+          )}
 
           {/* 今日决策卡片 */}
           <DecisionCard
@@ -460,54 +700,6 @@ export function Home() {
               support2={priceData.support2 || 4750}
               resistance1={priceData.resistance1 || 4900}
             />
-
-            {/* 当天重要数据 */}
-            <MiniCard
-              title="当天重要数据"
-              pillText="三星以上"
-              pillColor="amber"
-              items={events.slice(0, 3).map(e => ({
-                time: e.time,
-                star: e.star,
-                text: e.text,
-              }))}
-            />
-
-            {/* 当天重要事项 */}
-            <MiniCard
-              title="当天重要事项"
-              pillText="18:00-05:00"
-              pillColor="amber"
-              items={events.slice(0, 3).map(e => ({
-                time: e.time,
-                star: e.star,
-                text: e.text,
-              }))}
-            />
-
-            {/* 实时市场快讯 */}
-            <MiniCard
-              title="实时市场快讯"
-              pillText="实时更新"
-              pillColor="red"
-              items={flashes.slice(0, 3).map(f => ({
-                time: f.time,
-                text: f.text,
-                hot: f.hot,
-              }))}
-            />
-          </div>
-
-          {/* 三宽面板 */}
-          <div className="wide-panels">
-            {/* 美国重要事件明细 */}
-            <EventList events={events} flashes={[]} />
-
-            {/* 市场快讯流 */}
-            <EventList events={[]} flashes={flashes} />
-
-            {/* AI智能交易分析建议 */}
-            <ActionPanel actions={aiActions} />
           </div>
         </section>
       </main>

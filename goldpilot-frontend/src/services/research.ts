@@ -49,6 +49,18 @@ export interface PaperTrade {
   closedAt?: string;
 }
 
+export interface EquitySnapshot {
+  time: string;
+  price: number;
+  balance: number;
+  equity: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  openDirection?: 'long' | 'short';
+  openVolume?: number;
+  reason: string;
+}
+
 export interface PaperAccount {
   _id: string;
   profileId: 'conservative' | 'balanced' | 'aggressive' | 'event';
@@ -63,6 +75,7 @@ export interface PaperAccount {
   realizedPnl: number;
   openTrade?: PaperTrade;
   tradeLog: PaperTrade[];
+  equitySnapshots?: EquitySnapshot[];
   updatedAt: string;
 }
 
@@ -130,6 +143,22 @@ export interface ResearchSummary {
     reason: string;
   }>;
   markPrice?: number;
+  autoTrading?: {
+    enabled: boolean;
+    intervalMs: number;
+    lastRunAt?: string;
+    lastPrice?: number;
+    lastSource?: string;
+    usersProcessed: number;
+    reportsEvaluated: number;
+    opened: number;
+    closed: number;
+    marked: number;
+    skipped: number;
+    held: number;
+    alreadyEvaluated: number;
+    errors: string[];
+  };
   latestBacktest: BacktestRun | null;
 }
 

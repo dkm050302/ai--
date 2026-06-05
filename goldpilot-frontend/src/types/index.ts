@@ -82,15 +82,21 @@ export interface DailyStats {
 
 // 事件类型
 export interface Event {
+  date?: string;
   time: string;
   star: string;
   text: string;
+  source?: string;
+  sourceUrl?: string;
 }
 
 export interface Flash {
+  date?: string;
   time: string;
   hot: boolean;
   text: string;
+  source?: string;
+  sourceUrl?: string;
 }
 
 // AI配置类型

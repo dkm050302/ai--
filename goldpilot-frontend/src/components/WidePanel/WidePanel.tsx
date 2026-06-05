@@ -21,6 +21,44 @@ interface WidePanelProps {
   sources?: Source[];
 }
 
+function shouldShowSource(source?: string): boolean {
+  return !!source && source !== '模拟数据';
+}
+
+function getFallbackSourceUrl(source?: string): string | undefined {
+  if (source === 'Trading Economics') return 'https://tradingeconomics.com/calendar';
+  if (source === '东方财富快讯') return 'https://kuaixun.eastmoney.com/index.html';
+  return undefined;
+}
+
+function getUsableSourceUrl(source?: string, sourceUrl?: string): string | undefined {
+  if (sourceUrl && /^https?:\/\//i.test(sourceUrl)) return sourceUrl;
+  return getFallbackSourceUrl(source);
+}
+
+function formatDateLabel(date?: string): string {
+  if (!date) {
+    return new Date().toLocaleDateString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+    }).replace(/\//g, '/');
+  }
+
+  const normalized = date.replace(/\//g, '-');
+  const parts = normalized.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (parts) return `${parts[2]}/${parts[3]}`;
+  return date;
+}
+
+function renderRowTime(date: string | undefined, time: string) {
+  return (
+    <div className="row-time-stack" title={date ? `${date} ${time}` : time}>
+      <span className="row-date">{formatDateLabel(date)}</span>
+      <span className="row-time">{time}</span>
+    </div>
+  );
+}
+
 export function WidePanel({
   title,
   pillText,
@@ -51,27 +89,71 @@ export function WidePanel({
         {/* 渲染事件列表 */}
         {events.length > 0 && (
           <div className="event-list">
-            {events.slice(0, 10).map((event, index) => (
-              <div key={index} className="event-row">
-                <div className="row-time">{event.time}</div>
-                <div className="row-text">
-                  {event.star && <span className="star">{event.star}</span>}
-                  {event.text}
+            {events.slice(0, 10).map((event, index) => {
+              const sourceUrl = getUsableSourceUrl(event.source, event.sourceUrl);
+              const content = (
+                <>
+                  {renderRowTime(event.date, event.time)}
+                  <div className="row-text">
+                    {event.star && <span className="star">{event.star}</span>}
+                    <span>{event.text}</span>
+                    {shouldShowSource(event.source) && <div className="mini-source">{event.source}</div>}
+                  </div>
+                </>
+              );
+
+              return sourceUrl ? (
+                <a
+                  key={index}
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="event-row source-row-link"
+                  title="打开源头"
+                >
+                  {content}
+                </a>
+              ) : (
+                <div key={index} className="event-row">
+                  {content}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {/* 渲染快讯列表 */}
         {flashes.length > 0 && (
           <div className="flash-list">
-            {flashes.slice(0, 10).map((flash, index) => (
-              <div key={index} className={`flash-row ${flash.hot ? 'hot' : ''}`}>
-                <div className="row-time">{flash.time}</div>
-                <div className="flash-text">{flash.text}</div>
-              </div>
-            ))}
+            {flashes.slice(0, 10).map((flash, index) => {
+              const sourceUrl = getUsableSourceUrl(flash.source, flash.sourceUrl);
+              const content = (
+                <>
+                  {renderRowTime(flash.date, flash.time)}
+                  <div className="flash-text">
+                    <span>{flash.text}</span>
+                    {shouldShowSource(flash.source) && <div className="mini-source">{flash.source}</div>}
+                  </div>
+                </>
+              );
+
+              return sourceUrl ? (
+                <a
+                  key={index}
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flash-row source-row-link ${flash.hot ? 'hot' : ''}`}
+                  title="打开源头"
+                >
+                  {content}
+                </a>
+              ) : (
+                <div key={index} className={`flash-row ${flash.hot ? 'hot' : ''}`}>
+                  {content}
+                </div>
+              );
+            })}
           </div>
         )}
 
