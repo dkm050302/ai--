@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Col, Descriptions, Input, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ExperimentOutlined, FundProjectionScreenOutlined, LoadingOutlined, ReloadOutlined, RiseOutlined, RobotOutlined, UndoOutlined } from '@ant-design/icons';
-import { researchApi, type AnalysisReport, type BacktestConfig, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type QuantChain, type QuantInterventionMode, type ResearchSummary } from '@/services/research';
+import { researchApi, type AnalysisReport, type BacktestConfig, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type QuantChain, type QuantInterventionMode, type ResearchSummary, type StrategyLabOverview, type StrategyScreenRun } from '@/services/research';
 import { aiService, type AIAnalysisResult } from '@/services/ai';
 import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
 import { fetchCandles, fetchRealTimePrice } from '@/services/marketData';
@@ -203,6 +203,11 @@ export function ResearchCenter() {
   const [interventionMode, setInterventionMode] = useState<QuantInterventionMode>('normal');
   const [interventionNote, setInterventionNote] = useState('');
   const [interventionSaving, setInterventionSaving] = useState(false);
+  const [strategyOverview, setStrategyOverview] = useState<StrategyLabOverview | null>(null);
+  const [latestStrategyRun, setLatestStrategyRun] = useState<StrategyScreenRun | null>(null);
+  const [strategyScreening, setStrategyScreening] = useState(false);
+  const [screenPeriod, setScreenPeriod] = useState('1d');
+  const [screenLimit, setScreenLimit] = useState(1825);
 
   const applyQuantChain = (chain: QuantChain | null) => {
     setQuantChain(chain);
@@ -221,10 +226,11 @@ export function ResearchCenter() {
   const loadSummary = async () => {
     try {
       setLoading(true);
-      const [summary, reportList, chain] = await Promise.all([
+      const [summary, reportList, chain, strategyLab] = await Promise.all([
         researchApi.getSummary(),
         researchApi.getReports(),
         researchApi.getQuantChain().catch(() => null),
+        researchApi.getStrategyLabOverview().catch(() => null),
       ]);
       setLatestReport(summary.latestReport);
       setReports(reportList);
@@ -233,6 +239,8 @@ export function ResearchCenter() {
       setMarkPrice(summary.markPrice ?? null);
       setAutoTrading(summary.autoTrading);
       applyQuantChain(chain);
+      setStrategyOverview(strategyLab);
+      setLatestStrategyRun(strategyLab?.latestScreenRun || null);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载研究中心失败');
     } finally {
@@ -700,6 +708,29 @@ export function ResearchCenter() {
       message.error(error instanceof Error ? error.message : '保存干预失败');
     } finally {
       setInterventionSaving(false);
+    }
+  };
+
+  const handleStrategyScreen = async () => {
+    try {
+      setStrategyScreening(true);
+      const result = await researchApi.runStrategyScreening({
+        period: screenPeriod,
+        limit: screenLimit,
+        initialBalance: INITIAL_BALANCE,
+        riskPerTradePct: 1,
+        maxPositionPct: 35,
+        slippagePct: 0.04,
+        commissionPct: 0.01,
+      });
+      const overview = await researchApi.getStrategyLabOverview().catch(() => null);
+      setLatestStrategyRun(result.run);
+      setStrategyOverview(overview || strategyOverview);
+      message.success(`长期策略筛选完成：${result.history.candleCount} 根 ${result.history.period} K线`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '长期策略筛选失败');
+    } finally {
+      setStrategyScreening(false);
     }
   };
 
@@ -1240,6 +1271,105 @@ export function ResearchCenter() {
           {roadmap.map((item) => (
             <div className="quant-roadmap-item" key={item}>{item}</div>
           ))}
+        </div>
+      </Card>
+
+      <Card
+        className="workspace-card long-screen-card"
+        title="长期黄金数据与策略筛选"
+        extra={<Tag color={latestStrategyRun?.dataSource === 'live' ? 'success' : latestStrategyRun ? 'blue' : 'default'}>{latestStrategyRun ? `${latestStrategyRun.candleCount} 根${latestStrategyRun.period}` : '等待筛选'}</Tag>}
+      >
+        <div className="long-screen-layout">
+          <div className="long-screen-side">
+            <div className="long-screen-kpis">
+              <div className="metric-tile">
+                <div className="metric-tile-label">长期历史缓存</div>
+                <div className="metric-tile-value">{strategyOverview?.historyCaches.length || 0}</div>
+                <Text type="secondary">{latestStrategyRun ? `${formatDate(latestStrategyRun.dataStart)} - ${formatDate(latestStrategyRun.dataEnd)}` : '只统计真实/缓存数据'}</Text>
+              </div>
+              <div className="metric-tile">
+                <div className="metric-tile-label">模拟盘流水</div>
+                <div className="metric-tile-value">{strategyOverview?.paperTrading.tradeCount || 0}</div>
+                <Text type="secondary">{strategyOverview?.paperTrading.message || '读取中'}</Text>
+              </div>
+              <div className="metric-tile">
+                <div className="metric-tile-label">实盘快照/持仓</div>
+                <div className="metric-tile-value">{strategyOverview?.liveTrading.positionCount || 0}</div>
+                <Text type="secondary">{strategyOverview?.liveTrading.message || '读取中'}</Text>
+              </div>
+            </div>
+
+            <div className="long-screen-controls">
+              <Select
+                value={screenPeriod}
+                onChange={(value) => {
+                  setScreenPeriod(value);
+                  setScreenLimit(value === '1d' ? 1825 : 3000);
+                }}
+                options={[
+                  { value: '1d', label: '日线 / 约5年' },
+                  { value: '4h', label: '4小时 / 约500天' },
+                  { value: '1h', label: '1小时 / 约125天' },
+                ]}
+              />
+              <InputNumber
+                min={220}
+                max={5000}
+                value={screenLimit}
+                onChange={(value) => setScreenLimit(Number(value || 1825))}
+                addonAfter="根K线"
+              />
+              <Button
+                type="primary"
+                icon={<ExperimentOutlined />}
+                onClick={handleStrategyScreen}
+                loading={strategyScreening}
+              >
+                运行长期筛选
+              </Button>
+            </div>
+
+            <Alert
+              type={latestStrategyRun?.recommendation?.score && latestStrategyRun.recommendation.score >= 60 ? 'success' : 'info'}
+              showIcon
+              message={latestStrategyRun?.recommendation?.name || '先跑长期筛选'}
+              description={latestStrategyRun?.recommendation?.reason || '系统会在真实或JSON缓存的黄金历史数据上筛选趋势、均值回归、动量回撤和波动突破策略。'}
+            />
+          </div>
+
+          <div className="long-screen-results">
+            {(latestStrategyRun?.results || []).length > 0 ? (
+              latestStrategyRun?.results.map((result) => (
+                <div className="strategy-result-card" key={result.strategyId}>
+                  <div className="strategy-result-head">
+                    <div>
+                      <strong>{result.name}</strong>
+                      <Text type="secondary">{result.description}</Text>
+                    </div>
+                    <Tag color={result.score >= 70 ? 'success' : result.score >= 45 ? 'warning' : 'error'}>{result.score}分</Tag>
+                  </div>
+                  <div className="strategy-result-grid">
+                    <span>交易 {result.trades}</span>
+                    <span>胜率 {result.winRate}%</span>
+                    <span>PF {result.profitFactor}</span>
+                    <span>回撤 {result.maxDrawdown}%</span>
+                    <span className={result.netPnl >= 0 ? 'green' : 'red'}>{formatMoney(result.netPnl)}</span>
+                    <span className={result.validation.netPnl >= 0 ? 'green' : 'red'}>验证 {formatMoney(result.validation.netPnl)}</span>
+                  </div>
+                  <div className="strategy-stress-row">
+                    {result.stressTests.map((stress) => (
+                      <Tag color={stress.passed ? 'success' : 'error'} key={stress.label}>
+                        {stress.label}
+                      </Tag>
+                    ))}
+                    {result.sampleWarning && <Tag color="warning">样本偏少</Tag>}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="empty-box">暂无长期策略筛选结果</div>
+            )}
+          </div>
         </div>
       </Card>
 

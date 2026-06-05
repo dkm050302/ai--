@@ -604,6 +604,83 @@ body {
   line-height: 1.55;
 }
 
+.long-screen-card {
+  border-color: #d7e4f2 !important;
+}
+
+.long-screen-layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.85fr) minmax(0, 1.15fr);
+  gap: 12px;
+}
+
+.long-screen-side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.long-screen-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.long-screen-controls {
+  display: grid;
+  grid-template-columns: 170px 180px auto;
+  gap: 8px;
+}
+
+.long-screen-results {
+  display: grid;
+  gap: 8px;
+}
+
+.strategy-result-card {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.strategy-result-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.strategy-result-head strong,
+.strategy-result-head .ant-typography {
+  display: block;
+}
+
+.strategy-result-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.strategy-result-grid span {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.strategy-stress-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
 /* 高端科技风标题样式 */
 .title-bar {
   display: flex;
@@ -1642,8 +1719,14 @@ body {
 
   .quant-section-grid,
   .quant-control-grid,
+  .long-screen-layout,
   .quant-roadmap {
     grid-template-columns: 1fr;
+  }
+
+  .long-screen-kpis,
+  .strategy-result-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .quant-pipeline {
@@ -1682,7 +1765,10 @@ body {
   }
 
   .quant-state-metrics,
-  .quant-intervention-actions {
+  .quant-intervention-actions,
+  .long-screen-kpis,
+  .long-screen-controls,
+  .strategy-result-grid {
     grid-template-columns: 1fr;
   }
 

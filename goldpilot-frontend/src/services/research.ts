@@ -215,6 +215,110 @@ export interface QuantChain {
   };
 }
 
+export interface StrategyScreenResult {
+  strategyId: string;
+  name: string;
+  description: string;
+  trades: number;
+  winRate: number;
+  netPnl: number;
+  endingBalance: number;
+  maxDrawdown: number;
+  profitFactor: number;
+  expectancy: number;
+  totalCost: number;
+  score: number;
+  sampleWarning: boolean;
+  train: {
+    trades: number;
+    winRate: number;
+    netPnl: number;
+    profitFactor: number;
+  };
+  validation: {
+    trades: number;
+    winRate: number;
+    netPnl: number;
+    profitFactor: number;
+  };
+  stressTests: Array<{
+    label: string;
+    passed: boolean;
+    trades: number;
+    netPnl: number;
+    maxDrawdown: number;
+    profitFactor: number;
+  }>;
+  note: string;
+}
+
+export interface StrategyScreenRun {
+  _id: string;
+  period: string;
+  requestedLimit: number;
+  candleCount: number;
+  dataSource: 'live' | 'cache' | 'stale_cache' | 'unavailable';
+  dataStart?: string;
+  dataEnd?: string;
+  assumption: string;
+  config: {
+    initialBalance: number;
+    riskPerTradePct: number;
+    maxPositionPct: number;
+    slippagePct: number;
+    commissionPct: number;
+  };
+  results: StrategyScreenResult[];
+  recommendation?: {
+    strategyId?: string;
+    name?: string;
+    score?: number;
+    reason: string;
+    warnings: string[];
+  };
+  createdAt: string;
+}
+
+export interface StrategyLabOverview {
+  historyCaches: Array<{
+    source: 'live' | 'cache' | 'stale_cache' | 'unavailable';
+    provider: string;
+    period: string;
+    requestedLimit: number;
+    candleCount: number;
+    startTime?: string;
+    endTime?: string;
+    updatedAt?: string;
+    message: string;
+  }>;
+  paperTrading: {
+    accountCount: number;
+    tradeCount: number;
+    openCount: number;
+    closedCount: number;
+    skippedCount: number;
+    heldCount: number;
+    realizedPnl: number;
+    totalEquity: number;
+    firstTradeAt: string | null;
+    lastSnapshotAt: string | null;
+    message: string;
+  };
+  liveTrading: {
+    snapshotCount: number;
+    positionCount: number;
+    balance: number;
+    equity: number;
+    dailyPnl: number;
+    updatedAt: string | null;
+    message: string;
+  };
+  aiReportCount: number;
+  aiBacktestCount: number;
+  strategyScreenCount: number;
+  latestScreenRun: StrategyScreenRun | null;
+}
+
 interface ApiEnvelope<T> {
   success: boolean;
   data: T;
@@ -292,5 +396,31 @@ export const researchApi = {
       { mode, note, updatedBy }
     );
     return response.data;
+  },
+
+  async getStrategyLabOverview(): Promise<StrategyLabOverview> {
+    const response = await api.get<ApiEnvelope<StrategyLabOverview>>('/api/research/strategy-lab/overview');
+    return response.data;
+  },
+
+  async runStrategyScreening(config: {
+    period: string;
+    limit: number;
+    initialBalance?: number;
+    riskPerTradePct?: number;
+    maxPositionPct?: number;
+    slippagePct?: number;
+    commissionPct?: number;
+  }): Promise<{ history: StrategyLabOverview['historyCaches'][number]; run: StrategyScreenRun }> {
+    const response = await api.post<ApiEnvelope<{ history: StrategyLabOverview['historyCaches'][number]; run: StrategyScreenRun }>>(
+      '/api/research/strategy-lab/screen',
+      config
+    );
+    return response.data;
+  },
+
+  async getStrategyScreenRuns(): Promise<StrategyScreenRun[]> {
+    const response = await api.get<ApiEnvelope<{ runs: StrategyScreenRun[] }>>('/api/research/strategy-lab/screens');
+    return response.data.runs;
   },
 };
