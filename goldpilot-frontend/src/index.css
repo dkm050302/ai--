@@ -637,6 +637,91 @@ body {
   gap: 8px;
 }
 
+.strategy-settings-panel {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.strategy-settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.strategy-settings-head strong,
+.strategy-settings-head .ant-typography {
+  display: block;
+}
+
+.strategy-settings-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.strategy-setting-card {
+  padding: 8px;
+  border: 1px solid #d7e4f2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.strategy-setting-card summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.strategy-setting-card p {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.strategy-logic-list {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.strategy-logic-list span {
+  padding: 5px 7px;
+  border: 1px dashed #c7d9ed;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #334155;
+  font-size: 12px;
+}
+
+.strategy-param-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.strategy-param {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.strategy-param .ant-typography {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
 .strategy-result-card {
   padding: 10px;
   border: 1px solid var(--line);
@@ -679,6 +764,23 @@ body {
   flex-wrap: wrap;
   gap: 5px;
   margin-top: 8px;
+}
+
+.strategy-refine-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.strategy-refine-item {
+  padding: 10px;
+  border: 1px dashed #b8d9f2;
+  border-radius: 8px;
+  background: rgba(237, 245, 255, 0.58);
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 /* 高端科技风标题样式 */
@@ -1725,7 +1827,8 @@ body {
   }
 
   .long-screen-kpis,
-  .strategy-result-grid {
+  .strategy-result-grid,
+  .strategy-refine-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1768,8 +1871,14 @@ body {
   .quant-intervention-actions,
   .long-screen-kpis,
   .long-screen-controls,
-  .strategy-result-grid {
+  .strategy-result-grid,
+  .strategy-param-grid,
+  .strategy-refine-grid {
     grid-template-columns: 1fr;
+  }
+
+  .strategy-settings-head {
+    flex-direction: column;
   }
 
   .quant-preset-grid {

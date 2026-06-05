@@ -44,9 +44,11 @@ import {
   updateQuantIntervention,
 } from '../controllers/research';
 import {
+  getStrategyDefinitionsEndpoint,
   getStrategyLabOverview,
   getStrategyScreenRuns,
   runStrategyScreen,
+  suggestStrategySettings,
 } from '../controllers/strategyLab';
 import {
   getDataSource,
@@ -112,7 +114,9 @@ router.get('/research/backtests', optionalAuth, getBacktests);
 router.get('/research/quant-chain', optionalAuth, getQuantChain);
 router.post('/research/quant-chain/intervention', optionalAuth, updateQuantIntervention);
 router.get('/research/strategy-lab/overview', optionalAuth, getStrategyLabOverview);
+router.get('/research/strategy-lab/strategies', optionalAuth, getStrategyDefinitionsEndpoint);
 router.post('/research/strategy-lab/screen', optionalAuth, runStrategyScreen);
+router.post('/research/strategy-lab/suggest-settings', optionalAuth, suggestStrategySettings);
 router.get('/research/strategy-lab/screens', optionalAuth, getStrategyScreenRuns);
 
 // 数据源相关路由

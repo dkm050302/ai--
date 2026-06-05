@@ -8,10 +8,36 @@ export interface StrategyScreenConfig {
   commissionPct: number;
 }
 
+export interface StrategyParameterDefinition {
+  key: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  description: string;
+}
+
+export interface PublicStrategyDefinition {
+  strategyId: string;
+  name: string;
+  description: string;
+  logic: string[];
+  parameters: StrategyParameterDefinition[];
+}
+
+export interface StrategyOverride {
+  strategyId: string;
+  enabled?: boolean;
+  parameters?: Record<string, number>;
+}
+
 export interface StrategyScreenResult {
   strategyId: string;
   name: string;
   description: string;
+  parameters: StrategyParameterDefinition[];
   trades: number;
   winRate: number;
   netPnl: number;
@@ -70,11 +96,13 @@ interface StrategyDefinition {
   strategyId: string;
   name: string;
   description: string;
+  logic: string[];
   warmupBars: number;
   maxHoldBars: number;
   stopAtr: number;
   rewardRisk: number;
-  signal: (ctx: IndicatorContext) => 'long' | 'short' | null;
+  parameters: StrategyParameterDefinition[];
+  signal: (ctx: IndicatorContext, params: Record<string, number>) => 'long' | 'short' | null;
 }
 
 interface IndicatorContext {
@@ -115,10 +143,20 @@ const STRATEGIES: StrategyDefinition[] = [
     strategyId: 'trend-ma-50-200',
     name: 'MA50/200 趋势跟随',
     description: '收盘价、MA50、MA200 同向排列时顺势进场，反向排列退出。',
+    logic: [
+      '做多：收盘价 > MA50 且 MA50 > MA200',
+      '做空：收盘价 < MA50 且 MA50 < MA200',
+      '使用 ATR 止损和固定盈亏比止盈，超过最大持仓K线后时间退出。',
+    ],
     warmupBars: 220,
     maxHoldBars: 28,
     stopAtr: 2.2,
     rewardRisk: 1.8,
+    parameters: [
+      { key: 'maxHoldBars', label: '最大持仓', value: 28, min: 5, max: 80, step: 1, unit: 'K', description: '超过该K线数量仍未止盈止损则按时间退出。' },
+      { key: 'stopAtr', label: '止损 ATR', value: 2.2, min: 0.8, max: 5, step: 0.1, unit: '倍', description: '止损距离 = ATR14 × 该倍数。' },
+      { key: 'rewardRisk', label: '盈亏比', value: 1.8, min: 0.6, max: 4, step: 0.1, unit: 'R', description: '止盈距离 = 止损距离 × 该倍数。' },
+    ],
     signal: (ctx) => {
       if (ctx.close > ctx.ma50 && ctx.ma50 > ctx.ma200) return 'long';
       if (ctx.close < ctx.ma50 && ctx.ma50 < ctx.ma200) return 'short';
@@ -129,14 +167,26 @@ const STRATEGIES: StrategyDefinition[] = [
     strategyId: 'mean-reversion-band',
     name: 'MA20 偏离回归',
     description: '价格偏离 MA20 超过 1.4 个标准差时做均值回归，适合震荡环境。',
+    logic: [
+      '做多：收盘价 < MA20 - 标准差阈值 × STD20',
+      '做空：收盘价 > MA20 + 标准差阈值 × STD20',
+      '用更短持仓周期验证均值回归是否能覆盖交易成本。',
+    ],
     warmupBars: 60,
     maxHoldBars: 10,
     stopAtr: 1.6,
     rewardRisk: 1.1,
-    signal: (ctx) => {
+    parameters: [
+      { key: 'deviationStd', label: '偏离阈值', value: 1.4, min: 0.7, max: 3, step: 0.1, unit: 'STD', description: '价格偏离 MA20 达到多少个标准差才触发。' },
+      { key: 'maxHoldBars', label: '最大持仓', value: 10, min: 3, max: 40, step: 1, unit: 'K', description: '均值回归策略通常需要更短持仓。' },
+      { key: 'stopAtr', label: '止损 ATR', value: 1.6, min: 0.6, max: 4, step: 0.1, unit: '倍', description: '止损距离 = ATR14 × 该倍数。' },
+      { key: 'rewardRisk', label: '盈亏比', value: 1.1, min: 0.5, max: 3, step: 0.1, unit: 'R', description: '震荡策略一般不追求过高盈亏比。' },
+    ],
+    signal: (ctx, params) => {
       if (ctx.std20 <= 0) return null;
-      if (ctx.close < ctx.ma20 - ctx.std20 * 1.4) return 'long';
-      if (ctx.close > ctx.ma20 + ctx.std20 * 1.4) return 'short';
+      const deviationStd = params.deviationStd || 1.4;
+      if (ctx.close < ctx.ma20 - ctx.std20 * deviationStd) return 'long';
+      if (ctx.close > ctx.ma20 + ctx.std20 * deviationStd) return 'short';
       return null;
     },
   },
@@ -144,12 +194,24 @@ const STRATEGIES: StrategyDefinition[] = [
     strategyId: 'momentum-pullback',
     name: '趋势回撤再启动',
     description: '大趋势由 MA100 定义，价格回撤到 MA20 附近并重新转强/转弱时进场。',
+    logic: [
+      '做多：收盘价 > MA100，回撤到 MA20 附近，并且当前收盘重新强于前一根。',
+      '做空：收盘价 < MA100，反弹到 MA20 附近，并且当前收盘重新弱于前一根。',
+      '回撤带宽用 ATR 和价格百分比共同约束。',
+    ],
     warmupBars: 120,
     maxHoldBars: 18,
     stopAtr: 1.9,
     rewardRisk: 1.6,
-    signal: (ctx) => {
-      const pullbackBand = Math.max(ctx.atr14, ctx.close * 0.003);
+    parameters: [
+      { key: 'pullbackPct', label: '回撤带宽', value: 0.3, min: 0.1, max: 1.5, step: 0.1, unit: '%', description: '价格靠近 MA20 的最大百分比带宽。' },
+      { key: 'maxHoldBars', label: '最大持仓', value: 18, min: 5, max: 60, step: 1, unit: 'K', description: '趋势回撤策略的时间退出窗口。' },
+      { key: 'stopAtr', label: '止损 ATR', value: 1.9, min: 0.8, max: 5, step: 0.1, unit: '倍', description: '止损距离 = ATR14 × 该倍数。' },
+      { key: 'rewardRisk', label: '盈亏比', value: 1.6, min: 0.6, max: 4, step: 0.1, unit: 'R', description: '趋势回撤的目标盈亏比。' },
+    ],
+    signal: (ctx, params) => {
+      const pullbackPct = (params.pullbackPct || 0.3) / 100;
+      const pullbackBand = Math.max(ctx.atr14, ctx.close * pullbackPct);
       if (ctx.close > ctx.ma100 && Math.abs(ctx.close - ctx.ma20) <= pullbackBand && ctx.close > ctx.previousClose) {
         return 'long';
       }
@@ -163,13 +225,27 @@ const STRATEGIES: StrategyDefinition[] = [
     strategyId: 'volatility-breakout',
     name: '20K 波动突破',
     description: '突破过去20根K线高低点后顺势进场，使用 ATR 控制止损。',
+    logic: [
+      '做多：收盘价突破过去N根K线高点，并且收盘价 > MA50',
+      '做空：收盘价跌破过去N根K线低点，并且收盘价 < MA50',
+      '适合趋势启动，但需要用滑点手续费压力测试过滤假突破。',
+    ],
     warmupBars: 80,
     maxHoldBars: 14,
     stopAtr: 2,
     rewardRisk: 1.7,
-    signal: (ctx) => {
-      if (ctx.close > ctx.high20 && ctx.close > ctx.ma50) return 'long';
-      if (ctx.close < ctx.low20 && ctx.close < ctx.ma50) return 'short';
+    parameters: [
+      { key: 'breakoutBars', label: '突破窗口', value: 20, min: 10, max: 80, step: 1, unit: 'K', description: '突破过去多少根K线高低点才入场。' },
+      { key: 'maxHoldBars', label: '最大持仓', value: 14, min: 3, max: 60, step: 1, unit: 'K', description: '突破策略的时间退出窗口。' },
+      { key: 'stopAtr', label: '止损 ATR', value: 2, min: 0.8, max: 5, step: 0.1, unit: '倍', description: '止损距离 = ATR14 × 该倍数。' },
+      { key: 'rewardRisk', label: '盈亏比', value: 1.7, min: 0.6, max: 4, step: 0.1, unit: 'R', description: '波动突破的目标盈亏比。' },
+    ],
+    signal: (ctx, params) => {
+      const breakoutBars = Math.round(params.breakoutBars || 20);
+      const high = highest(getWindow(ctx.candles, ctx.index - 1, breakoutBars).map((candle) => candle.high));
+      const low = lowest(getWindow(ctx.candles, ctx.index - 1, breakoutBars).map((candle) => candle.low));
+      if (ctx.close > high && ctx.close > ctx.ma50) return 'long';
+      if (ctx.close < low && ctx.close < ctx.ma50) return 'short';
       return null;
     },
   },
@@ -235,6 +311,55 @@ function buildContext(candles: GoldHistoryCandle[], index: number): IndicatorCon
     high20: highest(highs20),
     low20: lowest(lows20),
   };
+}
+
+function clampParameter(value: unknown, definition: StrategyParameterDefinition): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return definition.value;
+  }
+  return Math.min(Math.max(parsed, definition.min), definition.max);
+}
+
+function getDefaultParams(strategy: StrategyDefinition): Record<string, number> {
+  return Object.fromEntries(strategy.parameters.map((parameter) => [parameter.key, parameter.value]));
+}
+
+function publicDefinition(strategy: StrategyDefinition): PublicStrategyDefinition {
+  return {
+    strategyId: strategy.strategyId,
+    name: strategy.name,
+    description: strategy.description,
+    logic: strategy.logic,
+    parameters: strategy.parameters,
+  };
+}
+
+function applyStrategyOverride(strategy: StrategyDefinition, override?: StrategyOverride): StrategyDefinition | null {
+  if (override?.enabled === false) {
+    return null;
+  }
+
+  const parameters = strategy.parameters.map((parameter) => {
+    const nextValue = override?.parameters?.[parameter.key];
+    return {
+      ...parameter,
+      value: clampParameter(nextValue, parameter),
+    };
+  });
+  const parameterMap = Object.fromEntries(parameters.map((parameter) => [parameter.key, parameter.value]));
+
+  return {
+    ...strategy,
+    parameters,
+    maxHoldBars: Math.round(parameterMap.maxHoldBars || strategy.maxHoldBars),
+    stopAtr: Number(parameterMap.stopAtr || strategy.stopAtr),
+    rewardRisk: Number(parameterMap.rewardRisk || strategy.rewardRisk),
+  };
+}
+
+export function getStrategyDefinitions(): PublicStrategyDefinition[] {
+  return STRATEGIES.map(publicDefinition);
 }
 
 function executionPrice(direction: 'long' | 'short', rawPrice: number, slippagePct: number, side: 'entry' | 'exit'): number {
@@ -362,7 +487,8 @@ function simulateStrategy(
     }
 
     const ctx = buildContext(candles, i);
-    const direction = strategy.signal(ctx);
+    const params = getDefaultParams(strategy);
+    const direction = strategy.signal(ctx, params);
     if (!direction || ctx.atr14 <= 0 || !nextCandle) {
       continue;
     }
@@ -424,6 +550,7 @@ function simulateStrategy(
     strategyId: strategy.strategyId,
     name: strategy.name,
     description: strategy.description,
+    parameters: strategy.parameters,
     trades: trades.length,
     winRate: trades.length ? Number(((wins / trades.length) * 100).toFixed(1)) : 0,
     netPnl,
@@ -468,7 +595,8 @@ function simulateStrategy(
 
 export function runStrategyScreening(
   candles: GoldHistoryCandle[],
-  configInput: Partial<StrategyScreenConfig> = {}
+  configInput: Partial<StrategyScreenConfig> = {},
+  strategyOverrides: StrategyOverride[] = []
 ): StrategyScreenOutput {
   const config: StrategyScreenConfig = {
     ...DEFAULT_CONFIG,
@@ -480,7 +608,12 @@ export function runStrategyScreening(
     commissionPct: Number(configInput.commissionPct ?? DEFAULT_CONFIG.commissionPct),
   };
 
-  const results = STRATEGIES
+  const overrideMap = new Map(strategyOverrides.map((override) => [override.strategyId, override]));
+  const activeStrategies = STRATEGIES
+    .map((strategy) => applyStrategyOverride(strategy, overrideMap.get(strategy.strategyId)))
+    .filter((strategy): strategy is StrategyDefinition => Boolean(strategy));
+
+  const results = activeStrategies
     .map((strategy) => simulateStrategy(strategy, candles, config))
     .sort((a, b) => b.score - a.score);
   const best = results[0];

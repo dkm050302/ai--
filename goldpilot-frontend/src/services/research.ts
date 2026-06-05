@@ -219,6 +219,7 @@ export interface StrategyScreenResult {
   strategyId: string;
   name: string;
   description: string;
+  parameters?: StrategyParameterDefinition[];
   trades: number;
   winRate: number;
   netPnl: number;
@@ -250,6 +251,42 @@ export interface StrategyScreenResult {
     profitFactor: number;
   }>;
   note: string;
+}
+
+export interface StrategyParameterDefinition {
+  key: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  description: string;
+}
+
+export interface StrategyDefinition {
+  strategyId: string;
+  name: string;
+  description: string;
+  logic: string[];
+  parameters: StrategyParameterDefinition[];
+}
+
+export interface StrategyOverride {
+  strategyId: string;
+  enabled?: boolean;
+  parameters?: Record<string, number>;
+  reason?: string;
+}
+
+export interface StrategySettingSuggestion {
+  latestRunId: string | null;
+  suggestion: {
+    mode: 'llm' | 'rule_based';
+    summary: string;
+    suggestedOverrides: StrategyOverride[];
+    focus: string[];
+  };
 }
 
 export interface StrategyScreenRun {
@@ -411,6 +448,7 @@ export const researchApi = {
     maxPositionPct?: number;
     slippagePct?: number;
     commissionPct?: number;
+    strategyOverrides?: StrategyOverride[];
   }): Promise<{ history: StrategyLabOverview['historyCaches'][number]; run: StrategyScreenRun }> {
     const response = await api.post<ApiEnvelope<{ history: StrategyLabOverview['historyCaches'][number]; run: StrategyScreenRun }>>(
       '/api/research/strategy-lab/screen',
@@ -422,5 +460,18 @@ export const researchApi = {
   async getStrategyScreenRuns(): Promise<StrategyScreenRun[]> {
     const response = await api.get<ApiEnvelope<{ runs: StrategyScreenRun[] }>>('/api/research/strategy-lab/screens');
     return response.data.runs;
+  },
+
+  async getStrategyDefinitions(): Promise<StrategyDefinition[]> {
+    const response = await api.get<ApiEnvelope<{ strategies: StrategyDefinition[] }>>('/api/research/strategy-lab/strategies');
+    return response.data.strategies;
+  },
+
+  async suggestStrategySettings(useLLM = true): Promise<StrategySettingSuggestion> {
+    const response = await api.post<ApiEnvelope<StrategySettingSuggestion>>(
+      '/api/research/strategy-lab/suggest-settings',
+      { useLLM }
+    );
+    return response.data;
   },
 };

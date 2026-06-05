@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, Col, Descriptions, Input, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ExperimentOutlined, FundProjectionScreenOutlined, LoadingOutlined, ReloadOutlined, RiseOutlined, RobotOutlined, UndoOutlined } from '@ant-design/icons';
-import { researchApi, type AnalysisReport, type BacktestConfig, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type QuantChain, type QuantInterventionMode, type ResearchSummary, type StrategyLabOverview, type StrategyScreenRun } from '@/services/research';
+import { researchApi, type AnalysisReport, type BacktestConfig, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type QuantChain, type QuantInterventionMode, type ResearchSummary, type StrategyDefinition, type StrategyLabOverview, type StrategyOverride, type StrategyScreenRun, type StrategySettingSuggestion } from '@/services/research';
 import { aiService, type AIAnalysisResult } from '@/services/ai';
 import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
 import { fetchCandles, fetchRealTimePrice } from '@/services/marketData';
@@ -208,6 +208,10 @@ export function ResearchCenter() {
   const [strategyScreening, setStrategyScreening] = useState(false);
   const [screenPeriod, setScreenPeriod] = useState('1d');
   const [screenLimit, setScreenLimit] = useState(1825);
+  const [strategyDefinitions, setStrategyDefinitions] = useState<StrategyDefinition[]>([]);
+  const [strategyOverrides, setStrategyOverrides] = useState<Record<string, Record<string, number>>>({});
+  const [strategySuggestion, setStrategySuggestion] = useState<StrategySettingSuggestion['suggestion'] | null>(null);
+  const [strategySuggesting, setStrategySuggesting] = useState(false);
 
   const applyQuantChain = (chain: QuantChain | null) => {
     setQuantChain(chain);
@@ -226,11 +230,12 @@ export function ResearchCenter() {
   const loadSummary = async () => {
     try {
       setLoading(true);
-      const [summary, reportList, chain, strategyLab] = await Promise.all([
+      const [summary, reportList, chain, strategyLab, definitions] = await Promise.all([
         researchApi.getSummary(),
         researchApi.getReports(),
         researchApi.getQuantChain().catch(() => null),
         researchApi.getStrategyLabOverview().catch(() => null),
+        researchApi.getStrategyDefinitions().catch(() => []),
       ]);
       setLatestReport(summary.latestReport);
       setReports(reportList);
@@ -241,6 +246,7 @@ export function ResearchCenter() {
       applyQuantChain(chain);
       setStrategyOverview(strategyLab);
       setLatestStrategyRun(strategyLab?.latestScreenRun || null);
+      setStrategyDefinitions(definitions);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载研究中心失败');
     } finally {
@@ -711,6 +717,86 @@ export function ResearchCenter() {
     }
   };
 
+  const getStrategyParameterValue = (strategy: StrategyDefinition, key: string, defaultValue: number) => {
+    return strategyOverrides[strategy.strategyId]?.[key] ?? defaultValue;
+  };
+
+  const updateStrategyParameter = (strategyId: string, key: string, value: number) => {
+    setStrategyOverrides((prev) => ({
+      ...prev,
+      [strategyId]: {
+        ...(prev[strategyId] || {}),
+        [key]: value,
+      },
+    }));
+  };
+
+  const resetStrategyParameters = (strategyId?: string) => {
+    if (!strategyId) {
+      setStrategyOverrides({});
+      setStrategySuggestion(null);
+      return;
+    }
+
+    setStrategyOverrides((prev) => {
+      const next = { ...prev };
+      delete next[strategyId];
+      return next;
+    });
+  };
+
+  const buildStrategyOverrides = (): StrategyOverride[] => {
+    const overrides: StrategyOverride[] = [];
+
+    strategyDefinitions.forEach((strategy) => {
+      const parameters = strategyOverrides[strategy.strategyId];
+      if (!parameters || Object.keys(parameters).length === 0) {
+        return;
+      }
+
+      overrides.push({
+        strategyId: strategy.strategyId,
+        enabled: true,
+        parameters,
+      });
+    });
+
+    return overrides;
+  };
+
+  const applyStrategySuggestion = (suggestion: StrategySettingSuggestion['suggestion']) => {
+    const nextOverrides: Record<string, Record<string, number>> = {};
+
+    suggestion.suggestedOverrides.forEach((override) => {
+      if (!override.parameters) {
+        return;
+      }
+      nextOverrides[override.strategyId] = {
+        ...(nextOverrides[override.strategyId] || {}),
+        ...override.parameters,
+      };
+    });
+
+    setStrategyOverrides((prev) => ({
+      ...prev,
+      ...nextOverrides,
+    }));
+    setStrategySuggestion(suggestion);
+  };
+
+  const handleStrategySuggest = async () => {
+    try {
+      setStrategySuggesting(true);
+      const result = await researchApi.suggestStrategySettings(true);
+      applyStrategySuggestion(result.suggestion);
+      message.success(result.suggestion.mode === 'llm' ? '大模型已生成策略参数建议' : '已生成规则辅助参数建议');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '生成策略建议失败');
+    } finally {
+      setStrategySuggesting(false);
+    }
+  };
+
   const handleStrategyScreen = async () => {
     try {
       setStrategyScreening(true);
@@ -722,6 +808,7 @@ export function ResearchCenter() {
         maxPositionPct: 35,
         slippagePct: 0.04,
         commissionPct: 0.01,
+        strategyOverrides: buildStrategyOverrides(),
       });
       const overview = await researchApi.getStrategyLabOverview().catch(() => null);
       setLatestStrategyRun(result.run);
@@ -1329,6 +1416,69 @@ export function ResearchCenter() {
               </Button>
             </div>
 
+            <div className="strategy-settings-panel">
+              <div className="strategy-settings-head">
+                <div>
+                  <strong>策略设定</strong>
+                  <Text type="secondary">查看规则，调整参数后重新筛选</Text>
+                </div>
+                <Space wrap size={6}>
+                  <Button size="small" onClick={() => resetStrategyParameters()}>
+                    恢复默认
+                  </Button>
+                  <Button size="small" type="primary" loading={strategySuggesting} onClick={handleStrategySuggest}>
+                    AI辅助建议
+                  </Button>
+                </Space>
+              </div>
+
+              {strategySuggestion && (
+                <Alert
+                  type={strategySuggestion.mode === 'llm' ? 'success' : 'info'}
+                  showIcon
+                  message={strategySuggestion.mode === 'llm' ? '大模型建议已应用到参数面板' : '规则建议已应用到参数面板'}
+                  description={strategySuggestion.summary}
+                  style={{ marginBottom: 8 }}
+                />
+              )}
+
+              <div className="strategy-settings-grid">
+                {strategyDefinitions.map((strategy) => (
+                  <details className="strategy-setting-card" key={strategy.strategyId}>
+                    <summary>
+                      <span>{strategy.name}</span>
+                      <Tag color={strategyOverrides[strategy.strategyId] ? 'processing' : 'default'}>
+                        {strategyOverrides[strategy.strategyId] ? '已修改' : '默认'}
+                      </Tag>
+                    </summary>
+                    <p>{strategy.description}</p>
+                    <div className="strategy-logic-list">
+                      {strategy.logic.map((line) => <span key={line}>{line}</span>)}
+                    </div>
+                    <div className="strategy-param-grid">
+                      {strategy.parameters.map((parameter) => (
+                        <label className="strategy-param" key={parameter.key}>
+                          <span>{parameter.label}</span>
+                          <InputNumber
+                            min={parameter.min}
+                            max={parameter.max}
+                            step={parameter.step}
+                            value={getStrategyParameterValue(strategy, parameter.key, parameter.value)}
+                            onChange={(value) => updateStrategyParameter(strategy.strategyId, parameter.key, Number(value ?? parameter.value))}
+                            addonAfter={parameter.unit}
+                          />
+                          <Text type="secondary">{parameter.description}</Text>
+                        </label>
+                      ))}
+                    </div>
+                    <Button size="small" onClick={() => resetStrategyParameters(strategy.strategyId)}>
+                      恢复本策略默认
+                    </Button>
+                  </details>
+                ))}
+              </div>
+            </div>
+
             <Alert
               type={latestStrategyRun?.recommendation?.score && latestStrategyRun.recommendation.score >= 60 ? 'success' : 'info'}
               showIcon
@@ -1370,6 +1520,17 @@ export function ResearchCenter() {
               <div className="empty-box">暂无长期策略筛选结果</div>
             )}
           </div>
+        </div>
+
+        <div className="strategy-refine-grid">
+          {[
+            '策略库持久化：把用户修改后的参数方案保存成命名版本，支持对比和回滚。',
+            '走样本验证：按年份或滚动窗口做训练/验证/测试三段，减少单段过拟合。',
+            '新闻过滤器：把重大数据、央行讲话、突发新闻作为策略开关，而不是直接预测价格。',
+            '实盘流水接入：补齐真实成交记录模型，用真实订单滑点校准回测成本。',
+          ].map((item) => (
+            <div className="strategy-refine-item" key={item}>{item}</div>
+          ))}
         </div>
       </Card>
 
