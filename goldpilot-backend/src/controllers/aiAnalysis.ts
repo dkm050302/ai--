@@ -7,6 +7,7 @@ import { getUserApiKey } from './ai';
 import { logger } from '../utils/logger';
 import { AnalysisReportModel } from '../models/AnalysisReport';
 import { executePaperTradingForReport } from './research';
+import { DEEPSEEK_MODEL, getDeepSeekChatCompletionsUrl } from '../config';
 
 /**
  * AI分析请求接口
@@ -86,7 +87,7 @@ export async function analyzeMarket(req: Request, res: Response): Promise<void> 
     const analysis = await callDeepSeekAPI(apiKey, prompt);
     const report = await AnalysisReportModel.create({
       userAccountId: req.user.accountId,
-      modelName: 'deepseek-chat',
+      modelName: DEEPSEEK_MODEL,
       promptVersion: 'goldpilot-analysis-v1',
       currentPrice: currentPrice || candles?.[candles.length - 1]?.close || 0,
       candleCount: candles?.length || 0,
@@ -210,14 +211,14 @@ ${signalsText}
  * 调用DeepSeek API
  */
 async function callDeepSeekAPI(apiKey: string, prompt: string): Promise<AnalysisResult> {
-  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+  const response = await fetch(getDeepSeekChatCompletionsUrl(), {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      model: DEEPSEEK_MODEL,
       messages: [
         {
           role: 'user',

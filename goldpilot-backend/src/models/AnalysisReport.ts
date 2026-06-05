@@ -23,7 +23,7 @@ const AnalysisReportSchema = new Schema<AnalysisReportDocument>({
   modelName: {
     type: String,
     required: true,
-    default: 'deepseek-chat',
+    default: 'deepseek-v4-pro',
   },
   promptVersion: {
     type: String,

@@ -6,6 +6,7 @@ import { Request, Response } from 'express';
 import { UserModel } from '../models/User';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
+import { DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, getDeepSeekModelsUrl } from '../config';
 
 /**
  * 简单加密函数（用于演示，生产环境应使用更安全的加密方式）
@@ -69,6 +70,8 @@ export async function getAIConfig(req: Request, res: Response): Promise<void> {
       apiKey: user.aiConfig.apiKey ? maskApiKey(user.aiConfig.apiKey) : '',
       status: user.aiConfig.status,
       lastUsed: user.aiConfig.lastUsed,
+      modelName: DEEPSEEK_MODEL,
+      baseUrl: DEEPSEEK_BASE_URL,
     };
 
     res.json({ success: true, data: responseData });
@@ -226,7 +229,7 @@ export async function getUserApiKey(accountId: string): Promise<string | null> {
  */
 async function testDeepSeekAPI(apiKey: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch('https://api.deepseek.com/v1/models', {
+    const response = await fetch(getDeepSeekModelsUrl(), {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`,

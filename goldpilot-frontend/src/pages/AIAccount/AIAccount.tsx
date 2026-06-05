@@ -9,6 +9,8 @@ interface AIConfig {
   apiKey: string;
   status: 'connected' | 'disconnected';
   lastUsed?: string;
+  modelName?: string;
+  baseUrl?: string;
 }
 
 export function AIAccount() {
@@ -165,8 +167,8 @@ export function AIAccount() {
         </Col>
         <Col xs={24} md={8}>
           <div className="metric-tile">
-            <div className="metric-tile-label">样品模式</div>
-            <div className="metric-tile-value">单人</div>
+            <div className="metric-tile-label">分析模型</div>
+            <div className="metric-tile-value">{aiConfig?.modelName || 'deepseek-v4-pro'}</div>
           </div>
         </Col>
       </Row>
@@ -184,6 +186,7 @@ export function AIAccount() {
                 {aiConfig?.provider === 'deepseek' ? 'DeepSeek' : 'AI服务'}
               </div>
               <div className="text-xs text-slate-500">市场分析模型</div>
+              <div className="text-xs text-slate-500">{aiConfig?.modelName || 'deepseek-v4-pro'}</div>
             </div>
           </div>
         }
@@ -229,6 +232,11 @@ export function AIAccount() {
               <Descriptions.Item label={<span className="font-semibold">API Key</span>}>
                 <span className="text-slate-700 font-mono">
                   {aiConfig.apiKey || '未配置'}
+                </span>
+              </Descriptions.Item>
+              <Descriptions.Item label={<span className="font-semibold">模型</span>}>
+                <span className="text-slate-700 font-mono">
+                  {aiConfig.modelName || 'deepseek-v4-pro'}
                 </span>
               </Descriptions.Item>
               {aiConfig.lastUsed && (
