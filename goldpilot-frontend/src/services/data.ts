@@ -30,6 +30,34 @@ export interface EconomicEvent {
   sourceUrl?: string;
 }
 
+export type ImportantCalendarCategory = 'data' | 'event';
+
+export interface ImportantCalendarItem extends EconomicEvent {
+  category: ImportantCalendarCategory;
+  importanceLabel: string;
+}
+
+export interface ImportantSourceLink {
+  name: string;
+  url: string;
+  note: string;
+}
+
+export interface ImportantEventsPayload {
+  todayData: ImportantCalendarItem[];
+  todayEvents: ImportantCalendarItem[];
+  weekData: ImportantCalendarItem[];
+  weekEvents: ImportantCalendarItem[];
+  sourceLinks: ImportantSourceLink[];
+  filters: {
+    country: string;
+    todayWindow: string;
+    dataImportanceMin: number;
+    eventImportanceMin: number;
+    weekDays: number;
+  };
+}
+
 /**
  * 市场快讯类型
  */
@@ -53,6 +81,15 @@ export const dataApi = {
   getEconomicCalendar: (date?: string): Promise<{ success: boolean; data: EconomicEvent[]; meta?: EventDataMeta }> => {
     const params = date ? `?date=${date}` : '';
     return api.get(`/api/events/calendar${params}`);
+  },
+
+  /**
+   * 获取首页重要经济数据/事件聚合
+   * @param date 日期格式: YYYY-MM-DD，不传则获取今天
+   */
+  getImportantEvents: (date?: string): Promise<{ success: boolean; data: ImportantEventsPayload; meta?: EventDataMeta }> => {
+    const params = date ? `?date=${date}` : '';
+    return api.get(`/api/events/important${params}`);
   },
 
   /**

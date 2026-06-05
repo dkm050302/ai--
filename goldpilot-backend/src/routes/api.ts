@@ -19,6 +19,7 @@ import {
 } from '../controllers/signalDetection';
 import {
   getEconomicCalendar,
+  getImportantEvents,
   getMarketNews,
 } from '../controllers/events';
 import {
@@ -90,6 +91,7 @@ router.put('/account/update', optionalAuth, updateAccount);
 
 // 事件相关路由
 router.get('/events/calendar', getEconomicCalendar);
+router.get('/events/important', getImportantEvents);
 router.get('/events/news', getMarketNews);
 
 // AI配置相关路由

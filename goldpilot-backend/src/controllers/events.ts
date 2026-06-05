@@ -4,6 +4,7 @@
 
 import { Request, Response } from 'express';
 import { eventDataCacheService } from '../services/eventDataCache';
+import { importantEventsService } from '../services/importantEvents';
 import { logger } from '../utils/logger';
 
 /**
@@ -37,6 +38,36 @@ export async function getEconomicCalendar(req: Request, res: Response): Promise<
       error: {
         code: 'EVENTS_CALENDAR_ERROR',
         message: '获取经济日历失败',
+      },
+    });
+  }
+}
+
+/**
+ * 获取首页重要经济数据/事项
+ * GET /api/events/important?date=2026-06-05
+ */
+export async function getImportantEvents(req: Request, res: Response): Promise<void> {
+  try {
+    const { date } = req.query;
+    const dateParam = typeof date === 'string' ? date.replace(/-/g, '') : '';
+
+    logger.info(`[Events] 获取重要日历: ${dateParam || '今天'}`);
+
+    const result = await importantEventsService.getImportantEvents(dateParam);
+
+    res.json({
+      success: true,
+      data: result.data,
+      meta: result.meta,
+    });
+  } catch (error) {
+    logger.error('[Events] 获取重要日历失败:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'EVENTS_IMPORTANT_ERROR',
+        message: '获取重要日历失败',
       },
     });
   }

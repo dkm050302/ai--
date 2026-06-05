@@ -988,6 +988,7 @@ body {
 }
 
 .home-mini-grid,
+.home-important-grid,
 .home-feed-grid {
   display: grid;
   gap: 10px;
@@ -996,6 +997,10 @@ body {
 
 .home-mini-grid {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.home-important-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .home-feed-grid {
@@ -1363,6 +1368,131 @@ body {
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.important-calendar-card {
+  min-height: 230px;
+}
+
+.important-calendar-list {
+  display: grid;
+  gap: 8px;
+}
+
+.important-calendar-row {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 74px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: inherit;
+  text-decoration: none;
+}
+
+.important-calendar-row:hover {
+  border-color: #b8d9f2;
+  background: #f7fbff;
+}
+
+.important-calendar-time {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.important-calendar-time span {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.important-calendar-time strong {
+  color: var(--blue);
+  font-size: 15px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.important-calendar-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.important-calendar-head {
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.importance-stars {
+  color: var(--amber);
+  font-size: 12px;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.important-calendar-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.important-calendar-values span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.1;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.important-calendar-empty {
+  min-height: 156px;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 18px;
+  border: 1px dashed #bfd0e3;
+  border-radius: 8px;
+  background: #fbfdff;
+  color: var(--muted);
+  text-align: center;
+}
+
+.important-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.important-source-links a {
+  border: 1px solid #c9dcf5;
+  border-radius: 999px;
+  background: #f4f9ff;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 10px;
+  text-decoration: none;
+}
+
+.important-source-links a:hover {
+  border-color: var(--blue);
+  background: var(--blue-soft);
 }
 
 /* 宽面板 */
@@ -1854,6 +1984,7 @@ body {
   .info-grid,
   .wide-panels,
   .home-mini-grid,
+  .home-important-grid,
   .home-feed-grid {
     grid-template-columns: 1fr;
   }

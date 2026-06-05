@@ -91,10 +91,18 @@ class ScraperService {
 
   /**
    * 获取经济日历数据（多数据源降级）
-   * 优先级: Trading Economics -> 模拟数据
+   * 优先级: Trading Economics 官方API(需Key) -> Trading Economics网页 -> 模拟不可用提示
    * @param date 日期格式: YYYYMMDD 或 YYYY-MM-DD
    */
   async getEconomicCalendar(date: string = ''): Promise<EconomicEvent[]> {
+    if (TE_API_KEY && TE_API_KEY !== 'guest') {
+      try {
+        return await this.getTradingEconomicsApiCalendar(date);
+      } catch (error) {
+        logger.warn(`[Scraper] Trading Economics 官方API失败，尝试网页解析: ${error}`);
+      }
+    }
+
     // 尝试使用 Trading Economics API（免费有限访问）
     try {
       return await this.getTradingEconomicsCalendar(date);
@@ -102,6 +110,87 @@ class ScraperService {
       logger.warn(`[Scraper] Trading Economics API 失败，使用模拟数据: ${error}`);
       return this.getMockEconomicEvents();
     }
+  }
+
+  /**
+   * 使用 Trading Economics 官方结构化API获取经济日历。
+   * guest:guest 已停止可用，所以只在配置真实 Key 后启用。
+   */
+  private async getTradingEconomicsApiCalendar(date: string = ''): Promise<EconomicEvent[]> {
+    const normalizedDate = this.normalizeDate(date);
+    const endDate = new Date(`${normalizedDate}T00:00:00+08:00`);
+    endDate.setDate(endDate.getDate() + 7);
+    const endDateText = this.formatDate(endDate);
+
+    const response = await axios.get(`${TE_API_BASE}/calendar/country/united states`, {
+      params: {
+        c: TE_API_KEY,
+        d1: normalizedDate,
+        d2: endDateText,
+      },
+      headers: {
+        'User-Agent': this.USER_AGENT,
+        Accept: 'application/json',
+      },
+      timeout: this.TIMEOUT,
+    });
+
+    if (!Array.isArray(response.data)) {
+      throw new Error('Trading Economics 官方API未返回数组');
+    }
+
+    const events = response.data
+      .map((row: Record<string, unknown>) => this.mapTradingEconomicsApiRow(row))
+      .filter((event): event is EconomicEvent => Boolean(event));
+
+    if (events.length === 0) {
+      throw new Error('Trading Economics 官方API没有可用经济日历');
+    }
+
+    logger.info(`[Scraper] Trading Economics 官方API: 成功获取 ${events.length} 条数据`);
+    return events.slice(0, 80);
+  }
+
+  private mapTradingEconomicsApiRow(row: Record<string, unknown>): EconomicEvent | null {
+    const event = this.stringifyField(row.Event);
+    if (!event) return null;
+
+    const dateValue = this.stringifyField(row.Date);
+    const parsedDate = dateValue ? new Date(dateValue) : null;
+    const hasValidDate = parsedDate && Number.isFinite(parsedDate.getTime());
+    const date = hasValidDate ? this.formatDate(parsedDate) : this.formatDate();
+    const time = hasValidDate
+      ? new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(parsedDate)
+      : '00:00';
+
+    return {
+      date,
+      time,
+      country: this.stringifyField(row.Country) || 'United States',
+      event,
+      importance: this.normalizeImportance(row.Importance),
+      actual: this.stringifyField(row.Actual) || undefined,
+      forecast: this.stringifyField(row.Forecast) || undefined,
+      previous: this.stringifyField(row.Previous) || undefined,
+      source: 'Trading Economics',
+      sourceUrl: TRADING_ECONOMICS_CALENDAR_URL,
+    };
+  }
+
+  private stringifyField(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+  }
+
+  private normalizeImportance(value: unknown): number {
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numeric)) return 1;
+    return Math.max(1, Math.min(5, Math.round(numeric)));
   }
 
   /**
