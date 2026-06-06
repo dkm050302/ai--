@@ -8,6 +8,7 @@ import {
   UserModel,
 } from '../models';
 import { goldHistoryService } from '../services/goldHistory';
+import { externalGoldCsvImportService } from '../services/externalGoldCsvImport';
 import {
   getStrategyDefinitions,
   runStrategyScreening,
@@ -303,6 +304,29 @@ export async function getStrategyDefinitionsEndpoint(req: Request, res: Response
   } catch (error) {
     logger.error('[StrategyLab] 获取策略定义失败:', error);
     res.status(500).json({ success: false, message: '获取策略定义失败' });
+  }
+}
+
+export async function importBaseMaxXau15mHistory(req: Request, res: Response): Promise<void> {
+  try {
+    const userAccountId = getUserAccountId(req);
+    if (!userAccountId) {
+      res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    const sourceUrl = typeof req.body?.sourceUrl === 'string' && req.body.sourceUrl.startsWith('https://raw.githubusercontent.com/')
+      ? req.body.sourceUrl
+      : undefined;
+    const result = await externalGoldCsvImportService.importBaseMaxXau15m(sourceUrl);
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    logger.error('[StrategyLab] 导入 BaseMax XAUUSD 15m 历史失败:', error);
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : '导入 BaseMax XAUUSD 15m 历史失败' });
   }
 }
 

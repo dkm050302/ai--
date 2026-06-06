@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { twelveDataService } from './twelveData';
+import { marketHistoryStore, type MarketHistoryQuality } from './marketHistoryStore';
 import { logger } from '../utils';
 
 export type GoldHistorySource = 'live' | 'cache' | 'stale_cache' | 'unavailable';
@@ -16,7 +17,8 @@ export interface GoldHistoryCandle {
 
 export interface GoldHistoryMeta {
   source: GoldHistorySource;
-  provider: 'Twelve Data';
+  provider: string;
+  symbol: string;
   period: string;
   requestedLimit: number;
   candleCount: number;
@@ -24,6 +26,8 @@ export interface GoldHistoryMeta {
   endTime?: string;
   updatedAt?: string;
   cacheFile: string;
+  repositoryDir?: string;
+  quality?: MarketHistoryQuality;
   message: string;
 }
 
@@ -53,7 +57,7 @@ function clampLimit(limit: unknown, fallback: number): number {
 
 function normalizePeriod(period: unknown): string {
   const value = String(period || '1d');
-  return ['1h', '4h', '1d'].includes(value) ? value : '1d';
+  return ['1m', '5m', '15m', '1h', '4h', '1d'].includes(value) ? value : '1d';
 }
 
 function normalizeTime(value: unknown): number {
@@ -90,21 +94,33 @@ function buildMeta(
   requestedLimit: number,
   candles: GoldHistoryCandle[],
   message: string,
-  updatedAt?: string
+  updatedAt?: string,
+  extra: {
+    provider?: string;
+    symbol?: string;
+    repositoryDir?: string;
+    quality?: MarketHistoryQuality;
+    startTime?: string;
+    endTime?: string;
+    candleCount?: number;
+  } = {}
 ): GoldHistoryMeta {
   const first = candles[0];
   const last = candles[candles.length - 1];
 
   return {
     source,
-    provider: 'Twelve Data',
+    provider: extra.provider || 'Twelve Data',
+    symbol: extra.symbol || 'xauusd',
     period,
     requestedLimit,
-    candleCount: candles.length,
-    startTime: first ? new Date(first.time * 1000).toISOString() : undefined,
-    endTime: last ? new Date(last.time * 1000).toISOString() : undefined,
+    candleCount: extra.candleCount ?? candles.length,
+    startTime: extra.startTime || (first ? new Date(first.time * 1000).toISOString() : undefined),
+    endTime: extra.endTime || (last ? new Date(last.time * 1000).toISOString() : undefined),
     updatedAt,
     cacheFile: CACHE_FILE,
+    repositoryDir: extra.repositoryDir,
+    quality: extra.quality,
     message,
   };
 }
@@ -118,14 +134,29 @@ class GoldHistoryService {
   async getLongHistory(periodInput: unknown = '1d', limitInput: unknown = 1825): Promise<GoldHistoryResult> {
     const period = normalizePeriod(periodInput);
     const requestedLimit = clampLimit(limitInput, period === '1d' ? 1825 : 3000);
+    const minimumUsable = Math.min(120, requestedLimit);
     const key = this.getKey(period, requestedLimit);
-    const cached = await this.readRecord(key);
+    await this.migrateLegacyCaches();
 
-    if (cached && isFresh(cached.updatedAt) && cached.candles.length >= Math.min(120, requestedLimit)) {
-      const candles = cached.candles.slice(-requestedLimit);
+    const stored = await marketHistoryStore.readHistory('xauusd', period, requestedLimit);
+    if (stored.summary && stored.summary.source === 'cache' && stored.candles.length >= minimumUsable) {
+      const candles = stored.candles.map(({ time, open, high, low, close, volume }) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+      }));
+
       return {
         candles,
-        meta: buildMeta('cache', period, requestedLimit, candles, '使用6小时内的长期黄金历史JSON缓存', cached.updatedAt),
+        meta: buildMeta('cache', period, requestedLimit, candles, '使用6小时内的文件型黄金历史仓库', stored.summary.updatedAt, {
+          provider: stored.summary.provider,
+          symbol: stored.summary.symbol,
+          repositoryDir: stored.summary.repositoryDir,
+          quality: stored.summary.quality,
+        }),
       };
     }
 
@@ -137,29 +168,63 @@ class GoldHistoryService {
         .sort((a, b) => a.time - b.time)
         .slice(-requestedLimit);
 
-      if (candles.length >= Math.min(120, requestedLimit)) {
+      if (candles.length >= minimumUsable) {
         const updatedAt = new Date().toISOString();
-        await this.writeRecord(key, {
-          candles,
-          updatedAt,
-          period,
-          requestedLimit,
-        });
+        const summary = await marketHistoryStore.upsertHistory('xauusd', period, candles, 'Twelve Data');
+        const merged = await marketHistoryStore.readHistory('xauusd', period, requestedLimit);
+        const mergedCandles = merged.candles.map(({ time, open, high, low, close, volume }) => ({
+          time,
+          open,
+          high,
+          low,
+          close,
+          volume,
+        }));
 
         return {
-          candles,
-          meta: buildMeta('live', period, requestedLimit, candles, '已从 Twelve Data 获取长期黄金历史数据并写入JSON缓存', updatedAt),
+          candles: mergedCandles.length >= minimumUsable ? mergedCandles : candles,
+          meta: buildMeta('live', period, requestedLimit, mergedCandles.length >= minimumUsable ? mergedCandles : candles, '已从 Twelve Data 获取长期黄金历史数据并写入文件型仓库', updatedAt, {
+            provider: summary.provider,
+            symbol: summary.symbol,
+            repositoryDir: summary.repositoryDir,
+            quality: summary.quality,
+          }),
         };
       }
     } catch (error) {
       logger.warn('[GoldHistory] 获取 Twelve Data 长期黄金历史失败:', error);
     }
 
+    const fallback = await marketHistoryStore.readHistory('xauusd', period, requestedLimit);
+    if (fallback.candles.length) {
+      const candles = fallback.candles.map(({ time, open, high, low, close, volume }) => ({
+        time,
+        open,
+        high,
+        low,
+        close,
+        volume,
+      }));
+
+      return {
+        candles,
+        meta: buildMeta('stale_cache', period, requestedLimit, candles, '实时历史数据不可用，使用文件型历史仓库', fallback.summary?.updatedAt, {
+          provider: fallback.summary?.provider,
+          symbol: fallback.summary?.symbol,
+          repositoryDir: fallback.summary?.repositoryDir,
+          quality: fallback.summary?.quality,
+        }),
+      };
+    }
+
+    const cached = await this.readRecord(key);
     if (cached?.candles.length) {
       const candles = cached.candles.slice(-requestedLimit);
       return {
         candles,
-        meta: buildMeta('stale_cache', period, requestedLimit, candles, '实时历史数据不可用，使用过期JSON缓存', cached.updatedAt),
+        meta: buildMeta('stale_cache', period, requestedLimit, candles, '实时历史数据不可用，使用旧版JSON缓存', cached.updatedAt, {
+          provider: 'Legacy JSON',
+        }),
       };
     }
 
@@ -170,17 +235,25 @@ class GoldHistoryService {
   }
 
   async getCacheSummaries(): Promise<GoldHistoryMeta[]> {
-    const cache = await this.readCache();
-    return Object.values(cache.records)
-      .map((record) => buildMeta(
-        isFresh(record.updatedAt) ? 'cache' : 'stale_cache',
-        record.period,
-        record.requestedLimit,
-        record.candles,
-        isFresh(record.updatedAt) ? '已有可用长期历史缓存' : '已有过期长期历史缓存',
-        record.updatedAt
-      ))
-      .sort((a, b) => `${a.period}_${b.candleCount}`.localeCompare(`${b.period}_${a.candleCount}`));
+    await this.migrateLegacyCaches();
+    const summaries = await marketHistoryStore.getSummaries();
+    return summaries.map((summary) => buildMeta(
+      summary.source,
+      summary.period,
+      summary.requestedLimit,
+      new Array(summary.candleCount).fill(null),
+      summary.message,
+      summary.updatedAt,
+      {
+        provider: summary.provider,
+        symbol: summary.symbol,
+        repositoryDir: summary.repositoryDir,
+        quality: summary.quality,
+        startTime: summary.startTime,
+        endTime: summary.endTime,
+        candleCount: summary.candleCount,
+      }
+    )).sort((a, b) => `${a.period}_${b.candleCount}`.localeCompare(`${b.period}_${a.candleCount}`));
   }
 
   private getKey(period: string, requestedLimit: number): string {
@@ -200,21 +273,35 @@ class GoldHistoryService {
     }
   }
 
-  private async writeCache(cache: GoldHistoryCacheFile): Promise<void> {
-    await fs.mkdir(path.dirname(CACHE_FILE), { recursive: true });
-    await fs.writeFile(CACHE_FILE, `${JSON.stringify(cache, null, 2)}\n`, 'utf8');
-  }
-
   private async readRecord(key: string): Promise<GoldHistoryCacheFile['records'][string] | null> {
     const cache = await this.readCache();
     return cache.records[key] || null;
   }
 
-  private async writeRecord(key: string, record: GoldHistoryCacheFile['records'][string]): Promise<void> {
+  private async migrateLegacyCaches(): Promise<void> {
     const cache = await this.readCache();
-    cache.records[key] = record;
-    await this.writeCache(cache);
+    const entries = Object.entries(cache.records || {});
+
+    for (const [, record] of entries) {
+      if (!record?.candles?.length) {
+        continue;
+      }
+
+      const period = normalizePeriod(record.period);
+      const existing = await marketHistoryStore.readHistory('xauusd', period, record.requestedLimit || record.candles.length);
+      if (existing.candles.length > 0) {
+        continue;
+      }
+
+      try {
+        await marketHistoryStore.upsertHistory('xauusd', period, record.candles, 'Legacy JSON');
+        logger.info(`[GoldHistory] 已迁移旧版历史缓存到文件型仓库: ${period} ${record.candles.length}根`);
+      } catch (error) {
+        logger.warn('[GoldHistory] 迁移旧版历史缓存失败:', error);
+      }
+    }
   }
+
 }
 
 export const goldHistoryService = new GoldHistoryService();
