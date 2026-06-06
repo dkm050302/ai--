@@ -31,6 +31,20 @@ export function PriceCard({ priceData, marketClosed = false, snapshotText }: Pri
     return typeof value === 'number' && Number.isFinite(value) ? formatNumber(value) : '--';
   };
 
+  if (marketClosed && !priceData) {
+    return (
+      <div className="quote quote-closed-summary">
+        <div>
+          <span className="sub">现货黄金 XAU/USD</span>
+          <div className="value amber">周末休市</div>
+        </div>
+        <div className="quote-closed-copy">
+          暂无本地行情缓存，已暂停实时报价和K线请求。开盘后自动恢复交易看板。
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       {/* 现货黄金价格 */}

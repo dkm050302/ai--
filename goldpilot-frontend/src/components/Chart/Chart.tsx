@@ -78,6 +78,7 @@ export function Chart({
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const priceLineRef = useRef<IPriceLine | null>(null);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+  const showClosedEmpty = marketClosed && candles.length === 0;
 
   // 实时计算信号（仅在1分钟周期）
   const calculatedSignals = useMemo(() => {
@@ -345,13 +346,13 @@ export function Chart({
       {/* 图表容器 */}
       <div
         ref={chartContainerRef}
-        className="chart-wrap"
+        className={`chart-wrap ${showClosedEmpty ? 'is-closed-empty' : ''}`}
         style={{
           position: 'relative',
         }}
       >
         {marketClosed && (
-          <div className="chart-market-closed-overlay">
+          <div className={`chart-market-closed-overlay ${showClosedEmpty ? 'center' : ''}`}>
             <strong>周末休市</strong>
             <span>{closedMessage || '暂停实时行情刷新'}</span>
           </div>

@@ -306,7 +306,7 @@ function ImportantCalendarCard({
   const pillColor = getDataMetaColor(meta, 'amber');
 
   return (
-    <article className="card important-calendar-card">
+    <article className={`card important-calendar-card ${items.length === 0 ? 'is-empty' : ''}`}>
       <div className="card-title">
         <strong>{title}</strong>
         <span className={`pill ${pillColor}`}>{sourcePill}</span>
@@ -391,6 +391,56 @@ function WeekendMarketPanel({ snapshotText, nextTradingDayText }: WeekendMarketP
   );
 }
 
+interface WeekendBriefCardProps {
+  snapshotText: string;
+  nextTradingDayText: string;
+  sourceLinks?: ImportantEventsPayload['sourceLinks'];
+}
+
+function WeekendBriefCard({
+  snapshotText,
+  nextTradingDayText,
+  sourceLinks = [],
+}: WeekendBriefCardProps) {
+  return (
+    <article className="card weekend-brief-card">
+      <div className="card-title">
+        <strong>周末整理</strong>
+        <span className="pill amber">休市</span>
+      </div>
+
+      <div className="weekend-brief-stack">
+        <div className="weekend-brief-primary">
+          <span className="sub">今日处理</span>
+          <strong>不读取今日日历</strong>
+          <p>过滤周六、周日的实时行情和今日事件，只保留复盘与下周准备。</p>
+        </div>
+
+        <div className="weekend-brief-metrics">
+          <div>
+            <span className="sub">下个交易日</span>
+            <strong>{nextTradingDayText}</strong>
+          </div>
+          <div title={snapshotText}>
+            <span className="sub">行情缓存</span>
+            <strong>{snapshotText}</strong>
+          </div>
+        </div>
+
+        {sourceLinks.length > 0 && (
+          <div className="weekend-brief-links">
+            {sourceLinks.slice(0, 2).map((source) => (
+              <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
+                {source.name}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export function Home() {
   const [period, setPeriod] = useState<Period>('1m');
   const [priceData, setPriceData] = useState<PriceData | null>(null);
@@ -413,6 +463,7 @@ export function Home() {
     () => hasImportantRows(importantEvents, importantMeta),
     [importantEvents, importantMeta]
   );
+  const showCalendarDetail = hasCalendarData && !isWeekendMarketClosed;
 
   // AI分析相关状态
   const [analyzing, setAnalyzing] = useState(false);
@@ -827,7 +878,7 @@ export function Home() {
         {/* 左侧区域：实时行情K线图 */}
         <section className="left" aria-label="实时行情K线图">
           {/* 市场卡片 - 报价条 + K线图 */}
-          <article className="market-card chart-panel">
+          <article className={`market-card chart-panel ${isWeekendMarketClosed && candles.length === 0 ? 'weekend-compact' : ''}`}>
             {/* 报价条 */}
             <div className="quote-strip">
               <PriceCard
@@ -869,58 +920,98 @@ export function Home() {
           </article>
 
           <div className="home-under-chart" aria-label="市场信息流">
-            <div className="home-important-grid">
-              <ImportantCalendarCard
-                title="今日重要数据"
-                badge="四星以上"
-                meta={importantMeta}
-                showValues
-                items={importantEvents?.todayData || []}
-                sourceLinks={importantEvents?.sourceLinks}
-                emptyText={isWeekendMarketClosed ? '周末休市，今日不读取经济日历' : '暂无18:00后美国四星以上真实数据'}
-              />
-              <ImportantCalendarCard
-                title="今日重要事项"
-                badge="三星以上"
-                meta={importantMeta}
-                items={importantEvents?.todayEvents || []}
-                sourceLinks={importantEvents?.sourceLinks}
-                emptyText={isWeekendMarketClosed ? '周末休市，今日不读取重要事项' : '暂无18:00-05:00美国三星以上真实事项'}
-              />
-              <ImportantCalendarCard
-                title="本周重要数据"
-                badge="未来7天"
-                meta={importantMeta}
-                showValues
-                items={importantEvents?.weekData || []}
-                sourceLinks={importantEvents?.sourceLinks}
-                emptyText="暂无本周美国四星以上真实数据"
-              />
-              <ImportantCalendarCard
-                title="本周重要事项"
-                badge="未来7天"
-                meta={importantMeta}
-                items={importantEvents?.weekEvents || []}
-                sourceLinks={importantEvents?.sourceLinks}
-                emptyText="暂无本周美国三星以上真实事项"
-              />
-              <MiniCard
-                title="实时市场快讯"
-                pillText={getDataMetaLabel(newsMeta, '1小时刷新')}
-                pillColor={getDataMetaColor(newsMeta, 'red')}
-                items={flashes.slice(0, 3).map(f => ({
-                  date: f.date,
-                  time: f.time,
-                  text: f.text,
-                  hot: f.hot,
-                  source: f.source,
-                  sourceUrl: f.sourceUrl,
-                }))}
-              />
-            </div>
+            {isWeekendMarketClosed ? (
+              <div className="home-weekend-brief-grid">
+                <WeekendBriefCard
+                  snapshotText={marketSnapshotText}
+                  nextTradingDayText={nextTradingDayText}
+                  sourceLinks={importantEvents?.sourceLinks}
+                />
+                <ImportantCalendarCard
+                  title="下周重要数据"
+                  badge="未来7天"
+                  meta={importantMeta}
+                  showValues
+                  items={importantEvents?.weekData || []}
+                  sourceLinks={importantEvents?.sourceLinks}
+                  emptyText="暂无下周交易日美国四星以上真实数据"
+                />
+                <ImportantCalendarCard
+                  title="下周重要事项"
+                  badge="未来7天"
+                  meta={importantMeta}
+                  items={importantEvents?.weekEvents || []}
+                  sourceLinks={importantEvents?.sourceLinks}
+                  emptyText="暂无下周交易日美国三星以上真实事项"
+                />
+                <MiniCard
+                  title="市场快讯"
+                  pillText={getDataMetaLabel(newsMeta, '1小时刷新')}
+                  pillColor={getDataMetaColor(newsMeta, 'red')}
+                  items={flashes.slice(0, 3).map(f => ({
+                    date: f.date,
+                    time: f.time,
+                    text: f.text,
+                    hot: f.hot,
+                    source: f.source,
+                    sourceUrl: f.sourceUrl,
+                  }))}
+                />
+              </div>
+            ) : (
+              <div className="home-important-grid">
+                <ImportantCalendarCard
+                  title="今日重要数据"
+                  badge="四星以上"
+                  meta={importantMeta}
+                  showValues
+                  items={importantEvents?.todayData || []}
+                  sourceLinks={importantEvents?.sourceLinks}
+                  emptyText="暂无18:00后美国四星以上真实数据"
+                />
+                <ImportantCalendarCard
+                  title="今日重要事项"
+                  badge="三星以上"
+                  meta={importantMeta}
+                  items={importantEvents?.todayEvents || []}
+                  sourceLinks={importantEvents?.sourceLinks}
+                  emptyText="暂无18:00-05:00美国三星以上真实事项"
+                />
+                <ImportantCalendarCard
+                  title="本周重要数据"
+                  badge="未来7天"
+                  meta={importantMeta}
+                  showValues
+                  items={importantEvents?.weekData || []}
+                  sourceLinks={importantEvents?.sourceLinks}
+                  emptyText="暂无本周美国四星以上真实数据"
+                />
+                <ImportantCalendarCard
+                  title="本周重要事项"
+                  badge="未来7天"
+                  meta={importantMeta}
+                  items={importantEvents?.weekEvents || []}
+                  sourceLinks={importantEvents?.sourceLinks}
+                  emptyText="暂无本周美国三星以上真实事项"
+                />
+                <MiniCard
+                  title="实时市场快讯"
+                  pillText={getDataMetaLabel(newsMeta, '1小时刷新')}
+                  pillColor={getDataMetaColor(newsMeta, 'red')}
+                  items={flashes.slice(0, 3).map(f => ({
+                    date: f.date,
+                    time: f.time,
+                    text: f.text,
+                    hot: f.hot,
+                    source: f.source,
+                    sourceUrl: f.sourceUrl,
+                  }))}
+                />
+              </div>
+            )}
 
-            <div className={`home-feed-grid ${hasCalendarData ? '' : 'no-calendar'}`}>
-              {hasCalendarData && (
+            <div className={`home-feed-grid ${showCalendarDetail ? '' : 'no-calendar'}`}>
+              {showCalendarDetail && (
                 <EventList
                   events={events}
                   flashes={[]}

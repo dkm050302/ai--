@@ -1001,6 +1001,45 @@ body {
 
 .home-important-grid {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: stretch;
+}
+
+.home-weekend-brief-grid {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.9fr) minmax(270px, 1.08fr) minmax(260px, 1fr) minmax(270px, 1.08fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.home-important-grid > .card,
+.home-weekend-brief-grid > .card {
+  height: 250px;
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-important-grid .important-calendar-list,
+.home-important-grid .mini-list,
+.home-weekend-brief-grid .important-calendar-list,
+.home-weekend-brief-grid .mini-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.home-important-grid .important-calendar-empty,
+.home-weekend-brief-grid .important-calendar-empty {
+  flex: 1;
+  min-height: 0;
+}
+
+.home-important-grid .important-calendar-row,
+.home-weekend-brief-grid .important-calendar-row,
+.home-important-grid .mini-item,
+.home-weekend-brief-grid .mini-item {
+  min-height: 76px;
 }
 
 .home-feed-grid {
@@ -1374,6 +1413,10 @@ body {
   min-height: 230px;
 }
 
+.important-calendar-card.is-empty {
+  min-height: 150px;
+}
+
 .important-calendar-list {
   display: grid;
   gap: 8px;
@@ -1469,6 +1512,11 @@ body {
   background: #fbfdff;
   color: var(--muted);
   text-align: center;
+}
+
+.important-calendar-card.is-empty .important-calendar-empty {
+  min-height: 74px;
+  padding: 14px;
 }
 
 .important-source-links {
@@ -1605,6 +1653,12 @@ body {
   max-height: 650px;
 }
 
+.chart-panel.weekend-compact {
+  height: clamp(320px, calc(100vh - 430px), 420px);
+  min-height: 320px;
+  max-height: 420px;
+}
+
 .quote-strip {
   display: grid;
   grid-template-columns: 1.2fr repeat(4, 1fr);
@@ -1632,6 +1686,22 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.quote-closed-summary {
+  grid-column: 1 / -1;
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  border-color: #f5d47a;
+  background: #fffdf5;
+}
+
+.quote-closed-copy {
+  color: #7c5a10;
+  line-height: 1.55;
 }
 
 .quote-note {
@@ -1777,6 +1847,13 @@ body {
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
+.chart-wrap.is-closed-empty {
+  background:
+    linear-gradient(#eef3f7 1px, transparent 1px),
+    linear-gradient(90deg, #eef3f7 1px, transparent 1px),
+    linear-gradient(135deg, #ffffff, #fff8e6);
+}
+
 .chart-market-closed-overlay,
 .chart-empty-state {
   position: absolute;
@@ -1789,6 +1866,20 @@ body {
   background: rgba(255, 251, 235, 0.94);
   color: #8a5a00;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.chart-market-closed-overlay.center {
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, calc(100% - 40px));
+  max-width: none;
+  padding: 18px 20px;
+  text-align: center;
+}
+
+.chart-market-closed-overlay.center strong {
+  margin-bottom: 6px;
+  font-size: 18px;
 }
 
 .chart-market-closed-overlay strong {
@@ -1852,6 +1943,90 @@ body {
   background: var(--amber-soft);
   color: var(--amber);
   font-size: 12px;
+}
+
+.weekend-brief-card {
+  background:
+    linear-gradient(135deg, rgba(255, 248, 230, 0.92), rgba(255, 255, 255, 0.98) 48%, rgba(237, 245, 255, 0.76)),
+    var(--paper);
+}
+
+.weekend-brief-stack {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 8px;
+}
+
+.weekend-brief-primary {
+  padding: 11px;
+  border: 1px solid #f5d47a;
+  border-radius: 8px;
+  background: rgba(255, 251, 235, 0.8);
+}
+
+.weekend-brief-primary strong {
+  display: block;
+  margin-top: 4px;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.weekend-brief-primary p {
+  margin: 6px 0 0;
+  color: #6b5a32;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.weekend-brief-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.weekend-brief-metrics > div {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.weekend-brief-metrics strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.weekend-brief-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: end;
+  gap: 8px;
+}
+
+.weekend-brief-links a {
+  border: 1px solid #c9dcf5;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 10px;
+  text-decoration: none;
+}
+
+.weekend-brief-links a:hover {
+  border-color: var(--blue);
+  background: var(--blue-soft);
 }
 
 .data-source-option {
@@ -1971,6 +2146,7 @@ body {
   .decision-card,
   .wide-panels,
   .quote-strip,
+  .quote-closed-summary,
   .account-grid {
     grid-template-columns: 1fr;
   }
@@ -2058,6 +2234,10 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .home-weekend-brief-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .wide-panels {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2073,8 +2253,15 @@ body {
   .wide-panels,
   .home-mini-grid,
   .home-important-grid,
+  .home-weekend-brief-grid,
   .home-feed-grid {
     grid-template-columns: 1fr;
+  }
+
+  .home-important-grid > .card,
+  .home-weekend-brief-grid > .card {
+    height: auto;
+    min-height: 220px;
   }
 
   .quant-pipeline {
