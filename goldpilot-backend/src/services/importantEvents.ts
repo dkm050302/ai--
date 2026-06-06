@@ -122,6 +122,12 @@ function formatBeijingDate(date: Date = new Date()): string {
   }).format(date).replace(/\//g, '-');
 }
 
+function isWeekendDate(date: string): boolean {
+  const [year, month, day] = normalizeDate(date).split('-').map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return weekday === 0 || weekday === 6;
+}
+
 function parseTimeMinutes(time: string): number | null {
   const text = (time || '').trim().replace(/\s+/g, ' ');
   if (!text || text.includes('--')) return null;
@@ -266,7 +272,9 @@ function mergeMeta(results: CalendarFetchResult[]): EventDataMeta {
     updatedAt: latestUpdatedAt,
     cacheFile: firstMeta?.cacheFile || '',
     stale: metas.some((meta) => meta.stale),
-    message: source === 'mock'
+    message: results.length === 0
+      ? '周六/周日黄金休市，未读取外部日历'
+      : source === 'mock'
       ? '没有可展示的真实重要日历，请打开源信息核对'
       : '已按美国、北京时间18:00-05:00和重要星级筛选',
   };
@@ -275,8 +283,10 @@ function mergeMeta(results: CalendarFetchResult[]): EventDataMeta {
 class ImportantEventsService {
   async getImportantEvents(date: string = ''): Promise<{ data: ImportantEventsPayload; meta: EventDataMeta }> {
     const today = normalizeDate(date);
-    const todayCompact = compactDate(today);
-    const dateKeys = Array.from({ length: WEEK_DAYS }, (_, index) => addDays(today, index));
+    const dateKeys = Array.from({ length: WEEK_DAYS }, (_, index) => addDays(today, index))
+      .filter((dateKey) => !isWeekendDate(dateKey));
+    const sourceLinkDate = dateKeys[0] || today;
+    const sourceLinkDateCompact = compactDate(sourceLinkDate);
     const results: CalendarFetchResult[] = await Promise.all(
       dateKeys.map(async (dateKey) => {
         const calendarResult = await eventDataCacheService.getEconomicCalendar(dateKey);
@@ -323,7 +333,7 @@ class ImportantEventsService {
         weekData,
         weekEvents,
         sourceLinks: [
-          { name: '汇通财经日历', url: `${FX678_CALENDAR_URL}date/${todayCompact}.html`, note: '当前主要数据源，可打开核对原信息' },
+          { name: '汇通财经日历', url: `${FX678_CALENDAR_URL}date/${sourceLinkDateCompact}.html`, note: '当前主要数据源，可打开核对原信息' },
           { name: 'Trading Economics', url: TRADING_ECONOMICS_CALENDAR_URL, note: '备用日历源' },
         ],
         filters: {

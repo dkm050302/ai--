@@ -51,6 +51,12 @@ function formatBeijingDate(date: Date = new Date()): string {
   }).format(date).replace(/\//g, '-');
 }
 
+function isWeekendDate(date: string): boolean {
+  const [year, month, day] = normalizeDate(date).split('-').map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return weekday === 0 || weekday === 6;
+}
+
 function createMeta(
   source: EventDataSource,
   updatedAt: string,
@@ -74,6 +80,14 @@ function isCacheFresh(record: CacheRecord<unknown>, maxAgeMs: number): boolean {
 class EventDataCacheService {
   async getEconomicCalendar(date: string = ''): Promise<EventDataResult<EconomicEvent>> {
     const dateKey = normalizeDate(date);
+
+    if (isWeekendDate(dateKey)) {
+      return {
+        data: [],
+        meta: createMeta('live', new Date().toISOString(), false, '周六/周日黄金休市，跳过外部经济日历读取'),
+      };
+    }
+
     const fetched = await scraperService.getEconomicCalendar(date);
 
     if (fetched.length > 0 && !isMockData(fetched)) {

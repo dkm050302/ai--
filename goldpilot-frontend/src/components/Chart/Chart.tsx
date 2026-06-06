@@ -9,6 +9,8 @@ interface ChartProps {
   period: string;
   onPeriodChange: (period: string) => void;
   currentPrice?: number;
+  marketClosed?: boolean;
+  closedMessage?: string;
 }
 
 const periods = [
@@ -62,7 +64,15 @@ function normalizeCandles(candles: Candle[]): CandlestickData[] {
 /**
  * K线图组件 - 完全按照index.html设计
  */
-export function Chart({ candles, signals: externalSignals, period, onPeriodChange, currentPrice }: ChartProps) {
+export function Chart({
+  candles,
+  signals: externalSignals,
+  period,
+  onPeriodChange,
+  currentPrice,
+  marketClosed = false,
+  closedMessage,
+}: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -71,11 +81,11 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
 
   // 实时计算信号（仅在1分钟周期）
   const calculatedSignals = useMemo(() => {
-    if (period === '1m' && candles.length > 233) {
+    if (!marketClosed && period === '1m' && candles.length > 233) {
       return detectSignals(candles);
     }
     return [];
-  }, [candles, period]);
+  }, [candles, period, marketClosed]);
 
   // 使用计算出的信号或外部传入的信号
   const signals = calculatedSignals.length > 0 ? calculatedSignals : externalSignals;
@@ -299,7 +309,12 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
         <div>
           <strong>现货黄金蜡烛图</strong>
           <div className="sub">
-            实时行情，信号提醒基于EMA/ATR技术分析
+            {marketClosed ? '周末休市，图表仅作复盘参考' : '实时行情，信号提醒基于EMA/ATR技术分析'}
+            {marketClosed && (
+              <span style={{ marginLeft: '10px', color: '#d97706', fontWeight: 'bold' }}>
+                周末休市
+              </span>
+            )}
             <span style={{ marginLeft: '10px', color: '#3b82f6', fontWeight: 'bold' }}>
               北京时间: {currentTime.toLocaleString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
@@ -335,19 +350,14 @@ export function Chart({ candles, signals: externalSignals, period, onPeriodChang
           position: 'relative',
         }}
       >
-        {candles.length === 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              fontSize: '16px',
-              color: '#999',
-            }}
-          >
-            获取失败
+        {marketClosed && (
+          <div className="chart-market-closed-overlay">
+            <strong>周末休市</strong>
+            <span>{closedMessage || '暂停实时行情刷新'}</span>
           </div>
+        )}
+        {candles.length === 0 && !marketClosed && (
+          <div className="chart-empty-state">获取失败</div>
         )}
       </div>
     </>

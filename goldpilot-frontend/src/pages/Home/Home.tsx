@@ -12,7 +12,6 @@ import { SupportCard } from '@/components/SupportCard';
 import { MiniCard } from '@/components/MiniCard';
 import { ActionPanel } from '@/components/ActionPanel';
 import { EventList } from '@/components/EventList';
-import { createDefaultPriceData } from '@/types/price';
 import { createDefaultDecisionData } from '@/types/decision';
 import type { PriceData, Candle, Signal, DailyStats, Event, Flash } from '@/types';
 import {
@@ -33,6 +32,92 @@ import {
 import { aiService, type AIAnalysisResult } from '@/services/ai';
 
 const EVENT_DATA_REFRESH_MS = 60 * 60 * 1000;
+const MARKET_SNAPSHOT_KEY = 'goldpilot:last-market-snapshot:v1';
+
+interface MarketSnapshot {
+  updatedAt?: string;
+  priceData?: PriceData;
+  candlesByPeriod?: Partial<Record<Period, Candle[]>>;
+}
+
+function isWeekendMarketDate(date: Date = new Date()): boolean {
+  const weekday = date.getDay();
+  return weekday === 0 || weekday === 6;
+}
+
+function getNextTradingDayText(date: Date = new Date()): string {
+  const next = new Date(date);
+  do {
+    next.setDate(next.getDate() + 1);
+  } while (isWeekendMarketDate(next));
+
+  return next.toLocaleDateString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  });
+}
+
+function readMarketSnapshot(): MarketSnapshot | null {
+  try {
+    const raw = window.localStorage.getItem(MARKET_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as MarketSnapshot;
+    return {
+      ...parsed,
+      priceData: parsed.priceData
+        ? { ...parsed.priceData, timestamp: new Date(parsed.priceData.timestamp) }
+        : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveMarketSnapshot(update: { priceData?: PriceData; period?: Period; candles?: Candle[] }): string | null {
+  try {
+    const current = readMarketSnapshot() || {};
+    const next: MarketSnapshot = {
+      ...current,
+      updatedAt: new Date().toISOString(),
+      priceData: update.priceData || current.priceData,
+      candlesByPeriod: {
+        ...(current.candlesByPeriod || {}),
+      },
+    };
+
+    if (update.period && update.candles) {
+      next.candlesByPeriod = {
+        ...(next.candlesByPeriod || {}),
+        [update.period]: update.candles,
+      };
+    }
+
+    window.localStorage.setItem(MARKET_SNAPSHOT_KEY, JSON.stringify(next));
+    return next.updatedAt || null;
+  } catch {
+    return null;
+  }
+}
+
+function getSnapshotTimeText(value: string | null): string {
+  if (!value) return '暂无本地行情缓存';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '暂无本地行情缓存';
+  return `最后行情 ${date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })}`;
+}
+
+function getReferencePrice(priceData: PriceData | null, candles: Candle[]): number {
+  if (priceData?.price) return priceData.price;
+  const latest = candles[candles.length - 1];
+  return Number(latest?.close || 0);
+}
 
 function getCandleLimit(period: Period): number {
   if (period === '1d') return 220;
@@ -88,6 +173,25 @@ function formatStreamResult(result: AIAnalysisResult): string {
     `风险依据：${result.risk.reason}`,
     ...result.actions.map((action) => `${action.title}：${action.text}`),
   ].join('\n');
+}
+
+function createClosedMarketStats(): DailyStats {
+  return {
+    date: new Date(),
+    signalCount: 0,
+    winCount: 0,
+    lossCount: 0,
+    winRate: 0,
+    totalProfit: 0,
+    totalLoss: 0,
+    netProfit: 0,
+    upProb: 0,
+    downProb: 0,
+    risk: 0,
+    riskLevel: 'low',
+    positionAdvice: 0,
+    stopLoss: 0,
+  };
 }
 
 /**
@@ -256,13 +360,48 @@ function ImportantCalendarCard({
   );
 }
 
+interface WeekendMarketPanelProps {
+  snapshotText: string;
+  nextTradingDayText: string;
+}
+
+function WeekendMarketPanel({ snapshotText, nextTradingDayText }: WeekendMarketPanelProps) {
+  return (
+    <article className="card weekend-market-panel">
+      <div className="card-title">
+        <strong>周末休市模式</strong>
+        <span className="pill amber">暂停实时交易</span>
+      </div>
+      <div className="weekend-market-status">
+        <div>
+          <span className="sub">市场状态</span>
+          <strong>黄金休市</strong>
+        </div>
+        <div>
+          <span className="sub">下个交易日</span>
+          <strong>{nextTradingDayText}</strong>
+        </div>
+      </div>
+      <div className="weekend-market-note">
+        周六、周日不读取实时行情和K线API，不生成新信号、不计算实时仓位建议。
+        页面只保留最后可用行情参考、下周重要事件和客户服务提醒。
+      </div>
+      <div className="weekend-market-snapshot">{snapshotText}</div>
+    </article>
+  );
+}
+
 export function Home() {
   const [period, setPeriod] = useState<Period>('1m');
-  const [priceData, setPriceData] = useState<PriceData>(createDefaultPriceData());
+  const [priceData, setPriceData] = useState<PriceData | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [candlesError, setCandlesError] = useState<string | null>(null);
   const [marketRefreshMs, setMarketRefreshMs] = useState<number | null>(5 * 60 * 1000);
+  const [marketSnapshotAt, setMarketSnapshotAt] = useState<string | null>(null);
+  const isWeekendMarketClosed = useMemo(() => isWeekendMarketDate(new Date()), []);
+  const nextTradingDayText = useMemo(() => getNextTradingDayText(new Date()), []);
+  const marketSnapshotText = useMemo(() => getSnapshotTimeText(marketSnapshotAt), [marketSnapshotAt]);
 
   // 真实数据状态
   const [events, setEvents] = useState<Event[]>([]);
@@ -310,8 +449,11 @@ export function Home() {
         stopLoss: aiAnalysis.risk.stopLoss,
       };
     }
+    if (isWeekendMarketClosed) {
+      return createClosedMarketStats();
+    }
     return calculateSignalStats(signals);
-  }, [signals, aiAnalysis]);
+  }, [signals, aiAnalysis, isWeekendMarketClosed]);
 
   // 决策数据（优先使用AI分析结果）
   const decisionData = useMemo(() => {
@@ -323,8 +465,16 @@ export function Home() {
         aiReason: aiAnalysis.decision.aiReason,
       };
     }
+    if (isWeekendMarketClosed) {
+      return {
+        headline: '周末休市，暂停实时交易判断',
+        summary: '现货黄金周末无连续成交行情，今日信号、概率和仓位建议不生成；重点转为复盘、风险检查和下周事件准备。',
+        eventCountdown: `下个交易日 ${nextTradingDayText} 开盘后恢复实时判断`,
+        aiReason: '系统已暂停行情/K线轮询，仅保留最后行情参考和下周重要日历。',
+      };
+    }
     return createDefaultDecisionData();
-  }, [aiAnalysis]);
+  }, [aiAnalysis, isWeekendMarketClosed, nextTradingDayText]);
 
   useEffect(() => {
     let mounted = true;
@@ -386,19 +536,37 @@ export function Home() {
     if (aiAnalysis) {
       return aiAnalysis.actions;
     }
+    if (isWeekendMarketClosed) {
+      return [
+        { title: '客户提醒', text: '周末黄金休市，不提示追单和新开仓，只提醒下周关键数据窗口。' },
+        { title: '交易动作', text: '暂停新信号执行，复盘本周信号质量，整理周一开盘后的支撑压力观察位。' },
+        { title: '风险控制', text: '检查隔周持仓、止损和保证金余量，防范周一跳空风险。' },
+      ];
+    }
     return [
       { title: '客户提醒', text: '黄金短线偏多，但临近美国事件窗口，建议客户避免追涨满仓。' },
       { title: '交易动作', text: '若回踩第一支撑附近企稳，可关注小仓跟随机会。' },
       { title: '风险控制', text: '事件公布前把单笔风险控制在账户净值的1.2%以内。' },
     ];
-  }, [aiAnalysis]);
+  }, [aiAnalysis, isWeekendMarketClosed]);
 
   // 获取K线数据
   useEffect(() => {
     const loadCandles = async () => {
+      if (isWeekendMarketClosed) {
+        const snapshot = readMarketSnapshot();
+        setMarketSnapshotAt(snapshot?.updatedAt || null);
+        setCandles(snapshot?.candlesByPeriod?.[period] || []);
+        setSignals([]);
+        setCandlesError(null);
+        return;
+      }
+
       try {
         const data = await fetchCandles(period, getCandleLimit(period));
         setCandles(data);
+        setCandlesError(null);
+        setMarketSnapshotAt(saveMarketSnapshot({ period, candles: data }));
 
         console.log(`📊 [信号检测] K线数据: ${data.length} 条`);
         console.log(`📊 [信号检测] 前5条:`, data.slice(0, 5));
@@ -424,6 +592,7 @@ export function Home() {
           setSignals(detectedSignals);
         } else {
           console.warn(`⚠️ K线数据不足（${data.length}条），需要至少233条`);
+          setSignals([]);
         }
       } catch (error) {
         console.error('❌ [信号检测] 失败:', error);
@@ -437,14 +606,14 @@ export function Home() {
     // 初始加载
     loadCandles();
 
-    if (!marketRefreshMs) {
+    if (!marketRefreshMs || isWeekendMarketClosed) {
       return undefined;
     }
 
     const interval = setInterval(loadCandles, marketRefreshMs);
 
     return () => clearInterval(interval);
-  }, [period, marketRefreshMs]);
+  }, [period, marketRefreshMs, isWeekendMarketClosed]);
 
   // 加载事件和快讯数据
   useEffect(() => {
@@ -511,9 +680,16 @@ export function Home() {
 
   // 实时价格更新
   useEffect(() => {
+    if (isWeekendMarketClosed) {
+      const snapshot = readMarketSnapshot();
+      setMarketSnapshotAt(snapshot?.updatedAt || null);
+      setPriceData(snapshot?.priceData || null);
+      return undefined;
+    }
+
     const cleanup = createRealtimeConnection(
       (price) => {
-        setPriceData({
+        const nextPriceData = {
           symbol: price.symbol,
           price: price.price,
           change: price.change,
@@ -524,7 +700,9 @@ export function Home() {
           support2: price.price * 0.99,
           resistance1: price.price * 1.005,
           timestamp: price.timestamp,
-        });
+        };
+        setPriceData(nextPriceData);
+        setMarketSnapshotAt(saveMarketSnapshot({ priceData: nextPriceData }));
       },
       (error) => {
         console.error('Real-time price error:', error);
@@ -533,13 +711,18 @@ export function Home() {
     );
 
     return cleanup;
-  }, [marketRefreshMs]);
+  }, [marketRefreshMs, isWeekendMarketClosed]);
 
   /**
    * 执行AI分析
    */
   const handleAIAnalyze = async () => {
     try {
+      if (isWeekendMarketClosed && candles.length === 0 && !priceData) {
+        message.warning('周末休市且暂无本地行情缓存，暂不能生成复盘分析');
+        return;
+      }
+
       setAnalyzing(true);
       setStreamText('');
       setLastStreamResult(null);
@@ -551,7 +734,7 @@ export function Home() {
       const result = await aiService.analyzeMarketStream(
         {
           candles: candles.slice(-100), // 最近100根K线
-          currentPrice: priceData.price,
+          currentPrice: getReferencePrice(priceData, candles),
           events: events.slice(0, 10),
           flashes: flashes.slice(0, 10),
           signals: signals.slice(-5),
@@ -613,10 +796,12 @@ export function Home() {
       <PageHeader
         eyebrow="Trading Desk"
         title="交易看板"
-        description="实时行情、信号统计和 AI 决策"
+        description={isWeekendMarketClosed ? '周末休市，保留复盘、事件准备和风险检查' : '实时行情、信号统计和 AI 决策'}
         meta={(
           <Space size={8}>
-            <span className="pill green">行情{formatRefreshLabel(marketRefreshMs)}</span>
+            <span className={`pill ${isWeekendMarketClosed ? 'amber' : 'green'}`}>
+              {isWeekendMarketClosed ? '周末休市' : `行情${formatRefreshLabel(marketRefreshMs)}`}
+            </span>
             <span className="pill blue">消息1小时刷新</span>
             <span className="date-text">{todayText}</span>
           </Space>
@@ -626,9 +811,9 @@ export function Home() {
             type="primary"
             icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />}
             onClick={handleAIAnalyze}
-            disabled={analyzing}
+            disabled={analyzing || (isWeekendMarketClosed && candles.length === 0 && !priceData)}
           >
-            {analyzing ? '分析中...' : 'AI 智能分析'}
+            {analyzing ? '分析中...' : isWeekendMarketClosed ? 'AI 周末复盘' : 'AI 智能分析'}
           </Button>
         ) : (
           <Button onClick={handleResetAnalysis}>
@@ -645,11 +830,15 @@ export function Home() {
           <article className="market-card chart-panel">
             {/* 报价条 */}
             <div className="quote-strip">
-              <PriceCard priceData={priceData} />
+              <PriceCard
+                priceData={priceData}
+                marketClosed={isWeekendMarketClosed}
+                snapshotText={marketSnapshotText}
+              />
             </div>
 
             {/* K线图 */}
-            {candlesError ? (
+            {candlesError && !isWeekendMarketClosed ? (
               <div style={{
                 height: '500px',
                 display: 'flex',
@@ -671,7 +860,9 @@ export function Home() {
                 candles={candles}
                 signals={signals}
                 period={period}
-                currentPrice={priceData.price}
+                currentPrice={priceData?.price}
+                marketClosed={isWeekendMarketClosed}
+                closedMessage={candles.length > 0 ? '图表为最后行情缓存，仅供复盘参考' : '周末休市，无实时K线数据'}
                 onPeriodChange={(p) => setPeriod(p as Period)}
               />
             )}
@@ -686,7 +877,7 @@ export function Home() {
                 showValues
                 items={importantEvents?.todayData || []}
                 sourceLinks={importantEvents?.sourceLinks}
-                emptyText="暂无18:00后美国四星以上真实数据"
+                emptyText={isWeekendMarketClosed ? '周末休市，今日不读取经济日历' : '暂无18:00后美国四星以上真实数据'}
               />
               <ImportantCalendarCard
                 title="今日重要事项"
@@ -694,7 +885,7 @@ export function Home() {
                 meta={importantMeta}
                 items={importantEvents?.todayEvents || []}
                 sourceLinks={importantEvents?.sourceLinks}
-                emptyText="暂无18:00-05:00美国三星以上真实事项"
+                emptyText={isWeekendMarketClosed ? '周末休市，今日不读取重要事项' : '暂无18:00-05:00美国三星以上真实事项'}
               />
               <ImportantCalendarCard
                 title="本周重要数据"
@@ -746,7 +937,14 @@ export function Home() {
         {/* 右侧区域：信息咨询与分析 */}
         <section className="right" aria-label="信息咨询与分析">
           {/* 今日信号统计 */}
-          <SignalPanel signals={signals} stats={stats} />
+          {isWeekendMarketClosed ? (
+            <WeekendMarketPanel
+              snapshotText={marketSnapshotText}
+              nextTradingDayText={nextTradingDayText}
+            />
+          ) : (
+            <SignalPanel signals={signals} stats={stats} />
+          )}
 
           {(analyzing || streamText || lastStreamResult) && (
             <Card
@@ -832,6 +1030,7 @@ export function Home() {
           />
 
           {/* 六卡片网格 */}
+          {!isWeekendMarketClosed && (
           <div className="info-grid">
             {/* 上涨/下跌概率 */}
             <ProbCard
@@ -849,11 +1048,12 @@ export function Home() {
 
             {/* 当前行情支撑压力 */}
             <SupportCard
-              support1={priceData.support1 || 4800}
-              support2={priceData.support2 || 4750}
-              resistance1={priceData.resistance1 || 4900}
+              support1={priceData?.support1 || 4800}
+              support2={priceData?.support2 || 4750}
+              resistance1={priceData?.resistance1 || 4900}
             />
           </div>
+          )}
         </section>
       </main>
     </div>
