@@ -49,6 +49,161 @@ interface AnalysisResult {
   }>;
 }
 
+interface PageAssistantRequest {
+  pageTitle?: string;
+  question?: string;
+  context?: unknown;
+  history?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+}
+
+const PAGE_ASSISTANT_TIMEOUT_MS = 25_000;
+const PAGE_ASSISTANT_MODEL = process.env.PAGE_ASSISTANT_MODEL || 'deepseek-v4-flash';
+
+/**
+ * 页面上下文助手
+ * POST /api/ai/page-assistant
+ */
+export async function askPageAssistant(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    const { pageTitle, question, context, history } = req.body as PageAssistantRequest;
+    const normalizedQuestion = String(question || '').trim();
+
+    if (!normalizedQuestion) {
+      res.status(400).json({ success: false, message: '请输入问题' });
+      return;
+    }
+
+    const apiKey = await getUserApiKey(req.user.accountId);
+    const suggestedQuestions = buildPageAssistantSuggestions(context);
+
+    if (!apiKey) {
+      res.json({
+        success: true,
+        data: {
+          mode: 'local',
+          answer: buildLocalPageAssistantAnswer(normalizedQuestion, context, '当前没有可用的大模型配置，我先按页面数据回答。'),
+          suggestedQuestions,
+        },
+      });
+      return;
+    }
+
+    try {
+      const answer = await callPageAssistantLLM({
+        apiKey,
+        pageTitle: pageTitle || 'GoldPilot 页面',
+        question: normalizedQuestion,
+        context,
+        history: Array.isArray(history) ? history.slice(-6) : [],
+      });
+
+      res.json({
+        success: true,
+        data: {
+          mode: 'llm',
+          modelName: PAGE_ASSISTANT_MODEL,
+          answer,
+          suggestedQuestions,
+        },
+      });
+    } catch (error) {
+      logger.warn('[页面助手] LLM回答失败，回退到本地摘要:', error);
+      res.json({
+        success: true,
+        data: {
+          mode: 'local',
+          answer: buildLocalPageAssistantAnswer(normalizedQuestion, context, '大模型暂时没有返回，我先按页面数据给你一个可用结论。'),
+          suggestedQuestions,
+        },
+      });
+    }
+  } catch (error) {
+    logger.error('[页面助手] 回答失败:', error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : '页面助手回答失败',
+    });
+  }
+}
+
+/**
+ * 页面上下文助手（流式）
+ * POST /api/ai/page-assistant-stream
+ */
+export async function askPageAssistantStream(req: Request, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, message: '未授权' });
+    return;
+  }
+
+  const { pageTitle, question, context, history } = req.body as PageAssistantRequest;
+  const normalizedQuestion = String(question || '').trim();
+
+  if (!normalizedQuestion) {
+    res.status(400).json({ success: false, message: '请输入问题' });
+    return;
+  }
+
+  const suggestedQuestions = buildPageAssistantSuggestions(context);
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  try {
+    const apiKey = await getUserApiKey(req.user.accountId);
+
+    if (!apiKey) {
+      sendStreamEvent(res, 'status', { message: '未配置大模型，使用本地页面摘要。' });
+      await streamLocalPageAssistantAnswer(
+        res,
+        buildLocalPageAssistantAnswer(normalizedQuestion, context, '当前没有可用的大模型配置，我先按页面数据回答。'),
+        suggestedQuestions
+      );
+      return;
+    }
+
+    sendStreamEvent(res, 'status', { message: `正在调用 ${PAGE_ASSISTANT_MODEL}...` });
+
+    await callPageAssistantLLMStream({
+      apiKey,
+      pageTitle: pageTitle || 'GoldPilot 页面',
+      question: normalizedQuestion,
+      context,
+      history: Array.isArray(history) ? history.slice(-6) : [],
+      onToken: (token) => sendStreamEvent(res, 'token', { token }),
+    });
+
+    sendStreamEvent(res, 'done', {
+      mode: 'llm',
+      modelName: PAGE_ASSISTANT_MODEL,
+      suggestedQuestions,
+    });
+    res.end();
+  } catch (error) {
+    logger.warn('[页面助手] 流式LLM回答失败，回退到本地摘要:', error);
+
+    if (!res.writableEnded) {
+      sendStreamEvent(res, 'status', { message: '大模型暂时没有返回，使用本地页面摘要。' });
+      await streamLocalPageAssistantAnswer(
+        res,
+        buildLocalPageAssistantAnswer(normalizedQuestion, context, '大模型暂时没有返回，我先按页面数据给你一个可用结论。'),
+        suggestedQuestions
+      );
+    }
+  }
+}
+
 /**
  * 执行AI市场分析
  * POST /api/ai/analyze
@@ -283,6 +438,255 @@ function parseAnalysisContent(content: string): AnalysisResult {
   }
 
   return result;
+}
+
+function safeStringify(value: unknown, maxLength = 12000): string {
+  try {
+    return JSON.stringify(value || {}, null, 2).slice(0, maxLength);
+  } catch {
+    return String(value || '').slice(0, maxLength);
+  }
+}
+
+function buildPageAssistantSuggestions(context: unknown): string[] {
+  const data = context as any;
+  const latestRun = data?.latestStrategyRun;
+  const historyCaches = Array.isArray(data?.historyCaches) ? data.historyCaches : [];
+  const suggestions = [
+    '这页当前最需要注意什么？',
+    '历史数据清洗后还能不能用于回测？',
+    '哪个策略现在表现最好？',
+  ];
+
+  if (latestRun?.recommendation?.name) {
+    suggestions[2] = `为什么推荐 ${latestRun.recommendation.name}？`;
+  }
+
+  if (historyCaches.some((item: any) => Number(item?.session?.removedWeekendCount || 0) > 0)) {
+    suggestions[1] = '剔除周末K线后数据质量怎么样？';
+  }
+
+  return suggestions;
+}
+
+function buildLocalPageAssistantAnswer(question: string, context: unknown, prefix: string): string {
+  const data = context as any;
+  const historyCaches = Array.isArray(data?.historyCaches) ? data.historyCaches : [];
+  const latestRun = data?.latestStrategyRun;
+  const paperTrading = data?.paperTrading;
+  const liveTrading = data?.liveTrading;
+  const strategyOverrides = data?.strategyOverrides || {};
+  const lines: string[] = [prefix];
+
+  if (/历史|数据|清洗|周末|缺口/.test(question) && historyCaches.length) {
+    const items = historyCaches
+      .slice(0, 4)
+      .map((item: any) => {
+        const tradable = Number(item?.session?.tradableCount || item?.candleCount || 0).toLocaleString();
+        const raw = Number(item?.candleCount || 0).toLocaleString();
+        const removed = Number(item?.session?.removedWeekendCount || 0).toLocaleString();
+        const gaps = Number(item?.session?.gapCount ?? item?.quality?.gapCount ?? 0).toLocaleString();
+        return `- ${item.period}: 可交易 ${tradable} 根，原始 ${raw} 根，剔除周末 ${removed} 根，清洗缺口 ${gaps} 个。`;
+      });
+    lines.push('当前历史数据状态：', ...items);
+    return lines.join('\n');
+  }
+
+  if (/策略|推荐|筛选|回测|表现/.test(question)) {
+    if (latestRun?.recommendation?.name) {
+      lines.push(`最近筛选推荐：${latestRun.recommendation.name}，评分 ${latestRun.recommendation.score ?? '-'}。`);
+      lines.push(`依据：${latestRun.recommendation.reason || '页面暂未给出详细依据。'}`);
+    } else {
+      lines.push('当前还没有足够稳定的策略推荐，建议先扩大历史样本或降低交易频率。');
+    }
+
+    const overridesCount = Object.keys(strategyOverrides).length;
+    lines.push(overridesCount ? `当前已有 ${overridesCount} 个策略参数被修改。` : '当前策略参数仍是默认状态。');
+    return lines.join('\n');
+  }
+
+  lines.push(`页面：${data?.pageTitle || '量化策略实验室'}`);
+  lines.push(`历史缓存：${historyCaches.length || 0} 组。`);
+  lines.push(`模拟盘流水：${paperTrading?.tradeCount ?? 0} 笔；实盘持仓/快照：${liveTrading?.positionCount ?? 0} 个。`);
+
+  if (latestRun?.candleCount) {
+    lines.push(`最近筛选使用 ${Number(latestRun.candleCount).toLocaleString()} 根 ${latestRun.period} K线。`);
+  }
+
+  lines.push('你可以继续问：数据质量、策略推荐原因、参数怎么调、下一步该跑什么筛选。');
+  return lines.join('\n');
+}
+
+async function streamLocalPageAssistantAnswer(
+  res: Response,
+  answer: string,
+  suggestedQuestions: string[]
+): Promise<void> {
+  const chunks = answer.match(/[\s\S]{1,12}/g) || [answer];
+
+  for (const token of chunks) {
+    if (res.writableEnded) return;
+    sendStreamEvent(res, 'token', { token });
+    await new Promise((resolve) => setTimeout(resolve, 8));
+  }
+
+  if (!res.writableEnded) {
+    sendStreamEvent(res, 'done', {
+      mode: 'local',
+      suggestedQuestions,
+    });
+    res.end();
+  }
+}
+
+function buildPageAssistantPrompt(input: {
+  pageTitle: string;
+  question: string;
+  context: unknown;
+  history: Array<{ role: 'user' | 'assistant'; content: string }>;
+}): string {
+  return [
+    '你是 GoldPilot 页面小助手，只回答当前页面相关问题。',
+    '要求：',
+    '1. 用中文，直接、简洁、可执行。',
+    '2. 只能依据页面上下文回答；没有数据就明确说页面没有显示。',
+    '3. 不编造收益、实盘交易或外部新闻。',
+    '4. 涉及交易建议时强调这是研究/复盘辅助，不是保证收益。',
+    `页面标题：${input.pageTitle}`,
+    `页面上下文：${safeStringify(input.context)}`,
+    `最近对话：${safeStringify(input.history, 3000)}`,
+    `用户问题：${input.question}`,
+  ].join('\n\n');
+}
+
+async function callPageAssistantLLM(input: {
+  apiKey: string;
+  pageTitle: string;
+  question: string;
+  context: unknown;
+  history: Array<{ role: 'user' | 'assistant'; content: string }>;
+}): Promise<string> {
+  const prompt = buildPageAssistantPrompt(input);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PAGE_ASSISTANT_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(getDeepSeekChatCompletionsUrl(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${input.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: PAGE_ASSISTANT_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        max_tokens: 900,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(errorText || `API请求失败: ${response.status}`);
+    }
+
+    const data: any = await response.json();
+    const content = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!content) {
+      throw new Error('大模型返回空内容');
+    }
+
+    return content;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`页面助手请求超过 ${Math.round(PAGE_ASSISTANT_TIMEOUT_MS / 1000)} 秒`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callPageAssistantLLMStream(input: {
+  apiKey: string;
+  pageTitle: string;
+  question: string;
+  context: unknown;
+  history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  onToken: (token: string) => void;
+}): Promise<string> {
+  const prompt = buildPageAssistantPrompt(input);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PAGE_ASSISTANT_TIMEOUT_MS + 15_000);
+  let content = '';
+
+  try {
+    const response = await fetch(getDeepSeekChatCompletionsUrl(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${input.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: PAGE_ASSISTANT_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        max_tokens: 900,
+        stream: true,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(errorText || `API请求失败: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+      const blocks = buffer.split(/\n\n/);
+      buffer = blocks.pop() || '';
+
+      for (const block of blocks) {
+        const lines = block.split('\n').filter((line) => line.startsWith('data:'));
+
+        for (const line of lines) {
+          const data = line.replace(/^data:\s*/, '').trim();
+          if (!data || data === '[DONE]') continue;
+
+          const parsed = JSON.parse(data);
+          const token = parsed.choices?.[0]?.delta?.content || '';
+
+          if (token) {
+            content += token;
+            input.onToken(token);
+          }
+        }
+      }
+    }
+
+    if (!content.trim()) {
+      throw new Error('大模型返回空内容');
+    }
+
+    return content;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`页面助手流式请求超过 ${Math.round((PAGE_ASSISTANT_TIMEOUT_MS + 15_000) / 1000)} 秒`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**

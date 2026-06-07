@@ -31,6 +31,8 @@ import {
 import {
   analyzeMarket,
   analyzeMarketStream,
+  askPageAssistant,
+  askPageAssistantStream,
 } from '../controllers/aiAnalysis';
 import {
   executePaperTrading,
@@ -104,6 +106,8 @@ router.post('/ai/test', optionalAuth, testAIConnection);
 // AI分析相关路由
 router.post('/ai/analyze', optionalAuth, analyzeMarket);
 router.post('/ai/analyze-stream', optionalAuth, analyzeMarketStream);
+router.post('/ai/page-assistant', optionalAuth, askPageAssistant);
+router.post('/ai/page-assistant-stream', optionalAuth, askPageAssistantStream);
 
 // 研究中心：AI报告、模拟账号、回测
 router.get('/research/summary', optionalAuth, getResearchSummary);
