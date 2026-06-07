@@ -27,6 +27,10 @@ interface Candle {
   volume: number;
 }
 
+interface FetchCandlesOptions {
+  mode?: 'realtime' | 'history';
+}
+
 export async function fetchRefreshInterval(): Promise<RefreshInterval> {
   const response = await fetch(getApiUrl('/api/datasource/refresh-interval'), {
     cache: 'no-store',
@@ -106,13 +110,27 @@ export async function fetchRealTimePrice(): Promise<PriceQuote> {
  * @param period 周期
  * @param limit 获取数量
  */
-export async function fetchCandles(period: Period = '1m', limit: number = 500): Promise<Candle[]> {
-  console.log(`📊 [K线数据源] 正在从后端 API 获取 ${period} 周期数据...`);
+export async function fetchCandles(
+  period: Period = '1m',
+  limit: number = 500,
+  options: FetchCandlesOptions = {}
+): Promise<Candle[]> {
+  const mode = options.mode === 'history' ? 'history' : 'realtime';
+  console.log(`📊 [K线数据源] 正在从后端 API 获取 ${period} 周期数据 (${mode})...`);
 
   try {
+    const params = new URLSearchParams({
+      period,
+      limit: String(limit),
+    });
+
+    if (mode === 'history') {
+      params.set('mode', 'history');
+    }
+
     // 调用后端 API
     const response = await fetch(
-      getApiUrl(`/api/candles?period=${period}&limit=${limit}`),
+      getApiUrl(`/api/candles?${params.toString()}`),
       { cache: 'no-store' }
     );
 

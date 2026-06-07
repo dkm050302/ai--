@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type { PriceData } from '../types';
 import { marketDataService } from '../services/marketData';
+import { goldHistoryService } from '../services/goldHistory';
 import { logger } from '../utils';
 
 /**
@@ -44,11 +45,26 @@ export async function getPrice(req: Request, res: Response): Promise<void> {
  */
 export async function getCandles(req: Request, res: Response): Promise<void> {
   try {
-    const { period = '1m', limit = '100' } = req.query;
+    const { period = '1m', limit = '100', mode } = req.query;
+    const parsedLimit = parseInt(limit as string, 10);
+
+    if (mode === 'history') {
+      const history = await goldHistoryService.getLongHistory(period, parsedLimit);
+      logger.info(`History candles sent: ${history.candles.length} candles for ${period}`);
+
+      res.json({
+        success: true,
+        data: {
+          candles: history.candles,
+          meta: history.meta,
+        },
+      });
+      return;
+    }
 
     const candles = await marketDataService.getCandles(
       period as string,
-      parseInt(limit as string, 10)
+      parsedLimit
     );
 
     logger.info(`Candles data sent: ${candles.length} candles for ${period}`);

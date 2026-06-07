@@ -125,6 +125,27 @@ function getCandleLimit(period: Period): number {
   return 360;
 }
 
+function getClosedMarketHistoryLimit(period: Period): number {
+  if (period === '1d') return 180;
+  if (period === '4h') return 360;
+  if (period === '1h') return 720;
+  if (period === '15m') return 1200;
+  return 500;
+}
+
+function getClosedMarketChartMessage(period: Period, candleCount: number): string {
+  if (candleCount <= 0) return '休市中，暂无可用历史K线数据';
+  const periodLabel: Record<Period, string> = {
+    '1m': '1分钟',
+    '5m': '5分钟',
+    '15m': '15分钟',
+    '1h': '1小时',
+    '4h': '4小时',
+    '1d': '日线',
+  };
+  return `休市复盘：显示最近 ${candleCount} 根${periodLabel[period]}历史K线`;
+}
+
 function formatRefreshLabel(intervalMs: number | null): string {
   if (!intervalMs) return '手动刷新';
   const minutes = Math.max(1, Math.round(intervalMs / 60000));
@@ -856,7 +877,7 @@ function ClientRiskChecklist({ items }: ClientRiskChecklistProps) {
 }
 
 export function Home() {
-  const [period, setPeriod] = useState<Period>('1m');
+  const [period, setPeriod] = useState<Period>(() => (isWeekendMarketDate(new Date()) ? '1d' : '1m'));
   const [priceData, setPriceData] = useState<PriceData | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -1048,9 +1069,19 @@ export function Home() {
       if (isWeekendMarketClosed) {
         const snapshot = readMarketSnapshot();
         setMarketSnapshotAt(snapshot?.updatedAt || null);
-        setCandles(snapshot?.candlesByPeriod?.[period] || []);
         setSignals([]);
-        setCandlesError(null);
+
+        try {
+          const data = await fetchCandles(period, getClosedMarketHistoryLimit(period), { mode: 'history' });
+          setCandles(data);
+          setCandlesError(null);
+          setMarketSnapshotAt(saveMarketSnapshot({ period, candles: data }) || snapshot?.updatedAt || null);
+        } catch (error) {
+          console.warn('周末历史K线读取失败，回退本地缓存:', error);
+          const cachedCandles = snapshot?.candlesByPeriod?.[period] || [];
+          setCandles(cachedCandles);
+          setCandlesError(cachedCandles.length ? null : '历史K线数据暂不可用');
+        }
         return;
       }
 
@@ -1364,7 +1395,7 @@ export function Home() {
                 period={period}
                 currentPrice={priceData?.price}
                 marketClosed={isWeekendMarketClosed}
-                closedMessage={candles.length > 0 ? '图表为最后行情缓存，仅供复盘参考' : '周末休市，无实时K线数据'}
+                closedMessage={getClosedMarketChartMessage(period, candles.length)}
                 onPeriodChange={(p) => setPeriod(p as Period)}
               />
             )}
