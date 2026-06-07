@@ -9,7 +9,8 @@
     "start": "node dist/app.js",
     "lint": "echo 'Linting...' && exit 0",
     "type-check": "tsc --noEmit",
-    "history:import-basemax": "tsx src/scripts/importBaseMaxXau15m.ts"
+    "history:import-basemax": "tsx src/scripts/importBaseMaxXau15m.ts",
+    "history:import-local-csv": "tsx src/scripts/importLocalXauCsv.ts"
   },
   "keywords": [],
   "author": "",

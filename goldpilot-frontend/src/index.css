@@ -637,6 +637,92 @@ body {
   gap: 8px;
 }
 
+.history-cache-panel,
+.strategy-history-panel {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.strategy-history-panel {
+  margin-top: 12px;
+}
+
+.panel-mini-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.panel-mini-head strong {
+  color: #0f172a;
+}
+
+.history-cache-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-cache-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #d7e4f2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.history-cache-main,
+.history-cache-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.history-cache-main strong {
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-cache-main span {
+  min-width: 0;
+  color: #64748b;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-cache-range,
+.history-cache-warning {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.screen-run-best {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.screen-run-best .ant-typography {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-screen-run-row > td {
+  background: #edf6ff !important;
+}
+
 .strategy-settings-panel {
   padding: 10px;
   border: 1px solid var(--line);
@@ -2294,6 +2380,11 @@ body {
   }
 
   .strategy-settings-head {
+    flex-direction: column;
+  }
+
+  .panel-mini-head {
+    align-items: flex-start;
     flex-direction: column;
   }
 

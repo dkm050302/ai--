@@ -27,6 +27,29 @@ function formatDate(value?: string): string {
   });
 }
 
+function formatDateTime(value?: string): string {
+  if (!value) return '-';
+  return new Date(value).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function periodLabel(period?: string): string {
+  const labels: Record<string, string> = {
+    '1m': '1分钟',
+    '5m': '5分钟',
+    '15m': '15分钟',
+    '1h': '1小时',
+    '4h': '4小时',
+    '1d': '日线',
+  };
+  return labels[period || ''] || period || '-';
+}
+
 function directionTag(direction?: 'long' | 'short') {
   if (!direction) return <Tag>无方向</Tag>;
   return direction === 'long' ? <Tag color="red">做多</Tag> : <Tag color="green">做空</Tag>;
@@ -205,6 +228,7 @@ export function ResearchCenter() {
   const [interventionSaving, setInterventionSaving] = useState(false);
   const [strategyOverview, setStrategyOverview] = useState<StrategyLabOverview | null>(null);
   const [latestStrategyRun, setLatestStrategyRun] = useState<StrategyScreenRun | null>(null);
+  const [strategyRuns, setStrategyRuns] = useState<StrategyScreenRun[]>([]);
   const [strategyScreening, setStrategyScreening] = useState(false);
   const [screenPeriod, setScreenPeriod] = useState('1d');
   const [screenLimit, setScreenLimit] = useState(1825);
@@ -230,12 +254,13 @@ export function ResearchCenter() {
   const loadSummary = async () => {
     try {
       setLoading(true);
-      const [summary, reportList, chain, strategyLab, definitions] = await Promise.all([
+      const [summary, reportList, chain, strategyLab, definitions, screenRuns] = await Promise.all([
         researchApi.getSummary(),
         researchApi.getReports(),
         researchApi.getQuantChain().catch(() => null),
         researchApi.getStrategyLabOverview().catch(() => null),
         researchApi.getStrategyDefinitions().catch(() => []),
+        researchApi.getStrategyScreenRuns().catch(() => []),
       ]);
       setLatestReport(summary.latestReport);
       setReports(reportList);
@@ -246,6 +271,7 @@ export function ResearchCenter() {
       applyQuantChain(chain);
       setStrategyOverview(strategyLab);
       setLatestStrategyRun(strategyLab?.latestScreenRun || null);
+      setStrategyRuns(screenRuns);
       setStrategyDefinitions(definitions);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载研究中心失败');
@@ -302,6 +328,28 @@ export function ResearchCenter() {
       )
       .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime());
   }, [orderedAccounts]);
+
+  const historyCaches = useMemo(() => {
+    const periodOrder: Record<string, number> = {
+      '1m': 1,
+      '5m': 2,
+      '15m': 3,
+      '1h': 4,
+      '4h': 5,
+      '1d': 6,
+    };
+
+    return [...(strategyOverview?.historyCaches || [])].sort((a, b) => {
+      const byPeriod = (periodOrder[a.period] || 99) - (periodOrder[b.period] || 99);
+      if (byPeriod !== 0) return byPeriod;
+      return Number(b.candleCount || 0) - Number(a.candleCount || 0);
+    });
+  }, [strategyOverview]);
+
+  const screenRunRows = useMemo(
+    () => [...strategyRuns].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [strategyRuns]
+  );
 
   const accountStats = useMemo(() => {
     return orderedAccounts.map((account) => {
@@ -810,9 +858,13 @@ export function ResearchCenter() {
         commissionPct: 0.01,
         strategyOverrides: buildStrategyOverrides(),
       });
-      const overview = await researchApi.getStrategyLabOverview().catch(() => null);
+      const [overview, runs] = await Promise.all([
+        researchApi.getStrategyLabOverview().catch(() => null),
+        researchApi.getStrategyScreenRuns().catch(() => []),
+      ]);
       setLatestStrategyRun(result.run);
       setStrategyOverview(overview || strategyOverview);
+      setStrategyRuns(runs);
       message.success(`长期策略筛选完成：${result.history.candleCount} 根 ${result.history.period} K线`);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '长期策略筛选失败');
@@ -820,6 +872,56 @@ export function ResearchCenter() {
       setStrategyScreening(false);
     }
   };
+
+  const screenRunColumns: ColumnsType<StrategyScreenRun> = [
+    {
+      title: '时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 150,
+      render: (value) => <Text>{formatDateTime(value)}</Text>,
+    },
+    {
+      title: '样本',
+      key: 'sample',
+      width: 150,
+      render: (_, record) => (
+        <Space size={4} wrap>
+          <Tag color="blue">{periodLabel(record.period)}</Tag>
+          <Text>{record.candleCount.toLocaleString()} 根</Text>
+        </Space>
+      ),
+    },
+    {
+      title: '最佳策略',
+      key: 'recommendation',
+      render: (_, record) => (
+        <div className="screen-run-best">
+          <Text strong>{record.recommendation?.name || '暂无推荐'}</Text>
+          <Text type="secondary">{record.recommendation?.reason || '需要查看本轮结果'}</Text>
+        </div>
+      ),
+    },
+    {
+      title: '分数',
+      key: 'score',
+      width: 86,
+      render: (_, record) => {
+        const score = Number(record.recommendation?.score || 0);
+        return <Tag color={score >= 70 ? 'success' : score >= 45 ? 'warning' : 'default'}>{score || '-'}分</Tag>;
+      },
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 96,
+      render: (_, record) => (
+        <Button size="small" onClick={() => setLatestStrategyRun(record)}>
+          查看
+        </Button>
+      ),
+    },
+  ];
 
   const handleReset = async () => {
     try {
@@ -1371,7 +1473,7 @@ export function ResearchCenter() {
             <div className="long-screen-kpis">
               <div className="metric-tile">
                 <div className="metric-tile-label">长期历史缓存</div>
-                <div className="metric-tile-value">{strategyOverview?.historyCaches.length || 0}</div>
+                <div className="metric-tile-value">{historyCaches.length}</div>
                 <Text type="secondary">{latestStrategyRun ? `${formatDate(latestStrategyRun.dataStart)} - ${formatDate(latestStrategyRun.dataEnd)}` : '只统计真实/缓存数据'}</Text>
               </div>
               <div className="metric-tile">
@@ -1386,14 +1488,52 @@ export function ResearchCenter() {
               </div>
             </div>
 
+            <div className="history-cache-panel">
+              <div className="panel-mini-head">
+                <strong>历史数据清单</strong>
+                <Text type="secondary">真实/缓存行情，供回测和筛选使用</Text>
+              </div>
+              <div className="history-cache-list">
+                {historyCaches.length > 0 ? historyCaches.map((history) => (
+                  <div className="history-cache-item" key={`${history.period}-${history.provider}`}>
+                    <div className="history-cache-main">
+                      <Tag color={history.source === 'live' ? 'success' : history.source === 'stale_cache' ? 'warning' : 'blue'}>
+                        {periodLabel(history.period)}
+                      </Tag>
+                      <strong>{history.candleCount.toLocaleString()} 根</strong>
+                      <span>{history.provider}</span>
+                    </div>
+                    <div className="history-cache-range">
+                      {formatDateTime(history.startTime)} - {formatDateTime(history.endTime)}
+                    </div>
+                    <div className="history-cache-meta">
+                      <Tag color={Number(history.quality?.gapCount || 0) > 0 ? 'warning' : 'success'}>
+                        缺口 {history.quality?.gapCount || 0}
+                      </Tag>
+                      <Tag color={Number(history.quality?.invalidCount || 0) > 0 ? 'error' : 'default'}>
+                        无效 {history.quality?.invalidCount || 0}
+                      </Tag>
+                      <Text type="secondary">更新 {formatDate(history.updatedAt)}</Text>
+                    </div>
+                    {history.quality?.warnings?.[0] && (
+                      <Text type="warning" className="history-cache-warning">{history.quality.warnings[0]}</Text>
+                    )}
+                  </div>
+                )) : (
+                  <div className="empty-box">暂无可用历史数据，请先导入或等待缓存生成</div>
+                )}
+              </div>
+            </div>
+
             <div className="long-screen-controls">
               <Select
                 value={screenPeriod}
                 onChange={(value) => {
                   setScreenPeriod(value);
-                  setScreenLimit(value === '1d' ? 1825 : 3000);
+                  setScreenLimit(value === '1d' ? 1825 : value === '15m' ? 20000 : 3000);
                 }}
                 options={[
+                  { value: '15m', label: '15分钟 / 长样本' },
                   { value: '1d', label: '日线 / 约5年' },
                   { value: '4h', label: '4小时 / 约500天' },
                   { value: '1h', label: '1小时 / 约125天' },
@@ -1401,7 +1541,7 @@ export function ResearchCenter() {
               />
               <InputNumber
                 min={220}
-                max={5000}
+                max={50000}
                 value={screenLimit}
                 onChange={(value) => setScreenLimit(Number(value || 1825))}
                 addonAfter="根K线"
@@ -1520,6 +1660,22 @@ export function ResearchCenter() {
               <div className="empty-box">暂无长期策略筛选结果</div>
             )}
           </div>
+        </div>
+
+        <div className="strategy-history-panel">
+          <div className="panel-mini-head">
+            <strong>策略筛选历史记录</strong>
+            <Text type="secondary">保留每次筛选的样本、推荐和结果入口</Text>
+          </div>
+          <Table
+            size="small"
+            rowKey="_id"
+            columns={screenRunColumns}
+            dataSource={screenRunRows.slice(0, 8)}
+            pagination={false}
+            locale={{ emptyText: '暂无策略筛选历史记录' }}
+            rowClassName={(record) => record._id === latestStrategyRun?._id ? 'active-screen-run-row' : ''}
+          />
         </div>
 
         <div className="strategy-refine-grid">

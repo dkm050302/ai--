@@ -327,6 +327,13 @@ export interface StrategyLabOverview {
     endTime?: string;
     updatedAt?: string;
     message: string;
+    quality?: {
+      duplicateCount: number;
+      invalidCount: number;
+      gapCount: number;
+      largestGapSeconds: number;
+      warnings: string[];
+    };
   }>;
   paperTrading: {
     accountCount: number;
