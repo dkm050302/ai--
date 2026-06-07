@@ -488,7 +488,8 @@ export const researchApi = {
   async suggestStrategySettings(useLLM = true): Promise<StrategySettingSuggestion> {
     const response = await api.post<ApiEnvelope<StrategySettingSuggestion>>(
       '/api/research/strategy-lab/suggest-settings',
-      { useLLM }
+      { useLLM },
+      { timeout: 35000 }
     );
     return response.data;
   },

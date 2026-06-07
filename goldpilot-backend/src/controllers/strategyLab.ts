@@ -19,6 +19,8 @@ import { getUserApiKey } from './ai';
 import { DEEPSEEK_MODEL, getDeepSeekChatCompletionsUrl } from '../config';
 import { logger } from '../utils/logger';
 
+const LLM_SUGGESTION_TIMEOUT_MS = 20_000;
+
 function getUserAccountId(req: Request): string | null {
   return req.user?.accountId || null;
 }
@@ -143,20 +145,34 @@ async function buildLlmSuggestion(accountId: string, definitions: PublicStrategy
     `最近筛选结果：${JSON.stringify(latestRun?.results || [])}`,
   ].join('\n');
 
-  const response = await fetch(getDeepSeekChatCompletionsUrl(), {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: DEEPSEEK_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
-      max_tokens: 1200,
-      stream: false,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_SUGGESTION_TIMEOUT_MS);
+  let response: Awaited<ReturnType<typeof fetch>>;
+
+  try {
+    response = await fetch(getDeepSeekChatCompletionsUrl(), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        max_tokens: 1200,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`LLM 请求超过 ${Math.round(LLM_SUGGESTION_TIMEOUT_MS / 1000)} 秒，已回退到规则建议`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`LLM 请求失败: ${response.status}`);

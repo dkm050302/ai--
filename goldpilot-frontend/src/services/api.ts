@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { API_CONFIG } from '@/utils/constants';
 import { logger } from '@/utils/logger';
 import type { Candle, PriceData, Signal, Account, DailyStats } from '@/types';
@@ -157,7 +157,7 @@ class ApiService {
   /**
    * 通用 GET 请求 - 用于其他 API 调用
    */
-  async get<T = any>(url: string, config?: InternalAxiosRequestConfig): Promise<T> {
+  async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.get<T>(url, config);
     return response.data;
   }
@@ -165,7 +165,7 @@ class ApiService {
   /**
    * 通用 POST 请求
    */
-  async post<T = any>(url: string, data?: any, config?: InternalAxiosRequestConfig): Promise<T> {
+  async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.post<T>(url, data, config);
     return response.data;
   }
