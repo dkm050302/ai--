@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { twelveDataService } from './twelveData';
 import { marketHistoryStore, type MarketHistoryQuality } from './marketHistoryStore';
+import { marketHistoryHealthService, type MarketHistorySessionQuality } from './marketHistoryHealth';
 import { logger } from '../utils';
 
 export type GoldHistorySource = 'live' | 'cache' | 'stale_cache' | 'unavailable';
@@ -28,6 +29,7 @@ export interface GoldHistoryMeta {
   cacheFile: string;
   repositoryDir?: string;
   quality?: MarketHistoryQuality;
+  session?: MarketHistorySessionQuality;
   message: string;
 }
 
@@ -52,7 +54,7 @@ const HISTORY_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 function clampLimit(limit: unknown, fallback: number): number {
   const parsed = Number(limit);
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.round(Math.min(Math.max(parsed, 60), 5000));
+  return Math.round(Math.min(Math.max(parsed, 60), 50000));
 }
 
 function normalizePeriod(period: unknown): string {
@@ -100,6 +102,7 @@ function buildMeta(
     symbol?: string;
     repositoryDir?: string;
     quality?: MarketHistoryQuality;
+    session?: MarketHistorySessionQuality;
     startTime?: string;
     endTime?: string;
     candleCount?: number;
@@ -121,6 +124,7 @@ function buildMeta(
     cacheFile: CACHE_FILE,
     repositoryDir: extra.repositoryDir,
     quality: extra.quality,
+    session: extra.session,
     message,
   };
 }
@@ -130,102 +134,143 @@ function isFresh(updatedAt: string): boolean {
   return Number.isFinite(timestamp) && Date.now() - timestamp <= HISTORY_CACHE_MAX_AGE_MS;
 }
 
+function getRawReadLimit(period: string, requestedLimit: number): number {
+  if (period === '1d') {
+    return requestedLimit;
+  }
+
+  return Math.min(requestedLimit + Math.max(1000, Math.ceil(requestedLimit * 0.5)), 100000);
+}
+
+function toGoldCandles(candles: Array<{
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}>): GoldHistoryCandle[] {
+  return candles.map(({ time, open, high, low, close, volume }) => ({
+    time,
+    open,
+    high,
+    low,
+    close,
+    volume,
+  }));
+}
+
+function cleanGoldCandles(
+  candles: Array<{
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>,
+  period: string,
+  requestedLimit: number
+): { candles: GoldHistoryCandle[]; session: MarketHistorySessionQuality } {
+  const cleaned = marketHistoryHealthService.cleanCandles(candles, period);
+
+  return {
+    candles: toGoldCandles(cleaned.candles).slice(-requestedLimit),
+    session: cleaned.quality,
+  };
+}
+
 class GoldHistoryService {
   async getLongHistory(periodInput: unknown = '1d', limitInput: unknown = 1825): Promise<GoldHistoryResult> {
     const period = normalizePeriod(periodInput);
     const requestedLimit = clampLimit(limitInput, period === '1d' ? 1825 : 3000);
     const minimumUsable = Math.min(120, requestedLimit);
     const key = this.getKey(period, requestedLimit);
+    const rawReadLimit = getRawReadLimit(period, requestedLimit);
     await this.migrateLegacyCaches();
 
-    const stored = await marketHistoryStore.readHistory('xauusd', period, requestedLimit);
+    const stored = await marketHistoryStore.readHistory('xauusd', period, rawReadLimit);
     if (stored.summary && stored.summary.source === 'cache' && stored.candles.length >= minimumUsable) {
-      const candles = stored.candles.map(({ time, open, high, low, close, volume }) => ({
-        time,
-        open,
-        high,
-        low,
-        close,
-        volume,
-      }));
+      const cleaned = cleanGoldCandles(stored.candles, period, requestedLimit);
 
-      return {
-        candles,
-        meta: buildMeta('cache', period, requestedLimit, candles, '使用6小时内的文件型黄金历史仓库', stored.summary.updatedAt, {
-          provider: stored.summary.provider,
-          symbol: stored.summary.symbol,
-          repositoryDir: stored.summary.repositoryDir,
-          quality: stored.summary.quality,
-        }),
-      };
+      if (cleaned.candles.length >= minimumUsable) {
+        return {
+          candles: cleaned.candles,
+          meta: buildMeta('cache', period, requestedLimit, cleaned.candles, '使用6小时内的文件型黄金历史仓库（已按交易时段清洗）', stored.summary.updatedAt, {
+            provider: stored.summary.provider,
+            symbol: stored.summary.symbol,
+            repositoryDir: stored.summary.repositoryDir,
+            quality: stored.summary.quality,
+            session: cleaned.session,
+          }),
+        };
+      }
     }
 
     try {
-      const fetched = await twelveDataService.getCandles(period, requestedLimit);
+      const fetched = await twelveDataService.getCandles(period, Math.min(requestedLimit, 5000));
       const candles = (fetched || [])
         .map(normalizeCandle)
         .filter((item): item is GoldHistoryCandle => Boolean(item))
         .sort((a, b) => a.time - b.time)
-        .slice(-requestedLimit);
+        .slice(-Math.min(requestedLimit, 5000));
 
       if (candles.length >= minimumUsable) {
         const updatedAt = new Date().toISOString();
         const summary = await marketHistoryStore.upsertHistory('xauusd', period, candles, 'Twelve Data');
-        const merged = await marketHistoryStore.readHistory('xauusd', period, requestedLimit);
-        const mergedCandles = merged.candles.map(({ time, open, high, low, close, volume }) => ({
-          time,
-          open,
-          high,
-          low,
-          close,
-          volume,
-        }));
+        const merged = await marketHistoryStore.readHistory('xauusd', period, rawReadLimit);
+        const cleanedMerged = cleanGoldCandles(merged.candles, period, requestedLimit);
+        const cleanedFetched = cleanGoldCandles(candles, period, requestedLimit);
+        const outputCandles = cleanedMerged.candles.length >= minimumUsable ? cleanedMerged.candles : cleanedFetched.candles;
+        const outputSession = cleanedMerged.candles.length >= minimumUsable ? cleanedMerged.session : cleanedFetched.session;
 
-        return {
-          candles: mergedCandles.length >= minimumUsable ? mergedCandles : candles,
-          meta: buildMeta('live', period, requestedLimit, mergedCandles.length >= minimumUsable ? mergedCandles : candles, '已从 Twelve Data 获取长期黄金历史数据并写入文件型仓库', updatedAt, {
-            provider: summary.provider,
-            symbol: summary.symbol,
-            repositoryDir: summary.repositoryDir,
-            quality: summary.quality,
-          }),
-        };
+        if (outputCandles.length >= minimumUsable) {
+          return {
+            candles: outputCandles,
+            meta: buildMeta('live', period, requestedLimit, outputCandles, '已从 Twelve Data 获取长期黄金历史数据并写入文件型仓库（已按交易时段清洗）', updatedAt, {
+              provider: summary.provider,
+              symbol: summary.symbol,
+              repositoryDir: summary.repositoryDir,
+              quality: summary.quality,
+              session: outputSession,
+            }),
+          };
+        }
       }
     } catch (error) {
       logger.warn('[GoldHistory] 获取 Twelve Data 长期黄金历史失败:', error);
     }
 
-    const fallback = await marketHistoryStore.readHistory('xauusd', period, requestedLimit);
+    const fallback = await marketHistoryStore.readHistory('xauusd', period, rawReadLimit);
     if (fallback.candles.length) {
-      const candles = fallback.candles.map(({ time, open, high, low, close, volume }) => ({
-        time,
-        open,
-        high,
-        low,
-        close,
-        volume,
-      }));
+      const cleaned = cleanGoldCandles(fallback.candles, period, requestedLimit);
 
-      return {
-        candles,
-        meta: buildMeta('stale_cache', period, requestedLimit, candles, '实时历史数据不可用，使用文件型历史仓库', fallback.summary?.updatedAt, {
-          provider: fallback.summary?.provider,
-          symbol: fallback.summary?.symbol,
-          repositoryDir: fallback.summary?.repositoryDir,
-          quality: fallback.summary?.quality,
-        }),
-      };
+      if (cleaned.candles.length >= minimumUsable) {
+        return {
+          candles: cleaned.candles,
+          meta: buildMeta('stale_cache', period, requestedLimit, cleaned.candles, '实时历史数据不可用，使用文件型历史仓库（已按交易时段清洗）', fallback.summary?.updatedAt, {
+            provider: fallback.summary?.provider,
+            symbol: fallback.summary?.symbol,
+            repositoryDir: fallback.summary?.repositoryDir,
+            quality: fallback.summary?.quality,
+            session: cleaned.session,
+          }),
+        };
+      }
     }
 
     const cached = await this.readRecord(key);
     if (cached?.candles.length) {
-      const candles = cached.candles.slice(-requestedLimit);
-      return {
-        candles,
-        meta: buildMeta('stale_cache', period, requestedLimit, candles, '实时历史数据不可用，使用旧版JSON缓存', cached.updatedAt, {
-          provider: 'Legacy JSON',
-        }),
-      };
+      const cleaned = cleanGoldCandles(cached.candles, period, requestedLimit);
+      if (cleaned.candles.length) {
+        return {
+          candles: cleaned.candles,
+          meta: buildMeta('stale_cache', period, requestedLimit, cleaned.candles, '实时历史数据不可用，使用旧版JSON缓存（已按交易时段清洗）', cached.updatedAt, {
+            provider: 'Legacy JSON',
+            session: cleaned.session,
+          }),
+        };
+      }
     }
 
     return {
@@ -237,23 +282,34 @@ class GoldHistoryService {
   async getCacheSummaries(): Promise<GoldHistoryMeta[]> {
     await this.migrateLegacyCaches();
     const summaries = await marketHistoryStore.getSummaries();
-    return summaries.map((summary) => buildMeta(
-      summary.source,
-      summary.period,
-      summary.requestedLimit,
-      new Array(summary.candleCount).fill(null),
-      summary.message,
-      summary.updatedAt,
-      {
-        provider: summary.provider,
-        symbol: summary.symbol,
-        repositoryDir: summary.repositoryDir,
-        quality: summary.quality,
-        startTime: summary.startTime,
-        endTime: summary.endTime,
-        candleCount: summary.candleCount,
-      }
-    )).sort((a, b) => `${a.period}_${b.candleCount}`.localeCompare(`${b.period}_${a.candleCount}`));
+    const metas = await Promise.all(summaries.map(async (summary) => {
+      const session = await marketHistoryHealthService.inspectHistory(
+        summary.symbol,
+        summary.period,
+        summary.requestedLimit
+      );
+
+      return buildMeta(
+        summary.source,
+        summary.period,
+        summary.requestedLimit,
+        [],
+        summary.message,
+        summary.updatedAt,
+        {
+          provider: summary.provider,
+          symbol: summary.symbol,
+          repositoryDir: summary.repositoryDir,
+          quality: summary.quality,
+          session,
+          startTime: summary.startTime,
+          endTime: summary.endTime,
+          candleCount: summary.candleCount,
+        }
+      );
+    }));
+
+    return metas.sort((a, b) => `${a.period}_${b.candleCount}`.localeCompare(`${b.period}_${a.candleCount}`));
   }
 
   private getKey(period: string, requestedLimit: number): string {

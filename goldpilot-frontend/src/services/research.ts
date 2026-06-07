@@ -320,6 +320,7 @@ export interface StrategyLabOverview {
   historyCaches: Array<{
     source: 'live' | 'cache' | 'stale_cache' | 'unavailable';
     provider: string;
+    symbol: string;
     period: string;
     requestedLimit: number;
     candleCount: number;
@@ -330,6 +331,16 @@ export interface StrategyLabOverview {
     quality?: {
       duplicateCount: number;
       invalidCount: number;
+      gapCount: number;
+      largestGapSeconds: number;
+      warnings: string[];
+    };
+    session?: {
+      rawCount: number;
+      tradableCount: number;
+      removedNonTradingCount: number;
+      removedWeekendCount: number;
+      nonTradingRatio: number;
       gapCount: number;
       largestGapSeconds: number;
       warnings: string[];

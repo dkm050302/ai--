@@ -364,6 +364,9 @@ export async function runStrategyScreen(req: Request, res: Response): Promise<vo
       },
       strategyOverrides
     );
+    const sessionNote = history.meta.session?.removedNonTradingCount
+      ? `交易时段清洗：已剔除 ${history.meta.session.removedNonTradingCount} 根非交易时段K线，使用 ${history.meta.candleCount} 根可交易K线`
+      : '交易时段清洗：未发现需要剔除的周末/非交易K线';
     const run = await StrategyScreenRunModel.create({
       userAccountId,
       period: history.meta.period,
@@ -374,6 +377,7 @@ export async function runStrategyScreen(req: Request, res: Response): Promise<vo
       dataEnd: history.meta.endTime ? new Date(history.meta.endTime) : undefined,
       assumption: [
         '长期策略筛选：不调用大模型逐根预测，不使用mock收益数据',
+        sessionNote,
         '入场使用下一根K线开盘价，包含滑点、手续费、训练/验证分段和压力测试',
         strategyOverrides.length ? '本轮使用了前端传入的策略参数覆盖值' : '本轮使用默认策略参数',
       ].join('；'),

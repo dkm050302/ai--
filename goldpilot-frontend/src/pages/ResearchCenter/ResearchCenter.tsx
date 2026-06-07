@@ -50,6 +50,10 @@ function periodLabel(period?: string): string {
   return labels[period || ''] || period || '-';
 }
 
+function formatRatio(value?: number): string {
+  return `${((Number(value) || 0) * 100).toFixed(1)}%`;
+}
+
 function directionTag(direction?: 'long' | 'short') {
   if (!direction) return <Tag>无方向</Tag>;
   return direction === 'long' ? <Tag color="red">做多</Tag> : <Tag color="green">做空</Tag>;
@@ -865,7 +869,7 @@ export function ResearchCenter() {
       setLatestStrategyRun(result.run);
       setStrategyOverview(overview || strategyOverview);
       setStrategyRuns(runs);
-      message.success(`长期策略筛选完成：${result.history.candleCount} 根 ${result.history.period} K线`);
+      message.success(`长期策略筛选完成：${result.history.candleCount.toLocaleString()} 根可交易 ${result.history.period} K线`);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '长期策略筛选失败');
     } finally {
@@ -1500,23 +1504,29 @@ export function ResearchCenter() {
                       <Tag color={history.source === 'live' ? 'success' : history.source === 'stale_cache' ? 'warning' : 'blue'}>
                         {periodLabel(history.period)}
                       </Tag>
-                      <strong>{history.candleCount.toLocaleString()} 根</strong>
-                      <span>{history.provider}</span>
+                      <strong>{(history.session?.tradableCount || history.candleCount).toLocaleString()} 可交易</strong>
+                      <span>原始 {history.candleCount.toLocaleString()} / {history.provider}</span>
                     </div>
                     <div className="history-cache-range">
                       {formatDateTime(history.startTime)} - {formatDateTime(history.endTime)}
                     </div>
                     <div className="history-cache-meta">
-                      <Tag color={Number(history.quality?.gapCount || 0) > 0 ? 'warning' : 'success'}>
-                        缺口 {history.quality?.gapCount || 0}
+                      <Tag color={Number(history.session?.removedWeekendCount || 0) > 0 ? 'warning' : 'success'}>
+                        剔除周末 {(history.session?.removedWeekendCount || 0).toLocaleString()}
+                      </Tag>
+                      <Tag color={Number(history.session?.gapCount || 0) > 0 ? 'warning' : 'success'}>
+                        清洗缺口 {history.session?.gapCount || 0}
                       </Tag>
                       <Tag color={Number(history.quality?.invalidCount || 0) > 0 ? 'error' : 'default'}>
                         无效 {history.quality?.invalidCount || 0}
                       </Tag>
+                      <Text type="secondary">占比 {formatRatio(history.session?.nonTradingRatio)}</Text>
                       <Text type="secondary">更新 {formatDate(history.updatedAt)}</Text>
                     </div>
-                    {history.quality?.warnings?.[0] && (
-                      <Text type="warning" className="history-cache-warning">{history.quality.warnings[0]}</Text>
+                    {(history.session?.warnings?.[0] || history.quality?.warnings?.[0]) && (
+                      <Text type="warning" className="history-cache-warning">
+                        {history.session?.warnings?.[0] || history.quality?.warnings?.[0]}
+                      </Text>
                     )}
                   </div>
                 )) : (
