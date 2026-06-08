@@ -6,6 +6,7 @@ import { Tabs } from '@/components/Tabs/Tabs';
 const PAGE_LABELS: Record<string, string> = {
   '/': '交易看板',
   '/ai-account': 'AI账号',
+  '/manual-sim': '手动模拟账户',
   '/datasource-settings': '数据源设置',
   '/research-center': '量化策略实验室',
 };
@@ -20,6 +21,11 @@ const PAGE_QUESTIONS: Record<string, string[]> = {
     'AI账号配置状态怎么看？',
     '为什么AI请求会超时？',
     '这页下一步该配置什么？',
+  ],
+  '/manual-sim': [
+    '当前模拟账户风险在哪里？',
+    '预下单什么时候会触发？',
+    '这笔持仓应不应该先平仓？',
   ],
   '/datasource-settings': [
     '当前数据源有什么风险？',

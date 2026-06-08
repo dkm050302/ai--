@@ -15,6 +15,7 @@ const DEFAULT_TABS: TabItem[] = [
 const TAB_LABELS: Record<string, string> = {
   '/': '首页',
   '/ai-account': 'AI账号',
+  '/manual-sim': '模拟账户',
   '/datasource-settings': '数据源',
   '/research-center': '量化策略',
 };

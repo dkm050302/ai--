@@ -1,7 +1,7 @@
 import { Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, DatabaseOutlined, ExperimentOutlined } from '@ant-design/icons';
+import { HomeOutlined, LineChartOutlined, RobotOutlined, SettingOutlined, DatabaseOutlined, ExperimentOutlined, FundProjectionScreenOutlined } from '@ant-design/icons';
 
 const VERSION = 'v1.1.0';
 
@@ -17,6 +17,9 @@ export function Sidebar() {
     if (location.pathname === '/datasource-settings') {
       return ['datasource-settings'];
     }
+    if (location.pathname === '/manual-sim') {
+      return ['manual-sim'];
+    }
     if (location.pathname === '/research-center') {
       return ['research-center'];
     }
@@ -29,6 +32,12 @@ export function Sidebar() {
       icon: <HomeOutlined className="text-lg" />,
       label: <span className="ml-2 font-medium">首页</span>,
       onClick: () => navigate('/'),
+    },
+    {
+      key: 'manual-sim',
+      icon: <FundProjectionScreenOutlined className="text-lg" />,
+      label: <span className="ml-2 font-medium">模拟账户</span>,
+      onClick: () => navigate('/manual-sim'),
     },
     {
       key: 'research-center',

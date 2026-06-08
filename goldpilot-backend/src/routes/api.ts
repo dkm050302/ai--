@@ -55,6 +55,14 @@ import {
   suggestStrategySettings,
 } from '../controllers/strategyLab';
 import {
+  cancelManualSimOrder,
+  closeManualSimPosition,
+  getManualSimAccount,
+  placeManualSimOrder,
+  resetManualSimAccount,
+  settleManualSimAccount,
+} from '../controllers/manualSim';
+import {
   getDataSource,
   setDataSource,
   getDataSources,
@@ -126,6 +134,14 @@ router.post('/research/strategy-lab/history/import-basemax-xau15m', optionalAuth
 router.post('/research/strategy-lab/screen', optionalAuth, runStrategyScreen);
 router.post('/research/strategy-lab/suggest-settings', optionalAuth, suggestStrategySettings);
 router.get('/research/strategy-lab/screens', optionalAuth, getStrategyScreenRuns);
+
+// 手动模拟仿真账户
+router.get('/manual-sim/account', optionalAuth, getManualSimAccount);
+router.post('/manual-sim/orders', optionalAuth, placeManualSimOrder);
+router.post('/manual-sim/orders/:orderId/cancel', optionalAuth, cancelManualSimOrder);
+router.post('/manual-sim/positions/:positionId/close', optionalAuth, closeManualSimPosition);
+router.post('/manual-sim/settle', optionalAuth, settleManualSimAccount);
+router.post('/manual-sim/reset', optionalAuth, resetManualSimAccount);
 
 // 数据源相关路由
 router.get('/datasource', getDataSource);

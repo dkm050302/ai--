@@ -2344,6 +2344,91 @@ body {
   font-size: 18px;
 }
 
+.manual-sim-page {
+  display: grid;
+  gap: 12px;
+}
+
+.manual-sim-kpis .metric-tile {
+  height: 100%;
+}
+
+.manual-sim-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1.15fr) minmax(260px, 0.75fr);
+  gap: 12px;
+}
+
+.manual-quote-card,
+.manual-order-card,
+.manual-risk-card {
+  height: 100%;
+}
+
+.manual-quote-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.manual-quote-meta span {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.manual-sim-alert {
+  margin-top: 12px;
+}
+
+.manual-order-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.manual-order-form > .ant-segmented,
+.manual-order-form > .ant-input,
+.manual-order-form > .ant-btn {
+  grid-column: 1 / -1;
+}
+
+.manual-order-form .ant-input-number {
+  width: 100%;
+}
+
+.manual-risk-list {
+  display: grid;
+  gap: 8px;
+}
+
+.manual-risk-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.manual-risk-list span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.manual-risk-list strong {
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 账户卡片 */
 .account-card {
   padding: 13px;
@@ -2855,6 +2940,7 @@ body {
   .quant-section-grid,
   .quant-control-grid,
   .long-screen-layout,
+  .manual-sim-grid,
   .quant-roadmap {
     grid-template-columns: 1fr;
   }

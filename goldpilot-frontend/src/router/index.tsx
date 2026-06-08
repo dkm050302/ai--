@@ -3,6 +3,7 @@ import { MainLayout } from '@/layouts/MainLayout';
 import { Home } from '@/pages/Home/Home';
 import { AIAccount } from '@/pages/AIAccount/AIAccount';
 import { DataSourceSettingsPage } from '@/pages/DataSourceSettings';
+import { ManualSimAccountPage } from '@/pages/ManualSimAccount';
 import { ResearchCenter } from '@/pages/ResearchCenter';
 
 export const router = createBrowserRouter([
@@ -21,6 +22,10 @@ export const router = createBrowserRouter([
       {
         path: 'ai-account',
         element: <AIAccount />,
+      },
+      {
+        path: 'manual-sim',
+        element: <ManualSimAccountPage />,
       },
       {
         path: 'datasource-settings',
