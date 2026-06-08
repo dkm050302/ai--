@@ -209,6 +209,58 @@ class MarketHistoryStore {
     return this.toSummary(record, candles.length, candles.length);
   }
 
+  async replaceHistory(
+    symbolInput: string,
+    periodInput: string,
+    rawCandles: any[],
+    provider: string
+  ): Promise<MarketHistorySummary> {
+    const symbol = normalizeSymbol(symbolInput);
+    const period = normalizePeriod(periodInput);
+    const fetchedAt = new Date().toISOString();
+    const quality = buildEmptyQuality();
+    const replaced = new Map<number, StoredMarketCandle>();
+    const incomingTimes = new Set<number>();
+
+    for (const raw of rawCandles || []) {
+      const normalized = this.normalizeCandle(raw, symbol, period, provider, fetchedAt);
+      if (!normalized || !isValidCandle(normalized)) {
+        quality.invalidCount += 1;
+        continue;
+      }
+
+      if (incomingTimes.has(normalized.time)) {
+        quality.duplicateCount += 1;
+      }
+
+      incomingTimes.add(normalized.time);
+      replaced.set(normalized.time, normalized);
+    }
+
+    const candles = [...replaced.values()].sort((a, b) => a.time - b.time);
+    const gapQuality = this.inspectGaps(candles, period);
+    const finalQuality = mergeQuality(quality, gapQuality);
+    const files = await this.writeCandles(symbol, period, candles);
+    const manifest = await this.readManifest();
+    const record: ManifestRecord = {
+      symbol,
+      period,
+      provider,
+      candleCount: candles.length,
+      startTime: candles[0] ? new Date(candles[0].time * 1000).toISOString() : undefined,
+      endTime: candles[candles.length - 1] ? new Date(candles[candles.length - 1].time * 1000).toISOString() : undefined,
+      updatedAt: fetchedAt,
+      files,
+      quality: finalQuality,
+    };
+
+    manifest.updatedAt = fetchedAt;
+    manifest.records[this.getRecordKey(symbol, period)] = record;
+    await this.writeManifest(manifest);
+
+    return this.toSummary(record, candles.length, candles.length);
+  }
+
   async getSummaries(): Promise<MarketHistorySummary[]> {
     const manifest = await this.readManifest();
     return Object.values(manifest.records)
@@ -243,8 +295,8 @@ class MarketHistoryStore {
       low,
       close,
       volume: Number.isFinite(volume) ? volume : 0,
-      provider,
-      fetchedAt,
+      provider: String(raw?.provider || provider),
+      fetchedAt: String(raw?.fetchedAt || fetchedAt),
     };
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Col, Descriptions, Input, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
+import { Alert, Button, Card, Col, DatePicker, Descriptions, Input, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ExperimentOutlined, FundProjectionScreenOutlined, LoadingOutlined, ReloadOutlined, RiseOutlined, RobotOutlined, UndoOutlined } from '@ant-design/icons';
 import { researchApi, type AnalysisReport, type BacktestConfig, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type QuantChain, type QuantInterventionMode, type ResearchSummary, type StrategyDefinition, type StrategyLabOverview, type StrategyOverride, type StrategyScreenRun, type StrategySettingSuggestion } from '@/services/research';
@@ -11,7 +12,34 @@ import { EquityCurveChart, type EquityCurveSeries } from '@/components/EquityCur
 import { PageHeader } from '@/components/PageHeader';
 
 const { Text, Title } = Typography;
+const { RangePicker } = DatePicker;
 const INITIAL_BALANCE = 1_000_000;
+const LONG_SCREEN_MAX_LIMIT = 600_000;
+const SCREEN_PERIODS = ['5m', '15m', '1h', '4h', '1d'];
+const SCREEN_PERIOD_LABELS: Record<string, string> = {
+  '5m': '5分钟 / 长样本',
+  '15m': '15分钟 / 长样本',
+  '1h': '1小时 / 长样本',
+  '4h': '4小时 / 长样本',
+  '1d': '日线 / 长样本',
+};
+const SCREEN_PERIOD_FALLBACK_LIMITS: Record<string, number> = {
+  '5m': 50000,
+  '15m': 50000,
+  '1h': 3000,
+  '4h': 3000,
+  '1d': 1825,
+};
+const BARS_PER_TRADING_DAY: Record<string, number> = {
+  '5m': 288,
+  '15m': 96,
+  '1h': 24,
+  '4h': 6,
+  '1d': 1,
+};
+
+type HistoryCacheItem = StrategyLabOverview['historyCaches'][number];
+type ScreenDateRange = [Dayjs, Dayjs] | null;
 
 function formatMoney(value: number): string {
   return `$${Number(value || 0).toFixed(2)}`;
@@ -38,6 +66,15 @@ function formatDateTime(value?: string): string {
   });
 }
 
+function formatDateOnly(value?: string): string {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+}
+
 function periodLabel(period?: string): string {
   const labels: Record<string, string> = {
     '1m': '1分钟',
@@ -52,6 +89,50 @@ function periodLabel(period?: string): string {
 
 function formatRatio(value?: number): string {
   return `${((Number(value) || 0) * 100).toFixed(1)}%`;
+}
+
+function getTradableCount(history?: HistoryCacheItem): number {
+  return Number(history?.session?.tradableCount || history?.candleCount || 0);
+}
+
+function describeActualSpan(history?: HistoryCacheItem): string {
+  if (!history?.startTime || !history?.endTime) return '暂无跨度';
+  const start = new Date(history.startTime).getTime();
+  const end = new Date(history.endTime).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return '暂无跨度';
+
+  const days = Math.max(1, Math.round((end - start) / (24 * 60 * 60 * 1000)));
+  if (days >= 365) return `约${(days / 365).toFixed(1)}年`;
+  if (days >= 30) return `约${Math.round(days / 30)}个月`;
+  return `约${days}天`;
+}
+
+function describeLimitSpan(period: string, limit: number): string {
+  const barsPerDay = BARS_PER_TRADING_DAY[period] || 1;
+  const tradingDays = Math.max(1, limit / barsPerDay);
+  if (tradingDays >= 252) return `约${(tradingDays / 252).toFixed(1)}年交易日`;
+  if (tradingDays >= 25) return `约${Math.round(tradingDays / 5)}周`;
+  return `约${Math.round(tradingDays)}个交易日`;
+}
+
+function getDefaultScreenLimit(period: string, history?: HistoryCacheItem): number {
+  const fallback = SCREEN_PERIOD_FALLBACK_LIMITS[period] || 3000;
+  const available = getTradableCount(history);
+  if (!available) return fallback;
+  return Math.min(available, LONG_SCREEN_MAX_LIMIT);
+}
+
+function getHistoryDateRange(history?: HistoryCacheItem): ScreenDateRange {
+  if (!history?.startTime || !history?.endTime) return null;
+  const start = dayjs(history.startTime);
+  const end = dayjs(history.endTime);
+  if (!start.isValid() || !end.isValid() || !end.isAfter(start)) return null;
+  return [start, end];
+}
+
+function formatPickerRange(range: ScreenDateRange): string {
+  if (!range) return '未指定时间窗口';
+  return `${range[0].format('YYYY/MM/DD HH:mm')} - ${range[1].format('YYYY/MM/DD HH:mm')}`;
 }
 
 function directionTag(direction?: 'long' | 'short') {
@@ -236,6 +317,8 @@ export function ResearchCenter() {
   const [strategyScreening, setStrategyScreening] = useState(false);
   const [screenPeriod, setScreenPeriod] = useState('1d');
   const [screenLimit, setScreenLimit] = useState(1825);
+  const [screenDateRange, setScreenDateRange] = useState<ScreenDateRange>(null);
+  const [screenDateRangeTouched, setScreenDateRangeTouched] = useState(false);
   const [strategyDefinitions, setStrategyDefinitions] = useState<StrategyDefinition[]>([]);
   const [strategyOverrides, setStrategyOverrides] = useState<Record<string, Record<string, number>>>({});
   const [strategySuggestion, setStrategySuggestion] = useState<StrategySettingSuggestion['suggestion'] | null>(null);
@@ -349,6 +432,50 @@ export function ResearchCenter() {
       return Number(b.candleCount || 0) - Number(a.candleCount || 0);
     });
   }, [strategyOverview]);
+
+  const historyByPeriod = useMemo(() => {
+    const map = new Map<string, HistoryCacheItem>();
+    historyCaches.forEach((history) => {
+      const existing = map.get(history.period);
+      if (!existing || getTradableCount(history) > getTradableCount(existing)) {
+        map.set(history.period, history);
+      }
+    });
+    return map;
+  }, [historyCaches]);
+
+  const selectedScreenHistory = historyByPeriod.get(screenPeriod);
+  const selectedAvailableCount = getTradableCount(selectedScreenHistory);
+  const screenLimitMax = Math.max(220, Math.min(selectedAvailableCount || LONG_SCREEN_MAX_LIMIT, LONG_SCREEN_MAX_LIMIT));
+  const selectedHistoryRange = useMemo(() => getHistoryDateRange(selectedScreenHistory), [selectedScreenHistory]);
+  const screenPeriodOptions = useMemo(() => {
+    return SCREEN_PERIODS.map((period) => {
+      const history = historyByPeriod.get(period);
+      const available = getTradableCount(history);
+      const rangeText = history?.startTime && history?.endTime
+        ? `${formatDateOnly(history.startTime)} - ${formatDateOnly(history.endTime)}`
+        : '暂无历史缓存';
+
+      return {
+        value: period,
+        label: SCREEN_PERIOD_LABELS[period] || periodLabel(period),
+        available,
+        rangeText,
+        spanText: describeActualSpan(history),
+        provider: history?.provider || '等待数据',
+      };
+    });
+  }, [historyByPeriod]);
+
+  useEffect(() => {
+    if (!selectedAvailableCount) return;
+    setScreenLimit((value) => Math.min(value, screenLimitMax));
+  }, [selectedAvailableCount, screenLimitMax]);
+
+  useEffect(() => {
+    if (screenDateRangeTouched || !selectedHistoryRange) return;
+    setScreenDateRange(selectedHistoryRange);
+  }, [screenDateRangeTouched, selectedHistoryRange]);
 
   const screenRunRows = useMemo(
     () => [...strategyRuns].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
@@ -851,10 +978,17 @@ export function ResearchCenter() {
 
   const handleStrategyScreen = async () => {
     try {
+      if (screenDateRange && !screenDateRange[1].isAfter(screenDateRange[0])) {
+        message.error('开始时间必须早于结束时间');
+        return;
+      }
+
       setStrategyScreening(true);
       const result = await researchApi.runStrategyScreening({
         period: screenPeriod,
         limit: screenLimit,
+        startTime: screenDateRange?.[0]?.toISOString(),
+        endTime: screenDateRange?.[1]?.toISOString(),
         initialBalance: INITIAL_BALANCE,
         riskPerTradePct: 1,
         maxPositionPct: 35,
@@ -1539,21 +1673,47 @@ export function ResearchCenter() {
               <Select
                 value={screenPeriod}
                 onChange={(value) => {
+                  const nextHistory = historyByPeriod.get(value);
                   setScreenPeriod(value);
-                  setScreenLimit(value === '1d' ? 1825 : value === '15m' ? 20000 : 3000);
+                  setScreenLimit(getDefaultScreenLimit(value, nextHistory));
+                  setScreenDateRange(getHistoryDateRange(nextHistory));
+                  setScreenDateRangeTouched(false);
                 }}
-                options={[
-                  { value: '15m', label: '15分钟 / 长样本' },
-                  { value: '1d', label: '日线 / 约5年' },
-                  { value: '4h', label: '4小时 / 约500天' },
-                  { value: '1h', label: '1小时 / 约125天' },
-                ]}
+                optionLabelProp="label"
+              >
+                {screenPeriodOptions.map((option) => (
+                  <Select.Option value={option.value} label={option.label} key={option.value}>
+                    <div className="screen-period-option">
+                      <div>
+                        <strong>{option.label}</strong>
+                        <span>{option.available ? `${option.available.toLocaleString()} 根可交易` : '暂无可用K线'}</span>
+                      </div>
+                      <small>{option.spanText} · {option.rangeText}</small>
+                    </div>
+                  </Select.Option>
+                ))}
+              </Select>
+              <RangePicker
+                className="screen-range-picker"
+                showTime={{ format: 'HH:mm' }}
+                format="YYYY/MM/DD HH:mm"
+                value={screenDateRange}
+                allowClear
+                disabledDate={(current) => {
+                  if (!selectedHistoryRange || !current) return false;
+                  return current.isBefore(selectedHistoryRange[0].startOf('day')) || current.isAfter(selectedHistoryRange[1].endOf('day'));
+                }}
+                onChange={(dates) => {
+                  const nextRange = dates?.[0] && dates?.[1] ? [dates[0], dates[1]] as [Dayjs, Dayjs] : null;
+                  setScreenDateRange(nextRange);
+                  setScreenDateRangeTouched(true);
+                }}
               />
               <InputNumber
                 min={220}
-                max={50000}
+                max={screenLimitMax}
                 value={screenLimit}
-                onChange={(value) => setScreenLimit(Number(value || 1825))}
+                onChange={(value) => setScreenLimit(Math.min(Number(value || 1825), screenLimitMax))}
                 addonAfter="根K线"
               />
               <Button
@@ -1564,6 +1724,12 @@ export function ResearchCenter() {
               >
                 运行长期筛选
               </Button>
+              <div className="screen-period-context">
+                <span>当前可用：{selectedAvailableCount ? `${selectedAvailableCount.toLocaleString()} 根` : '暂无缓存'}</span>
+                <span>仓库跨度：{selectedScreenHistory ? `${describeActualSpan(selectedScreenHistory)}，${formatDateOnly(selectedScreenHistory.startTime)} - ${formatDateOnly(selectedScreenHistory.endTime)}` : '等待历史仓库'}</span>
+                <span>筛选窗口：{formatPickerRange(screenDateRange)}</span>
+                <span>本次筛选：{screenLimit.toLocaleString()} 根，{describeLimitSpan(screenPeriod, screenLimit)}</span>
+              </div>
             </div>
 
             <div className="strategy-settings-panel">

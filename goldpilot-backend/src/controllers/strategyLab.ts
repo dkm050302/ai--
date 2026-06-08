@@ -25,6 +25,30 @@ function getUserAccountId(req: Request): string | null {
   return req.user?.accountId || null;
 }
 
+function parseScreenRange(startInput: unknown, endInput: unknown): { startTime?: string; endTime?: string } {
+  const parse = (value: unknown): string | undefined => {
+    if (!value) return undefined;
+    const timestamp = new Date(String(value)).getTime();
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
+  };
+  const startTime = parse(startInput);
+  const endTime = parse(endInput);
+
+  if (startInput && !startTime) {
+    throw new Error('开始时间格式无效');
+  }
+
+  if (endInput && !endTime) {
+    throw new Error('结束时间格式无效');
+  }
+
+  if (startTime && endTime && new Date(startTime).getTime() >= new Date(endTime).getTime()) {
+    throw new Error('开始时间必须早于结束时间');
+  }
+
+  return { startTime, endTime };
+}
+
 function extractJsonObject(text: string): any | null {
   const cleaned = text.replace(/```json|```/g, '').trim();
   const start = cleaned.indexOf('{');
@@ -356,7 +380,14 @@ export async function runStrategyScreen(req: Request, res: Response): Promise<vo
 
     const period = req.body?.period || '1d';
     const limit = Number(req.body?.limit || (period === '1d' ? 1825 : 3000));
-    const history = await goldHistoryService.getLongHistory(period, limit);
+    let range: { startTime?: string; endTime?: string };
+    try {
+      range = parseScreenRange(req.body?.startTime, req.body?.endTime);
+    } catch (error) {
+      res.status(400).json({ success: false, message: error instanceof Error ? error.message : '时间范围格式无效' });
+      return;
+    }
+    const history = await goldHistoryService.getLongHistory(period, limit, range);
 
     if (history.candles.length < 220) {
       res.status(400).json({
@@ -383,6 +414,9 @@ export async function runStrategyScreen(req: Request, res: Response): Promise<vo
     const sessionNote = history.meta.session?.removedNonTradingCount
       ? `交易时段清洗：已剔除 ${history.meta.session.removedNonTradingCount} 根非交易时段K线，使用 ${history.meta.candleCount} 根可交易K线`
       : '交易时段清洗：未发现需要剔除的周末/非交易K线';
+    const rangeNote = range.startTime || range.endTime
+      ? `时间窗口：${range.startTime || '最早'} 至 ${range.endTime || '最新'}`
+      : '时间窗口：未指定，使用最近可用样本';
     const run = await StrategyScreenRunModel.create({
       userAccountId,
       period: history.meta.period,
@@ -393,6 +427,7 @@ export async function runStrategyScreen(req: Request, res: Response): Promise<vo
       dataEnd: history.meta.endTime ? new Date(history.meta.endTime) : undefined,
       assumption: [
         '长期策略筛选：不调用大模型逐根预测，不使用mock收益数据',
+        rangeNote,
         sessionNote,
         '入场使用下一根K线开盘价，包含滑点、手续费、训练/验证分段和压力测试',
         strategyOverrides.length ? '本轮使用了前端传入的策略参数覆盖值' : '本轮使用默认策略参数',

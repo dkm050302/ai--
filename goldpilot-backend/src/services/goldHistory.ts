@@ -38,6 +38,11 @@ export interface GoldHistoryResult {
   meta: GoldHistoryMeta;
 }
 
+export interface GoldHistoryRange {
+  startTime?: string;
+  endTime?: string;
+}
+
 interface GoldHistoryCacheFile {
   version: 1;
   records: Record<string, {
@@ -50,11 +55,12 @@ interface GoldHistoryCacheFile {
 
 const CACHE_FILE = path.resolve(process.cwd(), 'data/gold-history-cache.json');
 const HISTORY_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const LONG_HISTORY_MAX_LIMIT = 600000;
 
 function clampLimit(limit: unknown, fallback: number): number {
   const parsed = Number(limit);
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.round(Math.min(Math.max(parsed, 60), 50000));
+  return Math.round(Math.min(Math.max(parsed, 60), LONG_HISTORY_MAX_LIMIT));
 }
 
 function normalizePeriod(period: unknown): string {
@@ -73,6 +79,12 @@ function normalizeTime(value: unknown): number {
 
   const timestamp = new Date(String(value || '')).getTime();
   return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : 0;
+}
+
+function parseRangeTime(value: unknown): number | undefined {
+  if (!value) return undefined;
+  const timestamp = normalizeTime(value);
+  return timestamp > 0 ? timestamp : undefined;
 }
 
 function normalizeCandle(item: any): GoldHistoryCandle | null {
@@ -139,7 +151,7 @@ function getRawReadLimit(period: string, requestedLimit: number): number {
     return requestedLimit;
   }
 
-  return Math.min(requestedLimit + Math.max(1000, Math.ceil(requestedLimit * 0.5)), 100000);
+  return Math.min(requestedLimit + Math.max(1000, Math.ceil(requestedLimit * 0.5)), LONG_HISTORY_MAX_LIMIT);
 }
 
 function toGoldCandles(candles: Array<{
@@ -170,28 +182,41 @@ function cleanGoldCandles(
     volume: number;
   }>,
   period: string,
-  requestedLimit: number
+  requestedLimit: number,
+  range: GoldHistoryRange = {}
 ): { candles: GoldHistoryCandle[]; session: MarketHistorySessionQuality } {
+  const startTime = parseRangeTime(range.startTime);
+  const endTime = parseRangeTime(range.endTime);
   const cleaned = marketHistoryHealthService.cleanCandles(candles, period);
+  const ranged = cleaned.candles.filter((candle) => {
+    if (startTime && candle.time < startTime) return false;
+    if (endTime && candle.time > endTime) return false;
+    return true;
+  });
 
   return {
-    candles: toGoldCandles(cleaned.candles).slice(-requestedLimit),
+    candles: toGoldCandles(ranged).slice(-requestedLimit),
     session: cleaned.quality,
   };
 }
 
 class GoldHistoryService {
-  async getLongHistory(periodInput: unknown = '1d', limitInput: unknown = 1825): Promise<GoldHistoryResult> {
+  async getLongHistory(
+    periodInput: unknown = '1d',
+    limitInput: unknown = 1825,
+    range: GoldHistoryRange = {}
+  ): Promise<GoldHistoryResult> {
     const period = normalizePeriod(periodInput);
     const requestedLimit = clampLimit(limitInput, period === '1d' ? 1825 : 3000);
     const minimumUsable = Math.min(120, requestedLimit);
     const key = this.getKey(period, requestedLimit);
-    const rawReadLimit = getRawReadLimit(period, requestedLimit);
+    const hasRange = Boolean(range.startTime || range.endTime);
+    const rawReadLimit = hasRange ? LONG_HISTORY_MAX_LIMIT : getRawReadLimit(period, requestedLimit);
     await this.migrateLegacyCaches();
 
     const stored = await marketHistoryStore.readHistory('xauusd', period, rawReadLimit);
     if (stored.summary && stored.summary.source === 'cache' && stored.candles.length >= minimumUsable) {
-      const cleaned = cleanGoldCandles(stored.candles, period, requestedLimit);
+      const cleaned = cleanGoldCandles(stored.candles, period, requestedLimit, range);
 
       if (cleaned.candles.length >= minimumUsable) {
         return {
@@ -219,8 +244,8 @@ class GoldHistoryService {
         const updatedAt = new Date().toISOString();
         const summary = await marketHistoryStore.upsertHistory('xauusd', period, candles, 'Twelve Data');
         const merged = await marketHistoryStore.readHistory('xauusd', period, rawReadLimit);
-        const cleanedMerged = cleanGoldCandles(merged.candles, period, requestedLimit);
-        const cleanedFetched = cleanGoldCandles(candles, period, requestedLimit);
+        const cleanedMerged = cleanGoldCandles(merged.candles, period, requestedLimit, range);
+        const cleanedFetched = cleanGoldCandles(candles, period, requestedLimit, range);
         const outputCandles = cleanedMerged.candles.length >= minimumUsable ? cleanedMerged.candles : cleanedFetched.candles;
         const outputSession = cleanedMerged.candles.length >= minimumUsable ? cleanedMerged.session : cleanedFetched.session;
 
@@ -243,7 +268,7 @@ class GoldHistoryService {
 
     const fallback = await marketHistoryStore.readHistory('xauusd', period, rawReadLimit);
     if (fallback.candles.length) {
-      const cleaned = cleanGoldCandles(fallback.candles, period, requestedLimit);
+      const cleaned = cleanGoldCandles(fallback.candles, period, requestedLimit, range);
 
       if (cleaned.candles.length >= minimumUsable) {
         return {
@@ -261,7 +286,7 @@ class GoldHistoryService {
 
     const cached = await this.readRecord(key);
     if (cached?.candles.length) {
-      const cleaned = cleanGoldCandles(cached.candles, period, requestedLimit);
+      const cleaned = cleanGoldCandles(cached.candles, period, requestedLimit, range);
       if (cleaned.candles.length) {
         return {
           candles: cleaned.candles,

@@ -11,6 +11,8 @@
     "type-check": "tsc --noEmit",
     "history:import-basemax": "tsx src/scripts/importBaseMaxXau15m.ts",
     "history:import-local-csv": "tsx src/scripts/importLocalXauCsv.ts",
+    "history:download-twelvedata": "tsx src/scripts/downloadTwelveDataXauHistory.ts",
+    "history:clean-raw": "tsx src/scripts/cleanMarketHistoryRaw.ts",
     "history:health": "tsx src/scripts/inspectMarketHistoryHealth.ts"
   },
   "keywords": [],

@@ -461,6 +461,8 @@ export const researchApi = {
   async runStrategyScreening(config: {
     period: string;
     limit: number;
+    startTime?: string;
+    endTime?: string;
     initialBalance?: number;
     riskPerTradePct?: number;
     maxPositionPct?: number;
