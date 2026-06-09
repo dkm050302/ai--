@@ -27,6 +27,7 @@ export interface IUser extends Document {
   accountId: string;
   password: string;
   server: string;
+  role: 'admin' | 'tester';
   accountInfo?: AccountInfo;
   aiConfig?: AIConfig;
   createdAt: Date;
@@ -74,6 +75,11 @@ const UserSchema = new Schema<IUser, IUserModel>({
     type: String,
     required: true,
     trim: true,
+  },
+  role: {
+    type: String,
+    enum: ['admin', 'tester'],
+    default: 'tester',
   },
   accountInfo: {
     type: AccountInfoSchema,

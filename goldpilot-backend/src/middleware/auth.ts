@@ -135,3 +135,23 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     next();
   }
 }
+
+/**
+ * 管理员权限中间件（必须先通过 authMiddleware）
+ */
+export async function adminOnly(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: '未授权' });
+    }
+
+    const user = await UserModel.findById(req.user.userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: '需要管理员权限' });
+    }
+
+    next();
+  } catch (error) {
+    return res.status(500).json({ success: false, message: '权限检查失败' });
+  }
+}

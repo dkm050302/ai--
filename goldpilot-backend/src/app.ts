@@ -11,6 +11,7 @@ import { errorHandler, notFoundHandler, requestLogger, detailedRequestLogger } f
 import { logger } from './utils';
 import { schedulerService } from './services/scheduler';
 import { metaApiService } from './services/metaApi';
+import { seedAccounts } from './services/seedUsers';
 
 const app = express();
 const httpServer = createServer(app);
@@ -63,6 +64,9 @@ async function startServer() {
     logger.info('📡 Connecting to database...');
     await connectDatabase();
     logger.info('✅ Database connection completed');
+
+    // 预置管理员和测试员账号
+    await seedAccounts();
 
     // 初始化 MetaAPI
     logger.info('📡 Connecting to MetaAPI...');

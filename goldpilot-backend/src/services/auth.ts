@@ -30,6 +30,7 @@ export interface AuthResult {
   user?: {
     accountId: string;
     server: string;
+    role: string;
     accountInfo?: any;
   };
 }
@@ -83,6 +84,7 @@ class AuthService {
         user: {
           accountId: user.accountId,
           server: user.server,
+          role: user.role,
           accountInfo: user.accountInfo,
         },
       };
@@ -134,6 +136,7 @@ class AuthService {
         user: {
           accountId: user.accountId,
           server: user.server,
+          role: user.role,
           accountInfo: user.accountInfo,
         },
       };
@@ -143,6 +146,44 @@ class AuthService {
         success: false,
         message: '登录失败，请稍后重试',
       };
+    }
+  }
+
+  /**
+   * 简化登录（只需账号+密码，不需要server）
+   */
+  async loginSimple(accountId: string, password: string): Promise<AuthResult> {
+    try {
+      const user = await UserModel.findOne({ accountId: accountId.trim() });
+      if (!user) {
+        return { success: false, message: '账号或密码错误' };
+      }
+
+      const isValid = await bcrypt.compare(password, user.password);
+      if (!isValid) {
+        return { success: false, message: '账号或密码错误' };
+      }
+
+      const token = this.generateToken({
+        userId: user._id.toString(),
+        accountId: user.accountId,
+        server: user.server,
+      });
+
+      return {
+        success: true,
+        message: '登录成功',
+        token,
+        user: {
+          accountId: user.accountId,
+          server: user.server,
+          role: user.role,
+          accountInfo: user.accountInfo,
+        },
+      };
+    } catch (error) {
+      console.error('Simple login error:', error);
+      return { success: false, message: '登录失败，请稍后重试' };
     }
   }
 

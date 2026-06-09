@@ -36,6 +36,11 @@ class ApiService {
       (config) => {
         const startTime = Date.now();
         (config as ExtendedAxiosRequestConfig).metadata = { startTime };
+        // 注入认证 token
+        const token = localStorage.getItem('token');
+        if (token && config.headers) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
         logger.debug(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
         return config;
       },
@@ -65,9 +70,14 @@ class ApiService {
 
         // 处理不同的错误状态码
         if (error.response) {
-          // 服务器响应了错误状态码
           const status = error.response.status;
-          if (status >= 500) {
+          if (status === 401) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+          } else if (status >= 500) {
             logger.error(`Server Error (${status}):`, error.response.data);
           } else if (status >= 400) {
             logger.warn(`Client Error (${status}):`, error.response.data);

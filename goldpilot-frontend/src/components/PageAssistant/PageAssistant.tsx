@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Button, Input, Space, Tooltip, Typography, message } from 'antd';
 import { CloseOutlined, HolderOutlined, MessageOutlined, RobotOutlined, SendOutlined } from '@ant-design/icons';
 import { aiService, type PageAssistantMessage } from '@/services/ai';
+import { trackAIQuestion } from '@/services/actionTracker';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -89,6 +90,7 @@ export function PageAssistant({ pageTitle, context, quickQuestions = [] }: PageA
     const question = String(questionInput ?? input).trim();
     if (!question || loading) return;
 
+    trackAIQuestion(question, pageTitle);
     pendingQuestionRef.current = question;
     const nextMessages: PageAssistantMessage[] = [
       ...messages,

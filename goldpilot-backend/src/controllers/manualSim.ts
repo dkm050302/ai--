@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { ManualSimAccountModel } from '../models';
+import { UserModel } from '../models/User';
 import type {
   ManualSimAccountDocument,
   ManualSimOrder,
@@ -10,6 +11,7 @@ import type {
 } from '../models/ManualSimAccount';
 import { marketDataService } from '../services/marketData';
 import { logger } from '../utils/logger';
+import { logAction } from '../services/actionLogger';
 
 const INITIAL_BALANCE = 1_000_000;
 const SYMBOL = 'XAU/USD';
@@ -19,6 +21,17 @@ const MAX_TRADE_LOG = 200;
 
 function getUserAccountId(req: Request): string | null {
   return req.user?.accountId || null;
+}
+
+async function logTradeAction(req: Request, category: 'trade_open' | 'trade_close' | 'trade_cancel' | 'trade_reset', action: string, detail?: any): Promise<void> {
+  const accountId = getUserAccountId(req);
+  if (!accountId) return;
+  try {
+    const user = await UserModel.findById(req.user!.userId);
+    if (user) {
+      await logAction({ accountId, role: user.role, category, action, detail, page: '/manual-sim' });
+    }
+  } catch { /* never block */ }
 }
 
 function createId(prefix: string): string {
@@ -395,6 +408,7 @@ export async function placeManualSimOrder(req: Request, res: Response): Promise<
 
     markToMarket(account, quote.price);
     await account.save();
+    await logTradeAction(req, 'trade_open', type === 'market' ? 'market_order' : 'pending_order', { type, side, lots, targetPrice });
     res.json({ success: true, data: { account, quote } });
   } catch (error) {
     logger.error('[ManualSim] 下单失败:', error);
@@ -424,7 +438,7 @@ export async function closeManualSimPosition(req: Request, res: Response): Promi
     closePositionAt(account, position, quote.price, '手动平仓');
     markToMarket(account, quote.price);
     await account.save();
-
+    await logTradeAction(req, 'trade_close', 'close_position', { positionId, pnl: calculatePnl(position.side, position.entryPrice, quote.price, position.lots) });
     res.json({ success: true, data: { account, quote } });
   } catch (error) {
     logger.error('[ManualSim] 平仓失败:', error);
@@ -460,7 +474,7 @@ export async function cancelManualSimOrder(req: Request, res: Response): Promise
     });
     markToMarket(account, quote.price);
     await account.save();
-
+    await logTradeAction(req, 'trade_cancel', 'cancel_order', { orderId });
     res.json({ success: true, data: { account, quote } });
   } catch (error) {
     logger.error('[ManualSim] 取消预下单失败:', error);
@@ -494,6 +508,7 @@ export async function resetManualSimAccount(req: Request, res: Response): Promis
 
     await ManualSimAccountModel.deleteOne({ userAccountId });
     const result = await loadAccount(userAccountId);
+    await logTradeAction(req, 'trade_reset', 'reset_account');
     res.json({ success: true, data: result });
   } catch (error) {
     logger.error('[ManualSim] 重置模拟账户失败:', error);

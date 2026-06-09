@@ -1318,7 +1318,7 @@ export function Home() {
     <div className="workspace-page">
       <PageHeader
         eyebrow="Trading Desk"
-        title="客户决策辅助"
+        title="大数据智能决策"
         description={isWeekendMarketClosed ? '周末休市，保留复盘、事件准备和风险检查' : '当前建议、风险、关键事件和交易计划'}
         meta={(
           <Space size={8}>

@@ -5,8 +5,14 @@ import { AIAccount } from '@/pages/AIAccount/AIAccount';
 import { DataSourceSettingsPage } from '@/pages/DataSourceSettings';
 import { ManualSimAccountPage } from '@/pages/ManualSimAccount';
 import { ResearchCenter } from '@/pages/ResearchCenter';
+import { LoginPage } from '@/pages/Login/LoginPage';
+import { AdminPage } from '@/pages/Admin/AdminPage';
 
 export const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <LoginPage />,
+  },
   {
     path: '/',
     element: <MainLayout />,
@@ -34,6 +40,10 @@ export const router = createBrowserRouter([
       {
         path: 'research-center',
         element: <ResearchCenter />,
+      },
+      {
+        path: 'admin',
+        element: <AdminPage />,
       },
     ],
   },

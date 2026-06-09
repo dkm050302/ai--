@@ -11,6 +11,7 @@ import {
   UndoOutlined,
 } from '@ant-design/icons';
 import { PageHeader } from '@/components/PageHeader';
+import { trackAction } from '@/services/actionTracker';
 import {
   manualSimApi,
   type ManualSimAccount,
@@ -135,6 +136,7 @@ export function ManualSimAccountPage() {
       });
       applyPayload(result);
       message.success(orderType === 'market' ? '市价单已成交' : '预下单已创建');
+      trackAction('trade_open', 'place_order', { type: orderType, side, lots });
     } catch (error) {
       message.error(error instanceof Error ? error.message : '下单失败');
     } finally {
@@ -148,6 +150,7 @@ export function ManualSimAccountPage() {
       const result = await manualSimApi.closePosition(position.positionId);
       applyPayload(result);
       message.success('持仓已平仓');
+      trackAction('trade_close', 'close_position', { positionId: position.positionId });
     } catch (error) {
       message.error(error instanceof Error ? error.message : '平仓失败');
     } finally {
@@ -161,6 +164,7 @@ export function ManualSimAccountPage() {
       const result = await manualSimApi.cancelOrder(order.orderId);
       applyPayload(result);
       message.success('预下单已取消');
+      trackAction('trade_cancel', 'cancel_order', { orderId: order.orderId });
     } catch (error) {
       message.error(error instanceof Error ? error.message : '取消失败');
     } finally {

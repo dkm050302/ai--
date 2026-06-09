@@ -75,6 +75,8 @@ import {
   getTwelveDataQuota,
 } from '../controllers/dataSource';
 import authRouter from './auth';
+import adminRouter from './admin';
+import actionLogRouter from './actionLog';
 import { updateAccount } from '../controllers/accountUpdate';
 import { optionalAuth } from '../middleware/auth';
 
@@ -82,6 +84,12 @@ const router = Router();
 
 // 认证相关路由
 router.use('/auth', authRouter);
+
+// 管理员路由
+router.use('/admin', adminRouter);
+
+// 行为记录路由
+router.use('/actions', actionLogRouter);
 
 // 价格相关路由
 router.get('/price', getPrice);

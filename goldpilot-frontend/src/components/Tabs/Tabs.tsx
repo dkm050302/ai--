@@ -18,6 +18,7 @@ const TAB_LABELS: Record<string, string> = {
   '/manual-sim': '模拟账户',
   '/datasource-settings': '数据源',
   '/research-center': '量化策略',
+  '/admin': '测试管理',
 };
 
 export function Tabs() {

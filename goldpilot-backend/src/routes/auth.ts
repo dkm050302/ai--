@@ -105,6 +105,41 @@ router.post('/login', async (req, res) => {
 });
 
 /**
+ * POST /api/auth/login-simple
+ * 简化登录（只需账号+密码）
+ */
+router.post('/login-simple', async (req, res) => {
+  try {
+    const { accountId, password } = req.body;
+
+    if (!accountId || !password) {
+      return res.status(400).json({
+        success: false,
+        message: '请填写账号和密码',
+      });
+    }
+
+    const result = await authService.loginSimple(
+      accountId.trim(),
+      password,
+    );
+
+    if (result.success) {
+      logger.info(`User logged in (simple): ${accountId}`);
+      return res.json(result);
+    } else {
+      return res.status(401).json(result);
+    }
+  } catch (error) {
+    logger.error('Simple login endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      message: '服务器错误，请稍后重试',
+    });
+  }
+});
+
+/**
  * GET /api/auth/me
  * 获取当前用户信息
  */
@@ -132,6 +167,7 @@ router.get('/me', authMiddleware, async (req, res) => {
       data: {
         accountId: user.accountId,
         server: user.server,
+        role: user.role,
         accountInfo: user.accountInfo,
       },
     });

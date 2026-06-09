@@ -21,6 +21,7 @@ export interface AuthResponse {
   user?: {
     accountId: string;
     server: string;
+    role: string;
     accountInfo?: any;
   };
 }
@@ -98,6 +99,34 @@ class AuthService {
       }
     } catch (error) {
       console.error('Register error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 简化登录（只需账号+密码）
+   */
+  async loginSimple(accountId: string, password: string): Promise<AuthResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login-simple`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, password }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        this.token = result.token;
+        this.user = result.user;
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        return result;
+      } else {
+        throw new Error(result.message || '登录失败');
+      }
+    } catch (error) {
+      console.error('Simple login error:', error);
       throw error;
     }
   }
