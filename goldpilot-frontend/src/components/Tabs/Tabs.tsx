@@ -1,80 +1,59 @@
-import { Tabs as AntTabs } from 'antd';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-
-interface TabItem {
-  key: string;
-  label: string;
-  closable: boolean;
-}
-
-const DEFAULT_TABS: TabItem[] = [
-  { key: '/', label: '首页', closable: false },
-];
+import { Avatar, Badge, Button, Tooltip } from 'antd';
+import { useLocation } from 'react-router-dom';
+import {
+  BellOutlined,
+  GlobalOutlined,
+  MenuFoldOutlined,
+  ReloadOutlined,
+  SettingOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
+import { authService } from '@/services/auth';
 
 const TAB_LABELS: Record<string, string> = {
-  '/': '首页',
-  '/ai-account': 'AI账号',
-  '/manual-sim': '模拟账户',
-  '/datasource-settings': '数据源',
-  '/research-center': '量化策略',
+  '/': 'AI智能分析',
+  '/ai-account': '交易机器人',
+  '/manual-sim': '券商账户',
+  '/datasource-settings': '数据中心',
+  '/research-center': '指标策略',
   '/admin': '测试管理',
 };
 
 export function Tabs() {
-  const navigate = useNavigate();
   const location = useLocation();
-  const [activeKey, setActiveKey] = useState('/');
-  const [items, setItems] = useState<TabItem[]>(DEFAULT_TABS);
-
-  // 根据路由更新tab
-  useEffect(() => {
-    const path = location.pathname;
-
-    setActiveKey(path);
-
-    setItems((currentItems) => {
-      if (currentItems.some(item => item.key === path)) {
-        return currentItems;
-      }
-
-      return [...currentItems, { key: path, label: TAB_LABELS[path] || '新页面', closable: path !== '/' }];
-    });
-  }, [location.pathname]);
-
-  const onEdit = (targetKey: string | React.MouseEvent | React.KeyboardEvent, action: 'add' | 'remove') => {
-    if (action === 'remove') {
-      const key = typeof targetKey === 'string' ? targetKey : String(targetKey);
-      const newItems = items.filter(item => item.key !== key);
-
-      // 如果删除的是当前tab，需要切换到其他tab
-      if (activeKey === key) {
-        const lastIndex = newItems.length - 1;
-        const newActiveKey = newItems[lastIndex]?.key || '/';
-        setActiveKey(newActiveKey);
-        navigate(newActiveKey);
-      }
-
-      setItems(newItems);
-    }
-  };
-
-  const onChange = (key: string) => {
-    setActiveKey(key);
-    navigate(key);
-  };
+  const user = authService.getUser();
+  const pageLabel = TAB_LABELS[location.pathname] || '工作台';
 
   return (
-    <div className="workspace-tabs">
-      <AntTabs
-        type="editable-card"
-        activeKey={activeKey}
-        items={items}
-        onChange={onChange}
-        onEdit={onEdit}
-        hideAdd
-        className="workspace-tabs-inner"
-      />
+    <div className="workspace-tabs" aria-label="顶部工具栏">
+      <div className="topbar-left">
+        <Tooltip title="折叠菜单">
+          <Button type="text" icon={<MenuFoldOutlined />} className="topbar-icon-btn" />
+        </Tooltip>
+        <Tooltip title="刷新当前页面">
+          <Button
+            type="text"
+            icon={<ReloadOutlined />}
+            className="topbar-icon-btn"
+            onClick={() => window.location.reload()}
+          />
+        </Tooltip>
+        <span className="topbar-page">{pageLabel}</span>
+      </div>
+
+      <div className="topbar-right">
+        <Avatar size={32} icon={<UserOutlined />} className="topbar-avatar" />
+        <span className="topbar-user">{user?.accountId || 'Test User'}</span>
+        <Badge count={3} size="small">
+          <Button type="text" icon={<BellOutlined />} className="topbar-icon-btn" />
+        </Badge>
+        <Tooltip title="语言与市场">
+          <Button type="text" icon={<GlobalOutlined />} className="topbar-icon-btn" />
+        </Tooltip>
+        <Tooltip title="系统设置">
+          <Button type="text" icon={<SettingOutlined />} className="topbar-icon-btn" />
+        </Tooltip>
+      </div>
     </div>
   );
 }

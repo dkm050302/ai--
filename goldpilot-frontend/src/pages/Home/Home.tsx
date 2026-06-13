@@ -1204,10 +1204,12 @@ export function Home() {
   // 实时价格更新
   useEffect(() => {
     if (isWeekendMarketClosed) {
-      const snapshot = readMarketSnapshot();
-      setMarketSnapshotAt(snapshot?.updatedAt || null);
-      setPriceData(snapshot?.priceData || null);
-      return undefined;
+      const timer = window.setTimeout(() => {
+        const snapshot = readMarketSnapshot();
+        setMarketSnapshotAt(snapshot?.updatedAt || null);
+        setPriceData(snapshot?.priceData || null);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
 
     const cleanup = createRealtimeConnection(
@@ -1317,9 +1319,9 @@ export function Home() {
   return (
     <div className="workspace-page">
       <PageHeader
-        eyebrow="Trading Desk"
-        title="大数据智能决策"
-        description={isWeekendMarketClosed ? '周末休市，保留复盘、事件准备和风险检查' : '当前建议、风险、关键事件和交易计划'}
+        eyebrow="AI Opportunity Radar"
+        title="AI 交易机会雷达"
+        description={isWeekendMarketClosed ? '周末休市，保留复盘、事件准备和风险检查' : '每小时更新市场机会、实时分析黄金波动和交易执行风险'}
         meta={(
           <Space size={8}>
             <span className={`pill ${isWeekendMarketClosed ? 'amber' : 'green'}`}>
@@ -1344,6 +1346,130 @@ export function Home() {
           </Button>
         )}
       />
+
+      <section className="ai-radar-panel" aria-label="AI交易机会雷达">
+        <div className="ai-radar-head">
+          <div>
+            <h2>AI 交易机会雷达</h2>
+            <span>每小时更新 · 重点盯盘黄金、美元指数和高影响事件</span>
+          </div>
+          <Button icon={<RobotOutlined />} onClick={handleAIAnalyze} disabled={!canRunAIAnalysis} loading={analyzing}>
+            刷新机会
+          </Button>
+        </div>
+        <div className="ai-radar-cards">
+          {[
+            {
+              symbol: 'XAUUSD',
+              price: `$${formatPriceValue(getReferencePrice(priceData, candles))}`,
+              change: priceData?.changePct ? `${priceData.changePct > 0 ? '+' : ''}${priceData.changePct.toFixed(2)}%` : '待行情',
+              signal: clientDecisionView.badge,
+              note: clientDecisionView.summary,
+            },
+            {
+              symbol: 'DXY',
+              price: '105.56',
+              change: '+0.18%',
+              signal: '美元强弱',
+              note: '美元指数用于校验黄金反向压力，等待方向确认',
+            },
+            {
+              symbol: 'US10Y',
+              price: '4.31%',
+              change: '+0.04%',
+              signal: '利率线索',
+              note: '美债收益率变化影响黄金估值和避险定价',
+            },
+            {
+              symbol: 'NEWS',
+              price: `${importantEvents?.todayData?.length || 0} 项`,
+              change: getDataMetaLabel(importantMeta, '待刷新'),
+              signal: '事件雷达',
+              note: '优先跟踪美国四星数据和三星期货相关事项',
+            },
+          ].map((item) => (
+            <article className="ai-radar-card" key={item.symbol}>
+              <div className="ai-radar-card-top">
+                <strong>{item.symbol}</strong>
+                <span>{item.signal}</span>
+              </div>
+              <div className="ai-radar-price-row">
+                <b>{item.price}</b>
+                <em className={item.change.startsWith('-') ? 'down' : ''}>{item.change}</em>
+              </div>
+              <p>{item.note}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="instant-analysis-grid" aria-label="即时分析">
+        <article className="market-selector-card">
+          <div className="market-segment-grid">
+            {['美股', '港股', '加密', '商品', '板块', '外汇'].map((label) => (
+              <button key={label} type="button">{label}</button>
+            ))}
+          </div>
+          <div className="mini-watch-list">
+            {[
+              ['Gold / USD', priceData ? `${priceData.changePct >= 0 ? '+' : ''}${priceData.changePct.toFixed(2)}%` : '--'],
+              ['重要数据', `${importantEvents?.todayData?.length || 0} 项`],
+              ['市场快讯', `${flashes.length} 条`],
+            ].map(([name, value]) => (
+              <div key={name}>
+                <span>{name}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="analysis-engine-card">
+          <div className="analysis-engine-controls">
+            <button type="button">选择标的开始分析</button>
+            <Button type="primary" icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />} onClick={handleAIAnalyze} disabled={!canRunAIAnalysis}>
+              开始分析
+            </Button>
+            <Button onClick={handleResetAnalysis}>历史记录</Button>
+          </div>
+          <div className="analysis-engine-hero">
+            <span>AI-POWERED</span>
+            <h2>AI 智能分析引擎</h2>
+            <p>多维数据驱动 · 量化级别洞察 · 实时市场脉搏</p>
+          </div>
+          <div className="analysis-feature-grid">
+            <div>多周期趋势判断</div>
+            <div>专业指标矩阵</div>
+            <div>自选驱动分析</div>
+          </div>
+        </article>
+
+        <article className="watchlist-card">
+          <div className="watchlist-head">
+            <strong>我的自选品种</strong>
+            <span>5 标的</span>
+          </div>
+          {[
+            ['XAUUSD', 'Gold/USD', formatPriceValue(getReferencePrice(priceData, candles)), '+0.00%'],
+            ['DXY', 'Dollar Index', '105.56', '+0.18%'],
+            ['US10Y', 'US 10Y Yield', '4.31', '+0.04%'],
+            ['SPY', 'S&P 500 ETF', '546.20', '+0.42%'],
+            ['QQQ', 'Nasdaq 100 ETF', '474.50', '+0.68%'],
+          ].map(([symbol, name, price, change]) => (
+            <div className="watchlist-row" key={symbol}>
+              <div>
+                <strong>{symbol}</strong>
+                <span>{name}</span>
+              </div>
+              <div>
+                <b>{price}</b>
+                <em>{change}</em>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="watchlist-add">+ 添加自选</button>
+        </article>
+      </section>
 
       <ClientDecisionBoard
         view={clientDecisionView}
