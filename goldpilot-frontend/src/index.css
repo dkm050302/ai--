@@ -649,6 +649,450 @@ body {
   color: #94a3b8;
 }
 
+.analysis-brief {
+  min-height: 420px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 26px 30px;
+  border: 1px solid #d9e8f5;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 255, 0.96)),
+    #ffffff;
+  box-shadow: inset 4px 0 0 var(--blue);
+}
+
+.analysis-brief-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.analysis-brief-head span {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #eaf8ff;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.analysis-brief h2 {
+  margin: 2px 0 0;
+  color: #111827;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.analysis-brief h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.analysis-brief-body {
+  display: grid;
+  gap: 13px;
+  margin-top: 4px;
+}
+
+.analysis-brief-body p {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.78;
+}
+
+.analysis-brief-bullets {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #e5edf6;
+}
+
+.analysis-brief-bullets div {
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: #f4f9ff;
+  color: #31506d;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.gold-analysis-grid,
+.strategy-library-hero,
+.ai-trader-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.65fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.gold-analysis-card {
+  min-height: 540px;
+  background:
+    linear-gradient(135deg, rgba(11, 18, 32, 0.96), rgba(15, 23, 42, 0.88)),
+    #0f172a;
+  color: #e5eef7;
+  border-color: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+
+.gold-analysis-card .analysis-engine-controls {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.gold-analysis-card .analysis-brief {
+  min-height: 430px;
+  border-color: rgba(214, 181, 91, 0.36);
+  background:
+    linear-gradient(180deg, rgba(255, 251, 235, 0.96), rgba(255, 255, 255, 0.98)),
+    #ffffff;
+  box-shadow: inset 4px 0 0 #d6b55b;
+}
+
+.gold-status-card,
+.ai-stream-card {
+  background: #ffffff;
+  border: 1px solid #dbe6f2;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+}
+
+.gold-status-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.gold-status-head strong {
+  color: #0f172a;
+  font-size: 16px;
+}
+
+.gold-status-head span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gold-status-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gold-status-metrics div {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e5edf6;
+}
+
+.gold-status-metrics span,
+.strategy-library-total span,
+.ai-trader-capital span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.gold-status-metrics strong {
+  display: block;
+  margin-top: 6px;
+  color: #0f172a;
+  font-size: 20px;
+}
+
+.strategy-library-card,
+.ai-trader-desk {
+  border: 1px solid #dbe6f2;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.strategy-library-hero,
+.ai-trader-hero {
+  padding: 18px;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.97), rgba(17, 24, 39, 0.9)),
+    #111827;
+  color: #e5eef7;
+  margin-bottom: 14px;
+}
+
+.strategy-library-hero span,
+.ai-trader-hero span {
+  color: #d6b55b;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.strategy-library-hero h2,
+.ai-trader-hero h2 {
+  margin: 8px 0;
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 1.28;
+}
+
+.strategy-library-hero p,
+.ai-trader-hero p {
+  margin: 0;
+  color: #b6c3d1;
+  line-height: 1.7;
+}
+
+.strategy-library-total,
+.ai-trader-capital {
+  display: grid;
+  align-content: center;
+  justify-items: end;
+  gap: 4px;
+  min-height: 112px;
+}
+
+.strategy-library-total strong,
+.ai-trader-capital strong {
+  color: #f8d26a;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.strategy-style-strip,
+.strategy-runtime-strip,
+.ai-trader-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.strategy-style-tile,
+.strategy-runtime-strip > div,
+.ai-trader-kpis > div {
+  padding: 12px;
+  border: 1px solid #e5edf6;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.strategy-style-tile strong,
+.strategy-runtime-strip strong,
+.ai-trader-kpis strong {
+  display: block;
+  margin: 8px 0 2px;
+  color: #0f172a;
+  font-size: 24px;
+}
+
+.strategy-style-tile span,
+.strategy-runtime-strip span,
+.strategy-runtime-strip em,
+.ai-trader-kpis span,
+.ai-trader-kpis em {
+  color: #64748b;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.strategy-runtime-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.strategy-runtime-strip .green,
+.strategy-runtime-grid .green {
+  color: var(--green);
+}
+
+.strategy-runtime-strip .red,
+.strategy-runtime-grid .red {
+  color: var(--red);
+}
+
+.strategy-library-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 680px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.strategy-library-item,
+.ai-trader-strategy-row {
+  border: 1px solid #e5edf6;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.strategy-library-item {
+  padding: 12px;
+}
+
+.strategy-library-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.strategy-library-item-head strong {
+  display: block;
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.strategy-library-item-head span {
+  display: block;
+  margin-top: 6px;
+  color: #53657a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.strategy-library-money {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.strategy-library-money span,
+.strategy-library-money em {
+  color: #64748b;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.strategy-library-money strong {
+  color: #0f172a;
+}
+
+.strategy-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.strategy-runtime-grid > div {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid #e5edf6;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.strategy-runtime-grid span,
+.strategy-runtime-footer span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.strategy-runtime-grid strong {
+  display: block;
+  margin-top: 5px;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.strategy-runtime-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.strategy-runtime-footer span {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #e5edf6;
+  font-weight: 700;
+}
+
+.strategy-library-tags,
+.ai-trader-row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.strategy-library-tags span {
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: #edf5ff;
+  color: #31506d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ai-trader-desk {
+  padding: 16px;
+}
+
+.ai-trader-hero {
+  margin-bottom: 12px;
+}
+
+.ai-trader-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ai-trader-strategy-list {
+  display: grid;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.ai-trader-strategy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 112px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.ai-trader-strategy-row strong {
+  color: #0f172a;
+}
+
+.ai-trader-strategy-row span {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.ai-trader-row-money {
+  justify-self: end;
+  color: #0f766e;
+}
+
 .analysis-feature-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3610,6 +4054,11 @@ body {
 }
 
 @media (max-width: 900px) {
+  .app-main {
+    width: calc(100vw - 76px);
+    min-width: 0;
+  }
+
   .workspace-tabs {
     min-height: auto;
     align-items: flex-start;
@@ -3618,8 +4067,17 @@ body {
   }
 
   .topbar-right {
-    width: 100%;
-    justify-content: flex-start;
+    display: none;
+  }
+
+  .workspace-header-side,
+  .workspace-header-side .ant-space,
+  .workspace-header-side .ant-space-item {
+    max-width: 100%;
+  }
+
+  .workspace-header-side .ant-space {
+    display: flex;
     flex-wrap: wrap;
   }
 
@@ -3639,9 +4097,18 @@ body {
   .ai-radar-cards,
   .robot-template-grid,
   .robot-card-grid,
+  .gold-analysis-grid,
+  .strategy-library-hero,
+  .ai-trader-hero,
   .analysis-feature-grid,
   .market-segment-grid {
     grid-template-columns: 1fr;
+  }
+
+  .strategy-library-total,
+  .ai-trader-capital {
+    min-height: auto;
+    justify-items: start;
   }
 
   .quote-strip,
@@ -3686,10 +4153,22 @@ body {
   .quant-intervention-actions,
   .long-screen-kpis,
   .long-screen-controls,
+  .strategy-library-grid,
+  .strategy-style-strip,
+  .strategy-runtime-strip,
+  .ai-trader-kpis,
   .strategy-result-grid,
   .strategy-param-grid,
   .strategy-refine-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ai-trader-strategy-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-trader-row-money {
+    justify-self: start;
   }
 
   .strategy-settings-head {

@@ -7,7 +7,7 @@ import { authService } from '@/services/auth';
 import { trackPageVisit, flushActions } from '@/services/actionTracker';
 
 const PAGE_LABELS: Record<string, string> = {
-  '/': '交易看板',
+  '/': 'AI智能分析',
   '/ai-account': 'AI账号',
   '/manual-sim': '手动模拟账户',
   '/datasource-settings': '数据源设置',
@@ -17,14 +17,14 @@ const PAGE_LABELS: Record<string, string> = {
 
 const PAGE_QUESTIONS: Record<string, string[]> = {
   '/': [
-    '当前交易看板最需要注意什么？',
-    '今日和本周重要事件怎么看？',
-    '周末休市时这页该看什么？',
+    '当前黄金AI分析结论是什么？',
+    '风险和仓位建议怎么看？',
+    '这份分析多久自动刷新？',
   ],
   '/ai-account': [
-    'AI账号配置状态怎么看？',
-    '为什么AI请求会超时？',
-    '这页下一步该配置什么？',
+    'AI交易员当前分配了多少资金？',
+    '哪些策略正在运行？',
+    '为什么有些策略被观察或暂停？',
   ],
   '/manual-sim': [
     '当前模拟账户风险在哪里？',
@@ -37,9 +37,9 @@ const PAGE_QUESTIONS: Record<string, string[]> = {
     '真实数据不可用时页面会怎样？',
   ],
   '/research-center': [
-    '这页当前最需要注意什么？',
-    '剔除周末K线后数据质量怎么样？',
-    '下一步参数应该怎么小步调整？',
+    '策略库按哪些标签筛选？',
+    '100万模拟资金怎么分配？',
+    '哪些黄金策略适合当前市场？',
   ],
   '/admin': [
     '测试员们的整体活跃度如何？',

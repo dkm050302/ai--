@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Alert, Button, Card, Space, Tag, message } from 'antd';
-import { RobotOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Alert, Button, Space, Tag, message } from 'antd';
+import { CopyOutlined, RobotOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
 import { PageHeader } from '@/components/PageHeader';
 import { PriceCard } from '@/components/PriceCard';
 import { Chart } from '@/components/Chart';
@@ -9,9 +9,6 @@ import { DecisionCard } from '@/components/DecisionCard';
 import { ProbCard } from '@/components/ProbCard';
 import { RiskCard } from '@/components/RiskCard';
 import { SupportCard } from '@/components/SupportCard';
-import { MiniCard } from '@/components/MiniCard';
-import { ActionPanel } from '@/components/ActionPanel';
-import { EventList } from '@/components/EventList';
 import { createDefaultDecisionData } from '@/types/decision';
 import type { PriceData, Candle, Signal, DailyStats, Event, Flash } from '@/types';
 import {
@@ -24,7 +21,6 @@ import { detectSignals } from '@/utils/signalCalculator';
 import type { Period } from '@/services/marketData';
 import {
   dataApi,
-  type EventDataMeta,
   type ImportantCalendarItem,
   type ImportantEventsPayload,
   type MarketFlash,
@@ -32,12 +28,54 @@ import {
 import { aiService, type AIAnalysisResult } from '@/services/ai';
 
 const EVENT_DATA_REFRESH_MS = 60 * 60 * 1000;
+const AI_ANALYSIS_REFRESH_MS = 60 * 60 * 1000;
 const MARKET_SNAPSHOT_KEY = 'goldpilot:last-market-snapshot:v1';
+const AI_ANALYSIS_CACHE_KEY = 'goldpilot:ai-analysis:xauusd:v1';
 
 interface MarketSnapshot {
   updatedAt?: string;
   priceData?: PriceData;
   candlesByPeriod?: Partial<Record<Period, Candle[]>>;
+}
+
+interface CachedAIAnalysis {
+  savedAt: string;
+  result: AIAnalysisResult;
+}
+
+function readCachedAIAnalysis(): CachedAIAnalysis | null {
+  try {
+    const raw = window.localStorage.getItem(AI_ANALYSIS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedAIAnalysis;
+    if (!parsed?.result) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedAIAnalysis(result: AIAnalysisResult): string | null {
+  try {
+    const savedAt = new Date().toISOString();
+    window.localStorage.setItem(AI_ANALYSIS_CACHE_KEY, JSON.stringify({ savedAt, result }));
+    return savedAt;
+  } catch {
+    return null;
+  }
+}
+
+function formatAnalysisSavedAt(value: string | null): string {
+  if (!value) return '等待首次分析';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '等待首次分析';
+  return `上次AI分析 ${date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })}`;
 }
 
 function isWeekendMarketDate(date: Date = new Date()): boolean {
@@ -152,20 +190,6 @@ function formatRefreshLabel(intervalMs: number | null): string {
   return `${minutes}分钟刷新`;
 }
 
-function getDataMetaLabel(meta: EventDataMeta | null, fallback: string): string {
-  if (!meta) return fallback;
-  if (meta.source === 'live') return '实时';
-  if (meta.source === 'cache') return '缓存';
-  return '模拟';
-}
-
-function getDataMetaColor(meta: EventDataMeta | null, fallback: 'blue' | 'amber' | 'red' | 'green') {
-  if (!meta) return fallback;
-  if (meta.source === 'live') return 'green';
-  if (meta.source === 'cache') return 'amber';
-  return 'red';
-}
-
 function formatLocalDateParam(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -194,6 +218,54 @@ function formatStreamResult(result: AIAnalysisResult): string {
     `风险依据：${result.risk.reason}`,
     ...result.actions.map((action) => `${action.title}：${action.text}`),
   ].join('\n');
+}
+
+interface TradingBattleBrief {
+  title: string;
+  subtitle: string;
+  paragraphs: string[];
+  bullets: string[];
+}
+
+function getDirectionText(result: AIAnalysisResult): string {
+  if (result.probability.downProb - result.probability.upProb >= 12) return '空头';
+  if (result.probability.upProb - result.probability.downProb >= 12) return '多头';
+  return '震荡等待';
+}
+
+function buildTradingBattleBrief(
+  result: AIAnalysisResult,
+  input: {
+    priceText: string;
+    eventText: string;
+    flashCount: number;
+  }
+): TradingBattleBrief {
+  const directionText = getDirectionText(result);
+  const actionText = result.actions.map((action) => `${action.title}：${action.text}`).join('；');
+  const riskName = result.risk.riskLevel === 'high' ? '高风险' : result.risk.riskLevel === 'medium' ? '中风险' : '低风险';
+  const title = directionText === '空头'
+    ? '领跑黄金复盘 | 空头节奏确认'
+    : directionText === '多头'
+      ? '领跑黄金复盘 | 多头机会确认'
+      : '领跑黄金复盘 | 等待节奏确认';
+
+  return {
+    title,
+    subtitle: result.decision.headline,
+    paragraphs: [
+      `${result.decision.summary} 当前黄金参考价 ${input.priceText}，系统结合 K 线、事件、快讯和近期信号完成本轮复盘。`,
+      `本轮判断的核心不是追逐短线情绪，而是先识别市场节奏。AI 给出的方向为「${directionText}」，上涨概率 ${result.probability.upProb}%，下跌概率 ${result.probability.downProb}%。${result.probability.reason}`,
+      `事件层面，系统重点跟踪 ${input.eventText}，同时纳入 ${input.flashCount} 条市场快讯校验情绪变化。行情真正发力前，先看结构；结构确认之后，再看执行。`,
+      `风险控制上，当前评估为「${riskName}」，风险值 ${result.risk.risk}，建议仓位 ${result.risk.positionAdvice}%，止损参考 ${result.risk.stopLoss}%。${result.risk.reason}`,
+      `${actionText || result.decision.aiReason} 入场只是开始，持有和退出才是盈利关键；确认方向后严格按计划执行，不被短线噪音洗出局。`,
+    ],
+    bullets: [
+      result.decision.eventCountdown,
+      result.decision.aiReason,
+      `执行纪律：按信号、按仓位、按止损，不临盘追涨杀跌。`,
+    ],
+  };
 }
 
 function createClosedMarketStats(): DailyStats {
@@ -497,104 +569,9 @@ function buildImportantEventRows(payload: ImportantEventsPayload | null): Event[
     }));
 }
 
-function hasImportantRows(payload: ImportantEventsPayload | null, meta: EventDataMeta | null): boolean {
-  if (!payload || meta?.source === 'mock') return false;
-  return [
-    payload.todayData,
-    payload.todayEvents,
-    payload.weekData,
-    payload.weekEvents,
-  ].some((items) => items.length > 0);
-}
-
 function formatEventDate(date: string): string {
   const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[2]}/${match[3]}` : date;
-}
-
-function formatFieldValue(value?: string): string {
-  return value && value.trim() ? value : '--';
-}
-
-function getImportanceBadge(item: ImportantCalendarItem): string {
-  return item.importanceLabel || '★'.repeat(Math.max(1, Math.min(5, item.importance)));
-}
-
-interface ImportantCalendarCardProps {
-  title: string;
-  items: ImportantCalendarItem[];
-  meta: EventDataMeta | null;
-  badge: string;
-  showValues?: boolean;
-  emptyText: string;
-  sourceLinks?: ImportantEventsPayload['sourceLinks'];
-}
-
-function ImportantCalendarCard({
-  title,
-  items,
-  meta,
-  badge,
-  showValues = false,
-  emptyText,
-  sourceLinks = [],
-}: ImportantCalendarCardProps) {
-  const sourcePill = meta?.source === 'mock' ? '待核对' : getDataMetaLabel(meta, badge);
-  const pillColor = getDataMetaColor(meta, 'amber');
-
-  return (
-    <article className={`card important-calendar-card ${items.length === 0 ? 'is-empty' : ''}`}>
-      <div className="card-title">
-        <strong>{title}</strong>
-        <span className={`pill ${pillColor}`}>{sourcePill}</span>
-      </div>
-
-      {items.length > 0 ? (
-        <div className="important-calendar-list">
-          {items.slice(0, 4).map((item) => (
-            <a
-              key={`${item.date}-${item.time}-${item.event}`}
-              href={item.sourceUrl || sourceLinks[0]?.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="important-calendar-row source-row-link"
-              title="打开源信息"
-            >
-              <div className="important-calendar-time">
-                <span>{formatEventDate(item.date)}</span>
-                <strong>{item.time}</strong>
-              </div>
-              <div className="important-calendar-body">
-                <div className="important-calendar-head">
-                  <span className="importance-stars">{getImportanceBadge(item)}</span>
-                  <span>{item.event}</span>
-                </div>
-                {showValues && (
-                  <div className="important-calendar-values">
-                    <span>前值 {formatFieldValue(item.previous)}</span>
-                    <span>预测 {formatFieldValue(item.forecast)}</span>
-                    {item.actual && <span>实际 {formatFieldValue(item.actual)}</span>}
-                  </div>
-                )}
-                <div className="mini-source">{item.source || '源信息'}</div>
-              </div>
-            </a>
-          ))}
-        </div>
-      ) : (
-        <div className="important-calendar-empty">
-          <span>{emptyText}</span>
-          <div className="important-source-links">
-            {sourceLinks.slice(0, 2).map((source) => (
-              <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
-                {source.name}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-    </article>
-  );
 }
 
 interface WeekendMarketPanelProps {
@@ -621,62 +598,13 @@ function WeekendMarketPanel({ snapshotText, nextTradingDayText }: WeekendMarketP
       </div>
       <div className="weekend-market-note">
         周六、周日不读取实时行情和K线API，不生成新信号、不计算实时仓位建议。
-        页面只保留最后可用行情参考、下周重要事件和客户服务提醒。
+        页面只保留最后可用行情参考、下个交易日准备和风险复盘。
       </div>
       <div className="weekend-market-snapshot">{snapshotText}</div>
     </article>
   );
 }
 
-interface WeekendBriefCardProps {
-  snapshotText: string;
-  nextTradingDayText: string;
-  sourceLinks?: ImportantEventsPayload['sourceLinks'];
-}
-
-function WeekendBriefCard({
-  snapshotText,
-  nextTradingDayText,
-  sourceLinks = [],
-}: WeekendBriefCardProps) {
-  return (
-    <article className="card weekend-brief-card">
-      <div className="card-title">
-        <strong>周末整理</strong>
-        <span className="pill amber">休市</span>
-      </div>
-
-      <div className="weekend-brief-stack">
-        <div className="weekend-brief-primary">
-          <span className="sub">今日处理</span>
-          <strong>不读取今日日历</strong>
-          <p>过滤周六、周日的实时行情和今日事件，只保留复盘与下周准备。</p>
-        </div>
-
-        <div className="weekend-brief-metrics">
-          <div>
-            <span className="sub">下个交易日</span>
-            <strong>{nextTradingDayText}</strong>
-          </div>
-          <div title={snapshotText}>
-            <span className="sub">行情缓存</span>
-            <strong>{snapshotText}</strong>
-          </div>
-        </div>
-
-        {sourceLinks.length > 0 && (
-          <div className="weekend-brief-links">
-            {sourceLinks.slice(0, 2).map((source) => (
-              <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
-                {source.name}
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-    </article>
-  );
-}
 
 interface ClientDecisionBoardProps {
   view: ClientDecisionView;
@@ -723,7 +651,7 @@ function ClientDecisionBoard({
         <div className="client-kpi">
           <span>建议仓位</span>
           <strong>{view.positionText}</strong>
-          <em>客户展示口径</em>
+          <em>AI风控口径</em>
         </div>
       </div>
 
@@ -756,125 +684,22 @@ function ClientDecisionBoard({
           ))}
         </div>
         <div className="client-board-actions">
-          {hasAnalysis ? (
-            <Button onClick={onReset}>重新分析</Button>
-          ) : (
-            <Button
-              type="primary"
-              icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />}
-              onClick={onAnalyze}
-              disabled={analyzing || !canAnalyze}
-            >
-              {analyzing ? 'AI分析中...' : isWeekendMarketClosed ? 'AI周末复盘' : '生成AI解释'}
-            </Button>
-          )}
+          <Tag color={hasAnalysis ? 'success' : 'processing'}>{hasAnalysis ? '已持久保存' : '自动分析中'}</Tag>
+          <Button
+            type="primary"
+            icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />}
+            onClick={onAnalyze}
+            disabled={analyzing || !canAnalyze}
+          >
+            {analyzing ? 'AI刷新中...' : isWeekendMarketClosed ? '立即复盘' : '立即刷新'}
+          </Button>
+          {hasAnalysis && <Button onClick={onReset}>清空缓存</Button>}
         </div>
       </div>
     </section>
   );
 }
 
-interface ClientEventTimelineProps {
-  importantEvents: ImportantEventsPayload | null;
-  flashes: Flash[];
-  isWeekendMarketClosed: boolean;
-}
-
-function ClientEventTimeline({ importantEvents, flashes, isWeekendMarketClosed }: ClientEventTimelineProps) {
-  const calendarRows = isWeekendMarketClosed
-    ? [...(importantEvents?.weekData || []), ...(importantEvents?.weekEvents || [])]
-    : [
-        ...(importantEvents?.todayData || []),
-        ...(importantEvents?.todayEvents || []),
-        ...(importantEvents?.weekData || []),
-        ...(importantEvents?.weekEvents || []),
-      ];
-  const rows = [
-    ...calendarRows.slice(0, 3).map((item) => ({
-      key: `${item.date}-${item.time}-${item.event}`,
-      time: `${formatEventDate(item.date)} ${item.time}`,
-      title: item.event,
-      source: item.source || '源信息',
-      sourceUrl: item.sourceUrl,
-      hot: item.importance >= 4,
-    })),
-    ...flashes.slice(0, 2).map((flash) => ({
-      key: `${flash.date}-${flash.time}-${flash.text}`,
-      time: `${flash.date ? `${formatEventDate(flash.date)} ` : ''}${flash.time}`,
-      title: flash.text,
-      source: flash.source || '市场快讯',
-      sourceUrl: flash.sourceUrl,
-      hot: flash.hot,
-    })),
-  ].slice(0, 5);
-
-  return (
-    <article className="client-side-card client-event-timeline">
-      <div className="client-panel-head">
-        <strong>{isWeekendMarketClosed ? '下周关键时间线' : '关键时间线'}</strong>
-        <span>可追源</span>
-      </div>
-      {rows.length > 0 ? (
-        <div className="client-timeline-list">
-          {rows.map((row) => {
-            const rowContent = (
-              <>
-                <span>{row.time}</span>
-                <strong>{row.title}</strong>
-                <em>{row.source}</em>
-              </>
-            );
-
-            if (!row.sourceUrl) {
-              return (
-                <div key={row.key} className={`client-timeline-row ${row.hot ? 'hot' : ''}`}>
-                  {rowContent}
-                </div>
-              );
-            }
-
-            return (
-              <a
-                key={row.key}
-                href={row.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`client-timeline-row ${row.hot ? 'hot' : ''}`}
-              >
-                {rowContent}
-              </a>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="client-empty-note">暂无可追源的重要事件或快讯</div>
-      )}
-    </article>
-  );
-}
-
-interface ClientRiskChecklistProps {
-  items: ClientDecisionPoint[];
-}
-
-function ClientRiskChecklist({ items }: ClientRiskChecklistProps) {
-  return (
-    <article className="client-side-card client-risk-checklist">
-      <div className="client-panel-head">
-        <strong>客户沟通要点</strong>
-        <span>服务动作</span>
-      </div>
-      <div className="client-check-list">
-        {items.slice(0, 3).map((item) => (
-          <div key={item.label} className={`client-check-item tone-${item.tone || 'neutral'}`}>
-            <span>{item.label}</span>
-            <p>{item.value}</p>
-          </div>
-        ))}
-      </div>
-    </article>
-  );
-}
 
 export function Home() {
   const [period, setPeriod] = useState<Period>(() => (isWeekendMarketDate(new Date()) ? '1d' : '1m'));
@@ -892,20 +717,13 @@ export function Home() {
   const [events, setEvents] = useState<Event[]>([]);
   const [flashes, setFlashes] = useState<Flash[]>([]);
   const [importantEvents, setImportantEvents] = useState<ImportantEventsPayload | null>(null);
-  const [importantMeta, setImportantMeta] = useState<EventDataMeta | null>(null);
-  const [newsMeta, setNewsMeta] = useState<EventDataMeta | null>(null);
-  const hasCalendarData = useMemo(
-    () => hasImportantRows(importantEvents, importantMeta),
-    [importantEvents, importantMeta]
-  );
-  const showCalendarDetail = hasCalendarData && !isWeekendMarketClosed;
 
   // AI分析相关状态
   const [analyzing, setAnalyzing] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
-  const [showAnalysisButton, setShowAnalysisButton] = useState(true);
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(() => readCachedAIAnalysis()?.result || null);
+  const [analysisSavedAt, setAnalysisSavedAt] = useState<string | null>(() => readCachedAIAnalysis()?.savedAt || null);
   const [streamText, setStreamText] = useState('');
-  const [streamStatus, setStreamStatus] = useState('等待发起分析');
+  const [streamStatus, setStreamStatus] = useState(aiAnalysis ? '已读取本地缓存分析，等待下次自动刷新' : '等待自动发起分析');
   const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
   const [streamElapsedSeconds, setStreamElapsedSeconds] = useState(0);
   const [lastStreamResult, setLastStreamResult] = useState<AIAnalysisResult | null>(null);
@@ -1017,24 +835,6 @@ export function Home() {
     ? `${streamElapsedSeconds}s / ${streamSpeed} 字/秒`
     : `${streamElapsedSeconds}s`;
 
-  // AI建议（优先使用AI分析结果）
-  const aiActions = useMemo(() => {
-    if (aiAnalysis) {
-      return aiAnalysis.actions;
-    }
-    if (isWeekendMarketClosed) {
-      return [
-        { title: '客户提醒', text: '周末黄金休市，不提示追单和新开仓，只提醒下周关键数据窗口。' },
-        { title: '交易动作', text: '暂停新信号执行，复盘本周信号质量，整理周一开盘后的支撑压力观察位。' },
-        { title: '风险控制', text: '检查隔周持仓、止损和保证金余量，防范周一跳空风险。' },
-      ];
-    }
-    return [
-      { title: '客户提醒', text: '黄金短线偏多，但临近美国事件窗口，建议客户避免追涨满仓。' },
-      { title: '交易动作', text: '若回踩第一支撑附近企稳，可关注小仓跟随机会。' },
-      { title: '风险控制', text: '事件公布前把单笔风险控制在账户净值的1.2%以内。' },
-    ];
-  }, [aiAnalysis, isWeekendMarketClosed]);
   const canRunAIAnalysis = !analyzing && (!isWeekendMarketClosed || candles.length > 0 || Boolean(priceData));
   const clientDecisionView = useMemo(
     () => buildClientDecisionView({
@@ -1062,6 +862,34 @@ export function Home() {
       marketSnapshotText,
     ]
   );
+  const battleBrief = useMemo(() => {
+    if (!aiAnalysis) return null;
+    const eventCount = importantEvents?.todayData?.length || importantEvents?.weekData?.length || events.length;
+    return buildTradingBattleBrief(aiAnalysis, {
+      priceText: `$${formatPriceValue(getReferencePrice(priceData, candles))}`,
+      eventText: eventCount > 0 ? `${eventCount} 个重要事件窗口` : '暂无高优先级事件窗口',
+      flashCount: flashes.length,
+    });
+  }, [aiAnalysis, candles, events.length, flashes.length, importantEvents, priceData]);
+
+  const handleCopyBattleBrief = async () => {
+    if (!battleBrief) return;
+    const content = [
+      battleBrief.title,
+      battleBrief.subtitle,
+      '',
+      ...battleBrief.paragraphs,
+      '',
+      ...battleBrief.bullets.map((bullet) => `- ${bullet}`),
+    ].join('\n\n');
+
+    try {
+      await navigator.clipboard.writeText(content);
+      message.success('战报已复制');
+    } catch {
+      message.warning('复制失败，请手动选中文案复制');
+    }
+  };
 
   // 获取K线数据
   useEffect(() => {
@@ -1161,7 +989,6 @@ export function Home() {
           setImportantEvents(null);
           setEvents([]);
         }
-        setImportantMeta(nextImportantMeta);
 
         // 转换市场快讯数据格式
         if (newsRes?.success && newsRes.data.length > 0 && nextNewsMeta?.source !== 'mock') {
@@ -1179,7 +1006,6 @@ export function Home() {
         } else {
           setFlashes([]);
         }
-        setNewsMeta(nextNewsMeta);
 
         console.log('✅ [事件数据] 加载成功');
       } catch (error) {
@@ -1187,8 +1013,6 @@ export function Home() {
         setEvents([]);
         setImportantEvents(null);
         setFlashes([]);
-        setImportantMeta(null);
-        setNewsMeta(null);
       }
     };
 
@@ -1241,10 +1065,12 @@ export function Home() {
   /**
    * 执行AI分析
    */
-  const handleAIAnalyze = async () => {
+  const handleAIAnalyze = useCallback(async (options: { silent?: boolean } = {}) => {
     try {
       if (isWeekendMarketClosed && candles.length === 0 && !priceData) {
-        message.warning('周末休市且暂无本地行情缓存，暂不能生成复盘分析');
+        if (!options.silent) {
+          message.warning('周末休市且暂无本地行情缓存，暂不能生成复盘分析');
+        }
         return;
       }
 
@@ -1254,7 +1080,9 @@ export function Home() {
       setStreamStatus('准备行情、事件和信号数据...');
       setStreamStartedAt(Date.now());
       setStreamElapsedSeconds(0);
-      message.loading({ content: 'AI正在流式分析市场...', key: 'ai-analysis', duration: 0 });
+      if (!options.silent) {
+        message.loading({ content: 'AI正在流式分析黄金市场...', key: 'ai-analysis', duration: 0 });
+      }
 
       const result = await aiService.analyzeMarketStream(
         {
@@ -1277,30 +1105,35 @@ export function Home() {
 
       setAiAnalysis(result);
       setLastStreamResult(result);
-      setShowAnalysisButton(false);
+      setAnalysisSavedAt(saveCachedAIAnalysis(result));
 
-      message.success({
-        content: result.paperTrading ? 'AI分析完成，四个模拟账号已自动评估！' : 'AI分析完成！',
-        key: 'ai-analysis',
-        duration: 2,
-      });
+      if (!options.silent) {
+        message.success({
+          content: result.paperTrading ? 'AI分析完成，四个模拟账号已自动评估！' : 'AI分析完成！',
+          key: 'ai-analysis',
+          duration: 2,
+        });
+      }
     } catch (error) {
       console.error('AI分析失败:', error);
       const errorMessage = error instanceof Error ? error.message : 'AI分析失败';
+      setStreamStatus(errorMessage);
 
-      if (errorMessage.includes('未配置AI服务')) {
-        message.error({
-          content: '请先在"AI账号"页面配置DeepSeek API Key',
-          key: 'ai-analysis',
-          duration: 4,
-        });
-      } else {
-        message.error({ content: errorMessage, key: 'ai-analysis', duration: 3 });
+      if (!options.silent) {
+        if (errorMessage.includes('未配置AI服务')) {
+          message.error({
+            content: '请先在"AI交易员"页面配置DeepSeek API Key',
+            key: 'ai-analysis',
+            duration: 4,
+          });
+        } else {
+          message.error({ content: errorMessage, key: 'ai-analysis', duration: 3 });
+        }
       }
     } finally {
       setAnalyzing(false);
     }
-  };
+  }, [candles, events, flashes, isWeekendMarketClosed, priceData, signals]);
 
   /**
    * 重置为默认数据
@@ -1308,166 +1141,129 @@ export function Home() {
   const handleResetAnalysis = () => {
     setAiAnalysis(null);
     setStreamText('');
-    setStreamStatus('等待发起分析');
+    setStreamStatus('等待自动发起分析');
     setStreamStartedAt(null);
     setStreamElapsedSeconds(0);
     setLastStreamResult(null);
-    setShowAnalysisButton(true);
+    setAnalysisSavedAt(null);
+    window.localStorage.removeItem(AI_ANALYSIS_CACHE_KEY);
     message.info('已重置为默认数据');
   };
+
+  useEffect(() => {
+    if (!canRunAIAnalysis) return undefined;
+
+    const initialTimer = aiAnalysis
+      ? null
+      : window.setTimeout(() => {
+        if (!document.hidden) {
+          handleAIAnalyze({ silent: true });
+        }
+      }, 1000);
+
+    const interval = window.setInterval(() => {
+      if (!document.hidden) {
+        handleAIAnalyze({ silent: true });
+      }
+    }, AI_ANALYSIS_REFRESH_MS);
+
+    return () => {
+      if (initialTimer) window.clearTimeout(initialTimer);
+      window.clearInterval(interval);
+    };
+  }, [aiAnalysis, canRunAIAnalysis, handleAIAnalyze]);
 
   return (
     <div className="workspace-page">
       <PageHeader
-        eyebrow="AI Opportunity Radar"
-        title="AI 交易机会雷达"
-        description={isWeekendMarketClosed ? '周末休市，保留复盘、事件准备和风险检查' : '每小时更新市场机会、实时分析黄金波动和交易执行风险'}
+        eyebrow="XAUUSD AI Analysis"
+        title="AI智能分析"
+        description={isWeekendMarketClosed ? '周末休市，保留黄金复盘、风险检查和下个交易日准备' : '仅聚焦黄金 XAUUSD，AI 报告打开即展示并每小时自动刷新'}
         meta={(
           <Space size={8}>
             <span className={`pill ${isWeekendMarketClosed ? 'amber' : 'green'}`}>
               {isWeekendMarketClosed ? '周末休市' : `行情${formatRefreshLabel(marketRefreshMs)}`}
             </span>
-            <span className="pill blue">消息1小时刷新</span>
+            <span className="pill blue">AI每小时自动刷新</span>
+            <span className="pill">{formatAnalysisSavedAt(analysisSavedAt)}</span>
             <span className="date-text">{todayText}</span>
           </Space>
         )}
-        actions={showAnalysisButton ? (
-          <Button
-            type="primary"
-            icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />}
-            onClick={handleAIAnalyze}
-            disabled={!canRunAIAnalysis}
-          >
-            {analyzing ? '分析中...' : isWeekendMarketClosed ? 'AI 周末复盘' : 'AI 智能分析'}
-          </Button>
-        ) : (
-          <Button onClick={handleResetAnalysis}>
-            重新分析
-          </Button>
+        actions={(
+          <Tag color={analyzing ? 'processing' : aiAnalysis ? 'success' : 'warning'}>
+            {analyzing ? 'AI刷新中' : aiAnalysis ? '报告已显示' : '等待自动分析'}
+          </Tag>
         )}
       />
 
-      <section className="ai-radar-panel" aria-label="AI交易机会雷达">
-        <div className="ai-radar-head">
-          <div>
-            <h2>AI 交易机会雷达</h2>
-            <span>每小时更新 · 重点盯盘黄金、美元指数和高影响事件</span>
-          </div>
-          <Button icon={<RobotOutlined />} onClick={handleAIAnalyze} disabled={!canRunAIAnalysis} loading={analyzing}>
-            刷新机会
-          </Button>
-        </div>
-        <div className="ai-radar-cards">
-          {[
-            {
-              symbol: 'XAUUSD',
-              price: `$${formatPriceValue(getReferencePrice(priceData, candles))}`,
-              change: priceData?.changePct ? `${priceData.changePct > 0 ? '+' : ''}${priceData.changePct.toFixed(2)}%` : '待行情',
-              signal: clientDecisionView.badge,
-              note: clientDecisionView.summary,
-            },
-            {
-              symbol: 'DXY',
-              price: '105.56',
-              change: '+0.18%',
-              signal: '美元强弱',
-              note: '美元指数用于校验黄金反向压力，等待方向确认',
-            },
-            {
-              symbol: 'US10Y',
-              price: '4.31%',
-              change: '+0.04%',
-              signal: '利率线索',
-              note: '美债收益率变化影响黄金估值和避险定价',
-            },
-            {
-              symbol: 'NEWS',
-              price: `${importantEvents?.todayData?.length || 0} 项`,
-              change: getDataMetaLabel(importantMeta, '待刷新'),
-              signal: '事件雷达',
-              note: '优先跟踪美国四星数据和三星期货相关事项',
-            },
-          ].map((item) => (
-            <article className="ai-radar-card" key={item.symbol}>
-              <div className="ai-radar-card-top">
-                <strong>{item.symbol}</strong>
-                <span>{item.signal}</span>
-              </div>
-              <div className="ai-radar-price-row">
-                <b>{item.price}</b>
-                <em className={item.change.startsWith('-') ? 'down' : ''}>{item.change}</em>
-              </div>
-              <p>{item.note}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="instant-analysis-grid" aria-label="即时分析">
-        <article className="market-selector-card">
-          <div className="market-segment-grid">
-            {['美股', '港股', '加密', '商品', '板块', '外汇'].map((label) => (
-              <button key={label} type="button">{label}</button>
-            ))}
-          </div>
-          <div className="mini-watch-list">
-            {[
-              ['Gold / USD', priceData ? `${priceData.changePct >= 0 ? '+' : ''}${priceData.changePct.toFixed(2)}%` : '--'],
-              ['重要数据', `${importantEvents?.todayData?.length || 0} 项`],
-              ['市场快讯', `${flashes.length} 条`],
-            ].map(([name, value]) => (
-              <div key={name}>
-                <span>{name}</span>
-                <strong>{value}</strong>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="analysis-engine-card">
+      <section className="gold-analysis-grid" aria-label="黄金AI智能分析">
+        <article className="analysis-engine-card gold-analysis-card">
           <div className="analysis-engine-controls">
-            <button type="button">选择标的开始分析</button>
-            <Button type="primary" icon={analyzing ? <LoadingOutlined spin /> : <RobotOutlined />} onClick={handleAIAnalyze} disabled={!canRunAIAnalysis}>
-              开始分析
-            </Button>
-            <Button onClick={handleResetAnalysis}>历史记录</Button>
+            <span className="pill green">XAUUSD</span>
+            <span className="pill blue">自动展示</span>
+            <span className="pill">{streamStatus}</span>
           </div>
-          <div className="analysis-engine-hero">
-            <span>AI-POWERED</span>
-            <h2>AI 智能分析引擎</h2>
-            <p>多维数据驱动 · 量化级别洞察 · 实时市场脉搏</p>
-          </div>
-          <div className="analysis-feature-grid">
-            <div>多周期趋势判断</div>
-            <div>专业指标矩阵</div>
-            <div>自选驱动分析</div>
-          </div>
-        </article>
-
-        <article className="watchlist-card">
-          <div className="watchlist-head">
-            <strong>我的自选品种</strong>
-            <span>5 标的</span>
-          </div>
-          {[
-            ['XAUUSD', 'Gold/USD', formatPriceValue(getReferencePrice(priceData, candles)), '+0.00%'],
-            ['DXY', 'Dollar Index', '105.56', '+0.18%'],
-            ['US10Y', 'US 10Y Yield', '4.31', '+0.04%'],
-            ['SPY', 'S&P 500 ETF', '546.20', '+0.42%'],
-            ['QQQ', 'Nasdaq 100 ETF', '474.50', '+0.68%'],
-          ].map(([symbol, name, price, change]) => (
-            <div className="watchlist-row" key={symbol}>
-              <div>
-                <strong>{symbol}</strong>
-                <span>{name}</span>
+          {battleBrief ? (
+            <div className="analysis-brief">
+              <div className="analysis-brief-head">
+                <span>{formatAnalysisSavedAt(analysisSavedAt)}</span>
+                <Button size="small" icon={<CopyOutlined />} onClick={handleCopyBattleBrief}>
+                  复制战报
+                </Button>
               </div>
-              <div>
-                <b>{price}</b>
-                <em>{change}</em>
+              <h2>{battleBrief.title}</h2>
+              <h3>{battleBrief.subtitle}</h3>
+              <div className="analysis-brief-body">
+                {battleBrief.paragraphs.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
+              <div className="analysis-brief-bullets">
+                {battleBrief.bullets.map((bullet) => (
+                  <div key={bullet}>{bullet}</div>
+                ))}
               </div>
             </div>
-          ))}
-          <button type="button" className="watchlist-add">+ 添加自选</button>
+          ) : (
+            <>
+              <div className="analysis-engine-hero">
+                <span>{analyzing ? 'STREAMING' : 'AUTO-POWERED'}</span>
+                <h2>{analyzing ? 'AI 正在生成黄金战报' : 'AI 智能分析引擎'}</h2>
+                <p>{analyzing ? streamProgressText : '页面打开后自动分析，报告生成后会持续显示在这里'}</p>
+              </div>
+              <div className="analysis-feature-grid">
+                <div>黄金趋势判断</div>
+                <div>风险仓位建议</div>
+                <div>每小时自动刷新</div>
+              </div>
+            </>
+          )}
+        </article>
+
+        <article className="gold-status-card">
+          <div className="gold-status-head">
+            <strong>黄金实时状态</strong>
+            <span>{isWeekendMarketClosed ? '休市复盘' : '实时行情'}</span>
+          </div>
+          <PriceCard
+            priceData={priceData}
+            marketClosed={isWeekendMarketClosed}
+            snapshotText={marketSnapshotText}
+          />
+          <div className="gold-status-metrics">
+            <div>
+              <span>当前风险</span>
+              <strong>{stats.risk || '--'}</strong>
+            </div>
+            <div>
+              <span>建议仓位</span>
+              <strong>{stats.positionAdvice ? `${stats.positionAdvice}%` : '--'}</strong>
+            </div>
+            <div>
+              <span>K线样本</span>
+              <strong>{candles.length}</strong>
+            </div>
+          </div>
         </article>
       </section>
 
@@ -1481,22 +1277,9 @@ export function Home() {
         isWeekendMarketClosed={isWeekendMarketClosed}
       />
 
-      {/* 主内容区 - 左边行情佐证，右边事件和风险 */}
       <main className="main home-main">
-        {/* 左侧区域：实时行情K线图 */}
         <section className="left" aria-label="实时行情K线图">
-          {/* 市场卡片 - 报价条 + K线图 */}
           <article className={`market-card chart-panel ${isWeekendMarketClosed && candles.length === 0 ? 'weekend-compact' : ''}`}>
-            {/* 报价条 */}
-            <div className="quote-strip">
-              <PriceCard
-                priceData={priceData}
-                marketClosed={isWeekendMarketClosed}
-                snapshotText={marketSnapshotText}
-              />
-            </div>
-
-            {/* K线图 */}
             {candlesError && !isWeekendMarketClosed ? (
               <div style={{
                 height: '500px',
@@ -1526,135 +1309,19 @@ export function Home() {
               />
             )}
           </article>
-
-          <div className="home-under-chart" aria-label="市场信息流">
-            {isWeekendMarketClosed ? (
-              <div className="home-weekend-brief-grid">
-                <WeekendBriefCard
-                  snapshotText={marketSnapshotText}
-                  nextTradingDayText={nextTradingDayText}
-                  sourceLinks={importantEvents?.sourceLinks}
-                />
-                <ImportantCalendarCard
-                  title="下周重要数据"
-                  badge="未来7天"
-                  meta={importantMeta}
-                  showValues
-                  items={importantEvents?.weekData || []}
-                  sourceLinks={importantEvents?.sourceLinks}
-                  emptyText="暂无下周交易日美国四星以上真实数据"
-                />
-                <ImportantCalendarCard
-                  title="下周重要事项"
-                  badge="未来7天"
-                  meta={importantMeta}
-                  items={importantEvents?.weekEvents || []}
-                  sourceLinks={importantEvents?.sourceLinks}
-                  emptyText="暂无下周交易日美国三星以上真实事项"
-                />
-                <MiniCard
-                  title="市场快讯"
-                  pillText={getDataMetaLabel(newsMeta, '1小时刷新')}
-                  pillColor={getDataMetaColor(newsMeta, 'red')}
-                  items={flashes.slice(0, 3).map(f => ({
-                    date: f.date,
-                    time: f.time,
-                    text: f.text,
-                    hot: f.hot,
-                    source: f.source,
-                    sourceUrl: f.sourceUrl,
-                  }))}
-                />
-              </div>
-            ) : (
-              <div className="home-important-grid">
-                <ImportantCalendarCard
-                  title="今日重要数据"
-                  badge="四星以上"
-                  meta={importantMeta}
-                  showValues
-                  items={importantEvents?.todayData || []}
-                  sourceLinks={importantEvents?.sourceLinks}
-                  emptyText="暂无18:00后美国四星以上真实数据"
-                />
-                <ImportantCalendarCard
-                  title="今日重要事项"
-                  badge="三星以上"
-                  meta={importantMeta}
-                  items={importantEvents?.todayEvents || []}
-                  sourceLinks={importantEvents?.sourceLinks}
-                  emptyText="暂无18:00-05:00美国三星以上真实事项"
-                />
-                <ImportantCalendarCard
-                  title="本周重要数据"
-                  badge="未来7天"
-                  meta={importantMeta}
-                  showValues
-                  items={importantEvents?.weekData || []}
-                  sourceLinks={importantEvents?.sourceLinks}
-                  emptyText="暂无本周美国四星以上真实数据"
-                />
-                <ImportantCalendarCard
-                  title="本周重要事项"
-                  badge="未来7天"
-                  meta={importantMeta}
-                  items={importantEvents?.weekEvents || []}
-                  sourceLinks={importantEvents?.sourceLinks}
-                  emptyText="暂无本周美国三星以上真实事项"
-                />
-                <MiniCard
-                  title="实时市场快讯"
-                  pillText={getDataMetaLabel(newsMeta, '1小时刷新')}
-                  pillColor={getDataMetaColor(newsMeta, 'red')}
-                  items={flashes.slice(0, 3).map(f => ({
-                    date: f.date,
-                    time: f.time,
-                    text: f.text,
-                    hot: f.hot,
-                    source: f.source,
-                    sourceUrl: f.sourceUrl,
-                  }))}
-                />
-              </div>
-            )}
-
-            <div className={`home-feed-grid ${showCalendarDetail ? '' : 'no-calendar'}`}>
-              {showCalendarDetail && (
-                <EventList
-                  events={events}
-                  flashes={[]}
-                  showFlashes={false}
-                  title="本周美国重要日历明细"
-                />
-              )}
-              <EventList events={[]} flashes={flashes} showEvents={false} />
-              <ActionPanel actions={aiActions} />
-            </div>
-          </div>
         </section>
 
-        {/* 右侧区域：客户关注点 */}
-        <section className="right" aria-label="客户关注点">
-          <ClientEventTimeline
-            importantEvents={importantEvents}
-            flashes={flashes}
-            isWeekendMarketClosed={isWeekendMarketClosed}
-          />
-
-          <ClientRiskChecklist items={clientDecisionView.watchItems} />
-
+        <section className="right" aria-label="黄金风险和专业指标">
           {(analyzing || streamText || lastStreamResult) && (
-            <Card
-              className="workspace-card"
-              title="AI回复看板"
-              extra={(
+            <article className="workspace-card ai-stream-card">
+              <div className="client-panel-head">
+                <strong>AI回复看板</strong>
                 <Space wrap size={6}>
                   <Tag color={analyzing ? 'processing' : 'success'}>{streamStatus}</Tag>
                   <Tag color={streamCharCount > 0 ? 'blue' : 'default'}>已输出 {streamCharCount} 字</Tag>
                   <Tag color="geekblue">{streamTimeText}</Tag>
                 </Space>
-              )}
-            >
+              </div>
               <Alert
                 type={streamCharCount > 0 ? 'success' : 'info'}
                 showIcon
@@ -1715,61 +1382,58 @@ export function Home() {
                   {streamText || `等待模型开始输出...\n${streamProgressText}`}
                 </div>
               </details>
-            </Card>
+            </article>
           )}
 
-          <details className="client-detail-toggle">
-            <summary>专业指标</summary>
-            <div className="client-detail-stack">
-              {isWeekendMarketClosed ? (
-                <WeekendMarketPanel
-                  snapshotText={marketSnapshotText}
-                  nextTradingDayText={nextTradingDayText}
-                />
-              ) : (
-                <SignalPanel signals={signals} stats={stats} />
-              )}
-
-              <DecisionCard
-                headline={decisionData.headline}
-                summary={decisionData.summary}
-                eventCountdown={decisionData.eventCountdown}
-                aiReason={decisionData.aiReason}
+          <div className="client-detail-stack">
+            {isWeekendMarketClosed ? (
+              <WeekendMarketPanel
+                snapshotText={marketSnapshotText}
+                nextTradingDayText={nextTradingDayText}
               />
+            ) : (
+              <SignalPanel signals={signals} stats={stats} />
+            )}
 
-              {!isWeekendMarketClosed && (
-                <div className="info-grid">
-                  <ProbCard
-                    upProb={stats.upProb || 50}
-                    downProb={stats.downProb || 50}
+            <DecisionCard
+              headline={decisionData.headline}
+              summary={decisionData.summary}
+              eventCountdown={decisionData.eventCountdown}
+              aiReason={decisionData.aiReason}
+            />
+
+            {!isWeekendMarketClosed && (
+              <div className="info-grid">
+                <ProbCard
+                  upProb={stats.upProb || 50}
+                  downProb={stats.downProb || 50}
+                />
+
+                <RiskCard
+                  risk={stats.risk || 50}
+                  riskLevel={stats.riskLevel || 'medium'}
+                  positionAdvice={stats.positionAdvice || 0}
+                  stopLoss={stats.stopLoss || 0}
+                />
+
+                {priceData?.support1 && priceData?.support2 && priceData?.resistance1 ? (
+                  <SupportCard
+                    support1={priceData.support1}
+                    support2={priceData.support2}
+                    resistance1={priceData.resistance1}
                   />
-
-                  <RiskCard
-                    risk={stats.risk || 50}
-                    riskLevel={stats.riskLevel || 'medium'}
-                    positionAdvice={stats.positionAdvice || 0}
-                    stopLoss={stats.stopLoss || 0}
-                  />
-
-                  {priceData?.support1 && priceData?.support2 && priceData?.resistance1 ? (
-                    <SupportCard
-                      support1={priceData.support1}
-                      support2={priceData.support2}
-                      resistance1={priceData.resistance1}
-                    />
-                  ) : (
-                    <article className="card support-empty-card">
-                      <div className="card-title">
-                        <strong>当前行情支撑压力</strong>
-                        <span className="pill amber">待行情</span>
-                      </div>
-                      <div className="empty-state">暂无真实支撑压力数据，等待实时行情恢复后显示。</div>
-                    </article>
-                  )}
-                </div>
-              )}
-            </div>
-          </details>
+                ) : (
+                  <article className="card support-empty-card">
+                    <div className="card-title">
+                      <strong>当前行情支撑压力</strong>
+                      <span className="pill amber">待行情</span>
+                    </div>
+                    <div className="empty-state">暂无真实支撑压力数据，等待实时行情恢复后显示。</div>
+                  </article>
+                )}
+              </div>
+            )}
+          </div>
         </section>
       </main>
     </div>

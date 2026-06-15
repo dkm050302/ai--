@@ -12,10 +12,10 @@ import { authService } from '@/services/auth';
 
 const TAB_LABELS: Record<string, string> = {
   '/': 'AI智能分析',
-  '/ai-account': '交易机器人',
+  '/ai-account': 'AI交易员',
   '/manual-sim': '券商账户',
   '/datasource-settings': '数据中心',
-  '/research-center': '指标策略',
+  '/research-center': '量化策略实验室',
   '/admin': '测试管理',
 };
 

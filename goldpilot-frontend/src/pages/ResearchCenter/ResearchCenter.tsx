@@ -10,6 +10,7 @@ import { fetchCandles, fetchRealTimePrice } from '@/services/marketData';
 import { detectSignals } from '@/utils/signalCalculator';
 import { EquityCurveChart, type EquityCurveSeries } from '@/components/EquityCurveChart';
 import { PageHeader } from '@/components/PageHeader';
+import { GOLD_STRATEGY_LIBRARY, getStrategyCapitalPct, getStrategyDecision, getStrategyRuntime } from '@/constants/goldStrategies';
 
 const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -237,6 +238,14 @@ const allocationDraft = [
   { profileId: 'aggressive', name: '进取型', weight: 25, role: '弹性仓，捕捉强信号' },
   { profileId: 'event', name: '事件型', weight: 20, role: '新闻/事件驱动机会' },
 ];
+
+const styleTagColor: Record<string, string> = {
+  防守: 'blue',
+  稳健: 'success',
+  中风险: 'warning',
+  激进: 'volcano',
+  暴利: 'red',
+};
 
 const roadmap = [
   'V0：用现有AI报告驱动四账号模拟盘与回测，模拟资金池统一为100万。',
@@ -542,6 +551,52 @@ export function ResearchCenter() {
   const streamTimeText = streamCharCount > 0 && streamElapsedSeconds > 0
     ? `${streamElapsedSeconds}s / ${streamSpeed} 字/秒`
     : `${streamElapsedSeconds}s`;
+
+  const strategyLibraryRows = useMemo(() => {
+    return GOLD_STRATEGY_LIBRARY.map((strategy) => {
+      const capitalPct = getStrategyCapitalPct(strategy);
+      const runtime = getStrategyRuntime(strategy, INITIAL_BALANCE);
+      return {
+        ...strategy,
+        runtime,
+        capitalPct,
+        capital: runtime.allocatedCapital,
+        decision: getStrategyDecision(strategy),
+      };
+    });
+  }, []);
+
+  const strategyRuntimeSummary = useMemo(() => {
+    const runningRows = strategyLibraryRows.filter((strategy) => strategy.runtime.status === '模拟运行');
+    const observingRows = strategyLibraryRows.filter((strategy) => strategy.runtime.status === '观察中');
+    const totalPnl = strategyLibraryRows.reduce((sum, strategy) => sum + strategy.runtime.pnl, 0);
+    const totalEquity = strategyLibraryRows.reduce((sum, strategy) => sum + strategy.runtime.equity, 0);
+    const openPositions = strategyLibraryRows.filter((strategy) => strategy.runtime.openPosition).length;
+    const totalTrades = strategyLibraryRows.reduce((sum, strategy) => sum + strategy.runtime.trades, 0);
+
+    return {
+      runningCount: runningRows.length,
+      observingCount: observingRows.length,
+      totalPnl,
+      totalEquity,
+      openPositions,
+      totalTrades,
+      updatedAt: strategyLibraryRows[0]?.runtime.updatedAt,
+    };
+  }, [strategyLibraryRows]);
+
+  const strategyStyleSummary = useMemo(() => {
+    return ['防守', '稳健', '中风险', '激进', '暴利'].map((style) => {
+      const rows = strategyLibraryRows.filter((strategy) => strategy.style === style);
+      const pct = rows.reduce((sum, strategy) => sum + strategy.capitalPct, 0);
+      return {
+        style,
+        count: rows.length,
+        pct: Number(pct.toFixed(1)),
+        capital: Number(((INITIAL_BALANCE * pct) / 100).toFixed(2)),
+      };
+    });
+  }, [strategyLibraryRows]);
 
   const accountEquitySeries = useMemo<EquityCurveSeries[]>(() => {
     return orderedAccounts.map((account) => {
@@ -1391,6 +1446,112 @@ export function ResearchCenter() {
           </Space>
         )}
       />
+
+      <Card
+        className="workspace-card strategy-library-card"
+        title="黄金策略全景库"
+        extra={<Tag color="gold">{GOLD_STRATEGY_LIBRARY.length} 个 XAUUSD 策略</Tag>}
+      >
+        <div className="strategy-library-hero">
+          <div>
+            <span>100万虚拟资金 · AI组合筛选</span>
+            <h2>把策略先全部摆出来，再由AI交易员决定运行和资金权重</h2>
+            <p>策略标签覆盖方向、手法、类型、交易时段、周期和风险风格，方便与 AI交易员 联动。</p>
+          </div>
+          <div className="strategy-library-total">
+            <strong>{formatMoney(INITIAL_BALANCE)}</strong>
+            <span>实验室模拟资金池</span>
+          </div>
+        </div>
+
+        <div className="strategy-style-strip">
+          {strategyStyleSummary.map((item) => (
+            <div className="strategy-style-tile" key={item.style}>
+              <Tag color={styleTagColor[item.style]}>{item.style}</Tag>
+              <strong>{item.pct}%</strong>
+              <span>{item.count} 个策略 · {formatMoney(item.capital)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="strategy-runtime-strip">
+          <div>
+            <span>模拟总权益</span>
+            <strong>{formatMoney(strategyRuntimeSummary.totalEquity)}</strong>
+            <em>{strategyRuntimeSummary.updatedAt ? `更新 ${formatDate(strategyRuntimeSummary.updatedAt)}` : '等待运行'}</em>
+          </div>
+          <div>
+            <span>今日模拟盈亏</span>
+            <strong className={strategyRuntimeSummary.totalPnl >= 0 ? 'green' : 'red'}>
+              {strategyRuntimeSummary.totalPnl >= 0 ? '+' : ''}{formatMoney(strategyRuntimeSummary.totalPnl)}
+            </strong>
+            <em>基于策略库资金分配</em>
+          </div>
+          <div>
+            <span>运行 / 观察</span>
+            <strong>{strategyRuntimeSummary.runningCount} / {strategyRuntimeSummary.observingCount}</strong>
+            <em>AI交易员状态</em>
+          </div>
+          <div>
+            <span>持仓 / 交易</span>
+            <strong>{strategyRuntimeSummary.openPositions} / {strategyRuntimeSummary.totalTrades}</strong>
+            <em>模拟盘运行统计</em>
+          </div>
+        </div>
+
+        <div className="strategy-library-grid">
+          {strategyLibraryRows.map((strategy) => (
+            <article className="strategy-library-item" key={strategy.id}>
+              <div className="strategy-library-item-head">
+                <div>
+                  <strong>{strategy.name}</strong>
+                  <span>{strategy.summary}</span>
+                </div>
+                <Tag color={strategy.decision === '运行' ? 'success' : strategy.decision === '观察' ? 'warning' : 'default'}>
+                  {strategy.decision}
+                </Tag>
+              </div>
+              <div className="strategy-library-money">
+                <span>建议资金</span>
+                <strong>{formatMoney(strategy.capital)}</strong>
+                <em>{strategy.capitalPct}%</em>
+              </div>
+              <div className="strategy-runtime-grid">
+                <div>
+                  <span>模拟盈亏</span>
+                  <strong className={strategy.runtime.pnl >= 0 ? 'green' : 'red'}>
+                    {strategy.runtime.pnl >= 0 ? '+' : ''}{formatMoney(strategy.runtime.pnl)}
+                  </strong>
+                </div>
+                <div>
+                  <span>收益率</span>
+                  <strong className={strategy.runtime.pnlPct >= 0 ? 'green' : 'red'}>
+                    {strategy.runtime.pnlPct >= 0 ? '+' : ''}{strategy.runtime.pnlPct}%
+                  </strong>
+                </div>
+                <div>
+                  <span>胜率</span>
+                  <strong>{strategy.runtime.winRate}%</strong>
+                </div>
+                <div>
+                  <span>回撤</span>
+                  <strong>{strategy.runtime.maxDrawdown}%</strong>
+                </div>
+              </div>
+              <div className="strategy-runtime-footer">
+                <span>{strategy.runtime.openPosition ? '当前有持仓' : '当前无持仓'}</span>
+                <span>{strategy.runtime.trades} 笔模拟交易</span>
+                <span>{formatDate(strategy.runtime.updatedAt)}</span>
+              </div>
+              <div className="strategy-library-tags">
+                {[strategy.direction, strategy.method, strategy.kind, strategy.session, strategy.horizon, strategy.style, ...strategy.tags].map((tag) => (
+                  <span key={`${strategy.id}-${tag}`}>{tag}</span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </Card>
 
       <Card
         className="workspace-card quant-lab-card"

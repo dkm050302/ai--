@@ -6,7 +6,13 @@ import { Request, Response } from 'express';
 import { UserModel } from '../models/User';
 import { logger } from '../utils/logger';
 import crypto from 'crypto';
-import { DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, getDeepSeekModelsUrl } from '../config';
+import {
+  DEEPSEEK_API_KEY,
+  DEEPSEEK_BASE_URL,
+  DEEPSEEK_MODEL,
+  getDeepSeekModelsUrl,
+  hasGlobalDeepSeekApiKey,
+} from '../config';
 
 /**
  * 简单加密函数（用于演示，生产环境应使用更安全的加密方式）
@@ -59,6 +65,22 @@ export async function getAIConfig(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    if (hasGlobalDeepSeekApiKey()) {
+      res.json({
+        success: true,
+        data: {
+          provider: 'deepseek',
+          apiKey: maskApiKey(DEEPSEEK_API_KEY),
+          status: 'connected',
+          lastUsed: user.aiConfig?.lastUsed,
+          modelName: DEEPSEEK_MODEL,
+          baseUrl: DEEPSEEK_BASE_URL,
+          scope: 'global',
+        },
+      });
+      return;
+    }
+
     if (!user.aiConfig) {
       res.json({ success: true, data: null });
       return;
@@ -90,6 +112,14 @@ export async function saveAIConfig(req: Request, res: Response): Promise<void> {
   try {
     if (!req.user) {
       res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    if (hasGlobalDeepSeekApiKey()) {
+      res.json({
+        success: true,
+        message: '后端已统一配置 DeepSeek API Key，所有用户共用该配置',
+      });
       return;
     }
 
@@ -145,6 +175,14 @@ export async function deleteAIConfig(req: Request, res: Response): Promise<void>
       return;
     }
 
+    if (hasGlobalDeepSeekApiKey()) {
+      res.status(400).json({
+        success: false,
+        message: '后端统一 DeepSeek API Key 不能在用户页面断开',
+      });
+      return;
+    }
+
     const user = await UserModel.findOneAndUpdate(
       { accountId: req.user.accountId },
       { $unset: { aiConfig: '' } },
@@ -175,15 +213,12 @@ export async function testAIConnection(req: Request, res: Response): Promise<voi
       return;
     }
 
-    const user = await UserModel.findOne({ accountId: req.user.accountId });
+    const apiKey = await getUserApiKey(req.user.accountId);
 
-    if (!user || !user.aiConfig || !user.aiConfig.apiKey) {
+    if (!apiKey) {
       res.status(400).json({ success: false, message: '未配置AI服务' });
       return;
     }
-
-    // 解密API Key
-    const apiKey = decryptApiKey(user.aiConfig.apiKey);
 
     // 测试DeepSeek API连接
     const testResult = await testDeepSeekAPI(apiKey);
@@ -211,6 +246,10 @@ export async function testAIConnection(req: Request, res: Response): Promise<voi
  */
 export async function getUserApiKey(accountId: string): Promise<string | null> {
   try {
+    if (hasGlobalDeepSeekApiKey()) {
+      return DEEPSEEK_API_KEY;
+    }
+
     const user = await UserModel.findOne({ accountId });
 
     if (!user || !user.aiConfig || !user.aiConfig.apiKey) {

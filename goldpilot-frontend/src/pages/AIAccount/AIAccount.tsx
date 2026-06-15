@@ -12,11 +12,11 @@ import {
   RobotOutlined,
   SaveOutlined,
   SearchOutlined,
-  ShopOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
 import { authFetch } from '@/utils/apiConfig';
 import { PageHeader } from '@/components/PageHeader';
+import { GOLD_STRATEGY_LIBRARY, getStrategyCapitalPct, getStrategyDecision } from '@/constants/goldStrategies';
 
 interface AIConfig {
   provider: string;
@@ -25,6 +25,7 @@ interface AIConfig {
   lastUsed?: string;
   modelName?: string;
   baseUrl?: string;
+  scope?: 'global' | 'user';
 }
 
 type RobotStatus = 'running' | 'stopped';
@@ -118,6 +119,7 @@ export function AIAccount() {
   const [robotStatusFilter, setRobotStatusFilter] = useState<'all' | RobotStatus>('all');
   const [form] = Form.useForm();
   const [robotForm] = Form.useForm();
+  const usesGlobalAIConfig = aiConfig?.scope === 'global';
 
   const maskApiKey = (key: string): string => {
     if (!key || key.length < 8) return '****';
@@ -166,6 +168,31 @@ export function AIAccount() {
     return { running, stopped, equity, pnl };
   }, [robots]);
 
+  const aiTraderPlan = useMemo(() => {
+    const rows = GOLD_STRATEGY_LIBRARY.map((strategy) => {
+      const allocationPct = getStrategyCapitalPct(strategy);
+      const decision = getStrategyDecision(strategy);
+      return {
+        ...strategy,
+        decision,
+        allocationPct,
+        allocation: Number(((1_000_000 * allocationPct) / 100).toFixed(2)),
+      };
+    });
+    const running = rows.filter((row) => row.decision === '运行');
+    const observing = rows.filter((row) => row.decision === '观察');
+    const paused = rows.filter((row) => row.decision === '暂停');
+
+    return {
+      rows,
+      running,
+      observing,
+      paused,
+      runningCapital: running.reduce((sum, row) => sum + row.allocation, 0),
+      observingCapital: observing.reduce((sum, row) => sum + row.allocation, 0),
+    };
+  }, []);
+
   const filteredRobots = useMemo(() => {
     const keyword = robotSearch.trim().toLowerCase();
 
@@ -188,7 +215,7 @@ export function AIAccount() {
     robotForm.setFieldsValue({
       name: template.featured ? 'AI 黄金趋势机器人' : `${template.title}机器人`,
       symbol: 'XAUUSD',
-      market: '外汇',
+      market: '黄金',
       risk: template.risk,
       idea: template.featured ? '根据黄金 XAU/USD 趋势、美元指数和重要数据事件自动判断入场方向。' : template.description,
       status: 'running',
@@ -338,18 +365,12 @@ export function AIAccount() {
   return (
     <div className="workspace-page">
       <PageHeader
-        eyebrow="Trading Robots"
-        title="交易机器人"
-        description="创建并管理你的自动交易机器人，配置 AI 分析服务和策略执行入口"
+        eyebrow="AI Trader"
+        title="AI交易员"
+        description="AI自主读取黄金策略库，决定哪些策略运行、观察或暂停，并分配100万虚拟资金"
         meta={aiConfig ? <Tag color="success">已连接</Tag> : <Tag color="warning">未配置</Tag>}
         actions={(
           <Space>
-            <Button
-              icon={<ShopOutlined />}
-              onClick={() => message.info('机器人市场即将开放')}
-            >
-              浏览机器人市场
-            </Button>
             <Button
               icon={<ApiOutlined />}
               onClick={() => window.open('https://platform.deepseek.com/api_keys', '_blank')}
@@ -359,6 +380,62 @@ export function AIAccount() {
           </Space>
         )}
       />
+
+      <section className="ai-trader-desk">
+        <div className="ai-trader-hero">
+          <div>
+            <span>GoldPilot Autonomous Allocation</span>
+            <h2>AI交易员正在管理 XAUUSD 策略组合</h2>
+            <p>当前仅针对黄金品种，策略决策来自策略标签、风险等级和适配市场状态。稳健与防守策略优先运行，高波动和重大数据策略进入观察队列。</p>
+          </div>
+          <div className="ai-trader-capital">
+            <strong>$1,000,000</strong>
+            <span>虚拟策略资金池</span>
+          </div>
+        </div>
+
+        <div className="ai-trader-kpis">
+          <div>
+            <span>运行策略</span>
+            <strong>{aiTraderPlan.running.length}</strong>
+            <em>${aiTraderPlan.runningCapital.toLocaleString()}</em>
+          </div>
+          <div>
+            <span>观察策略</span>
+            <strong>{aiTraderPlan.observing.length}</strong>
+            <em>${aiTraderPlan.observingCapital.toLocaleString()}</em>
+          </div>
+          <div>
+            <span>暂停策略</span>
+            <strong>{aiTraderPlan.paused.length}</strong>
+            <em>等待风控触发</em>
+          </div>
+          <div>
+            <span>策略总数</span>
+            <strong>{aiTraderPlan.rows.length}</strong>
+            <em>全部来自黄金策略库</em>
+          </div>
+        </div>
+
+        <div className="ai-trader-strategy-list">
+          {aiTraderPlan.rows.map((strategy) => (
+            <article className="ai-trader-strategy-row" key={strategy.id}>
+              <div>
+                <strong>{strategy.name}</strong>
+                <span>{strategy.direction} · {strategy.method} · {strategy.session} · {strategy.horizon}</span>
+              </div>
+              <div className="ai-trader-row-tags">
+                <Tag color={strategy.decision === '运行' ? 'success' : strategy.decision === '观察' ? 'warning' : 'default'}>
+                  {strategy.decision}
+                </Tag>
+                <Tag>{strategy.style}</Tag>
+                <Tag color="blue">{strategy.allocationPct}%</Tag>
+              </div>
+              <strong className="ai-trader-row-money">${strategy.allocation.toLocaleString()}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <Row gutter={[16, 16]} className="robot-metric-row">
         <Col xs={24} md={6}>
@@ -395,8 +472,8 @@ export function AIAccount() {
 
       <section className="robot-template-section">
         <div>
-          <h2>创建新机器人</h2>
-          <p>选择一种策略类型，快速创建你的交易机器人</p>
+          <h2>黄金执行模板</h2>
+          <p>仅针对 XAUUSD 创建执行模板，供 AI交易员 调用和暂停</p>
         </div>
         <div className="robot-template-grid">
           {ROBOT_TEMPLATES.map((template) => (
@@ -514,9 +591,9 @@ export function AIAccount() {
             </div>
             <div>
               <div className="text-base font-bold text-slate-900">
-                {aiConfig?.provider === 'deepseek' ? 'DeepSeek' : 'AI服务'}
+                {usesGlobalAIConfig ? '后端统一 DeepSeek' : aiConfig?.provider === 'deepseek' ? 'DeepSeek' : 'AI服务'}
               </div>
-              <div className="text-xs text-slate-500">市场分析模型</div>
+              <div className="text-xs text-slate-500">{usesGlobalAIConfig ? '所有用户共用后端 API Key' : '市场分析模型'}</div>
               <div className="text-xs text-slate-500">{aiConfig?.modelName || 'deepseek-v4-pro'}</div>
             </div>
           </div>
@@ -527,19 +604,25 @@ export function AIAccount() {
               <Tag icon={<CheckCircleOutlined />} color="success">
                 已连接
               </Tag>
-              <Button
-                icon={<EditOutlined />}
-                onClick={handleConfig}
-              >
-                编辑配置
-              </Button>
-              <Button
-                danger
-                icon={<LogoutOutlined />}
-                onClick={handleDisconnect}
-              >
-                断开连接
-              </Button>
+              {usesGlobalAIConfig ? (
+                <Tag color="blue">后端统一配置</Tag>
+              ) : (
+                <>
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={handleConfig}
+                  >
+                    编辑配置
+                  </Button>
+                  <Button
+                    danger
+                    icon={<LogoutOutlined />}
+                    onClick={handleDisconnect}
+                  >
+                    断开连接
+                  </Button>
+                </>
+              )}
             </Space>
           ) : (
             <Button
@@ -562,7 +645,12 @@ export function AIAccount() {
               </Descriptions.Item>
               <Descriptions.Item label={<span className="font-semibold">API Key</span>}>
                 <span className="text-slate-700 font-mono">
-                  {aiConfig.apiKey || '未配置'}
+                  {usesGlobalAIConfig ? '后端统一配置' : aiConfig.apiKey || '未配置'}
+                </span>
+              </Descriptions.Item>
+              <Descriptions.Item label={<span className="font-semibold">配置范围</span>}>
+                <span className="text-slate-700">
+                  {usesGlobalAIConfig ? '全站用户共用' : '当前用户'}
                 </span>
               </Descriptions.Item>
               <Descriptions.Item label={<span className="font-semibold">模型</span>}>
@@ -581,8 +669,8 @@ export function AIAccount() {
               className="mt-4"
               type="info"
               showIcon
-              message="完整 API Key 不会在页面回显"
-              description="编辑配置时需要重新输入完整 Key。"
+              message={usesGlobalAIConfig ? 'DeepSeek API Key 已在后端统一配置' : '完整 API Key 不会在页面回显'}
+              description={usesGlobalAIConfig ? '所有用户的 AI 分析都会使用后端环境变量中的统一 Key。' : '编辑配置时需要重新输入完整 Key。'}
             />
 
             <div className="mt-4">
@@ -732,18 +820,15 @@ export function AIAccount() {
                 name="symbol"
                 rules={[{ required: true, message: '请输入交易品种' }]}
               >
-                <Input placeholder="XAUUSD" />
+                <Input disabled placeholder="XAUUSD" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label="市场" name="market">
                 <Select
+                  disabled
                   options={[
-                    { value: '外汇', label: '外汇' },
-                    { value: '商品', label: '商品' },
-                    { value: '加密', label: '加密' },
-                    { value: '美股', label: '美股' },
-                    { value: '港股', label: '港股' },
+                    { value: '黄金', label: '黄金 XAUUSD' },
                   ]}
                 />
               </Form.Item>
