@@ -8,7 +8,7 @@ import { trackPageVisit, flushActions } from '@/services/actionTracker';
 
 const PAGE_LABELS: Record<string, string> = {
   '/': 'AI智能分析',
-  '/ai-account': 'AI账号',
+  '/ai-account': 'AI交易员',
   '/manual-sim': '手动模拟账户',
   '/datasource-settings': '数据源设置',
   '/research-center': '量化策略实验室',
@@ -22,9 +22,9 @@ const PAGE_QUESTIONS: Record<string, string[]> = {
     '这份分析多久自动刷新？',
   ],
   '/ai-account': [
-    'AI交易员当前分配了多少资金？',
-    '哪些策略正在运行？',
-    '为什么有些策略被观察或暂停？',
+    'AI交易团队现在是什么模式？',
+    '风控员限制了哪些机器人？',
+    '机器人管家为什么暂停或观察策略？',
   ],
   '/manual-sim': [
     '当前模拟账户风险在哪里？',

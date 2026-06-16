@@ -3,7 +3,6 @@ import { Alert, Button, Space, Tag, message } from 'antd';
 import { CopyOutlined, RobotOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons';
 import { PageHeader } from '@/components/PageHeader';
 import { PriceCard } from '@/components/PriceCard';
-import { Chart } from '@/components/Chart';
 import { SignalPanel } from '@/components/SignalPanel';
 import { DecisionCard } from '@/components/DecisionCard';
 import { ProbCard } from '@/components/ProbCard';
@@ -31,6 +30,7 @@ const EVENT_DATA_REFRESH_MS = 60 * 60 * 1000;
 const AI_ANALYSIS_REFRESH_MS = 60 * 60 * 1000;
 const MARKET_SNAPSHOT_KEY = 'goldpilot:last-market-snapshot:v1';
 const AI_ANALYSIS_CACHE_KEY = 'goldpilot:ai-analysis:xauusd:v1';
+const TRADINGVIEW_XAUUSD_SRC = 'https://s.tradingview.com/widgetembed/?symbol=OANDA%3AXAUUSD&interval=1&timezone=Asia%2FShanghai&theme=light&style=1&locale=zh_CN&hide_top_toolbar=0&hide_side_toolbar=0&allow_symbol_change=0&withdateranges=1&hide_volume=1&save_image=0&studies=%5B%5D';
 
 interface MarketSnapshot {
   updatedAt?: string;
@@ -76,6 +76,29 @@ function formatAnalysisSavedAt(value: string | null): string {
     minute: '2-digit',
     hour12: false,
   })}`;
+}
+
+function TradingViewGoldFrame() {
+  return (
+    <>
+      <div className="tradingview-chart-head">
+        <div>
+          <strong>黄金实时盘</strong>
+          <span>TradingView · OANDA:XAUUSD</span>
+        </div>
+        <Tag color="green">实时展示</Tag>
+      </div>
+      <div className="tradingview-frame-wrap">
+        <iframe
+          title="TradingView OANDA XAUUSD 实时图表"
+          src={TRADINGVIEW_XAUUSD_SRC}
+          className="tradingview-frame"
+          loading="lazy"
+          allowFullScreen
+        />
+      </div>
+    </>
+  );
 }
 
 function isWeekendMarketDate(date: Date = new Date()): boolean {
@@ -169,19 +192,6 @@ function getClosedMarketHistoryLimit(period: Period): number {
   if (period === '1h') return 720;
   if (period === '15m') return 1200;
   return 500;
-}
-
-function getClosedMarketChartMessage(period: Period, candleCount: number): string {
-  if (candleCount <= 0) return '休市中，暂无可用历史K线数据';
-  const periodLabel: Record<Period, string> = {
-    '1m': '1分钟',
-    '5m': '5分钟',
-    '15m': '15分钟',
-    '1h': '1小时',
-    '4h': '4小时',
-    '1d': '日线',
-  };
-  return `休市复盘：显示最近 ${candleCount} 根${periodLabel[period]}历史K线`;
 }
 
 function formatRefreshLabel(intervalMs: number | null): string {
@@ -702,7 +712,7 @@ function ClientDecisionBoard({
 
 
 export function Home() {
-  const [period, setPeriod] = useState<Period>(() => (isWeekendMarketDate(new Date()) ? '1d' : '1m'));
+  const [period] = useState<Period>(() => (isWeekendMarketDate(new Date()) ? '1d' : '1m'));
   const [priceData, setPriceData] = useState<PriceData | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -1280,32 +1290,15 @@ export function Home() {
       <main className="main home-main">
         <section className="left" aria-label="实时行情K线图">
           <article className={`market-card chart-panel ${isWeekendMarketClosed && candles.length === 0 ? 'weekend-compact' : ''}`}>
-            {candlesError && !isWeekendMarketClosed ? (
-              <div style={{
-                height: '500px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ef4444',
-                fontSize: '16px'
-              }}>
-                <WarningOutlined style={{ fontSize: '38px', marginBottom: '16px' }} />
-                <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' }}>K线数据获取失败</div>
-                <div style={{ color: '#666' }}>{candlesError}</div>
-                <div style={{ marginTop: '16px', fontSize: '14px', color: '#888' }}>
-                  请检查数据源设置或稍后重试
-                </div>
-              </div>
-            ) : (
-              <Chart
-                candles={candles}
-                signals={signals}
-                period={period}
-                currentPrice={priceData?.price}
-                marketClosed={isWeekendMarketClosed}
-                closedMessage={getClosedMarketChartMessage(period, candles.length)}
-                onPeriodChange={(p) => setPeriod(p as Period)}
+            <TradingViewGoldFrame />
+            {candlesError && !isWeekendMarketClosed && (
+              <Alert
+                className="tradingview-data-note"
+                type="warning"
+                showIcon
+                icon={<WarningOutlined />}
+                message="后端K线数据暂不可用"
+                description={candlesError}
               />
             )}
           </article>

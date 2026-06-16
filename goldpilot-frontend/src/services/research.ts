@@ -316,6 +316,106 @@ export interface StrategyScreenRun {
   createdAt: string;
 }
 
+export interface StrategyRuntimeTrade {
+  strategyId: string;
+  direction: 'long' | 'short';
+  status: 'closed';
+  entryTime: string;
+  exitTime: string;
+  entryPrice: number;
+  exitPrice: number;
+  volume: number;
+  stopLoss: number;
+  takeProfit: number;
+  pnl: number;
+  cost: number;
+  reason: string;
+}
+
+export interface StrategyRuntimeEquityPoint {
+  time: string;
+  balance: number;
+  equity: number;
+  drawdownPct: number;
+  openPosition: boolean;
+}
+
+export interface StrategyRuntimeResult {
+  strategyId: string;
+  name: string;
+  summary: string;
+  tags: string[];
+  direction: string;
+  method: string;
+  kind: string;
+  session: string;
+  horizon: string;
+  style: string;
+  riskScore: number;
+  status: 'running' | 'watching' | 'paused';
+  statusLabel: string;
+  portfolioGroup: 'profit' | 'loss' | 'watching' | 'paused';
+  selectionLabel: 'selected' | 'candidate' | 'watching' | 'downgraded' | 'frozen';
+  riskAction: 'allow' | 'reduce' | 'watch' | 'freeze';
+  riskReason: string;
+  stableForAiTrader: boolean;
+  consecutiveLosses: number;
+  startingCapital: number;
+  allocatedCapital: number;
+  endingEquity: number;
+  pnl: number;
+  pnlPct: number;
+  trades: number;
+  winRate: number;
+  profitFactor: number;
+  maxDrawdown: number;
+  openPosition: boolean;
+  lastSignal?: 'long' | 'short';
+  lastTradeAt?: string;
+  tradeLog: StrategyRuntimeTrade[];
+  equityCurve: StrategyRuntimeEquityPoint[];
+}
+
+export interface StrategyRuntimeRun {
+  _id: string;
+  period: string;
+  requestedLimit: number;
+  candleCount: number;
+  dataSource: string;
+  dataStart?: string;
+  dataEnd?: string;
+  initialBalance: number;
+  summary: {
+    totalEquity: number;
+    totalPnl: number;
+    totalPnlPct: number;
+    totalStartingCapital: number;
+    strategyStartingCapital: number;
+    profitCount: number;
+    lossCount: number;
+    runningCount: number;
+    watchingCount: number;
+    pausedCount: number;
+    selectedCount: number;
+    downgradedCount: number;
+    frozenCount: number;
+    openPositions: number;
+    totalTrades: number;
+    bestStrategyId?: string;
+    worstStrategyId?: string;
+  };
+  strategyResults: StrategyRuntimeResult[];
+  dailySnapshots: Array<{
+    date: string;
+    equity: number;
+    pnl: number;
+    openPositions: number;
+  }>;
+  assumption: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StrategyLabOverview {
   historyCaches: Array<{
     source: 'live' | 'cache' | 'stale_cache' | 'unavailable';
@@ -372,6 +472,7 @@ export interface StrategyLabOverview {
   aiBacktestCount: number;
   strategyScreenCount: number;
   latestScreenRun: StrategyScreenRun | null;
+  latestRuntimeRun?: StrategyRuntimeRun | null;
 }
 
 interface ApiEnvelope<T> {
@@ -480,6 +581,21 @@ export const researchApi = {
   async getStrategyScreenRuns(): Promise<StrategyScreenRun[]> {
     const response = await api.get<ApiEnvelope<{ runs: StrategyScreenRun[] }>>('/api/research/strategy-lab/screens');
     return response.data.runs;
+  },
+
+  async getStrategyRuntimeRun(): Promise<StrategyRuntimeRun | null> {
+    const response = await api.get<ApiEnvelope<{ run: StrategyRuntimeRun | null }>>('/api/research/strategy-lab/runtime');
+    return response.data.run;
+  },
+
+  async runStrategyRuntime(config: { period?: string; limit?: number; initialBalance?: number } = {}): Promise<StrategyRuntimeRun> {
+    const response = await api.post<ApiEnvelope<{ run: StrategyRuntimeRun }>>('/api/research/strategy-lab/runtime/run', config);
+    return response.data.run;
+  },
+
+  async resetStrategyRuntime(): Promise<StrategyRuntimeRun> {
+    const response = await api.post<ApiEnvelope<{ run: StrategyRuntimeRun }>>('/api/research/strategy-lab/runtime/reset');
+    return response.data.run;
   },
 
   async getStrategyDefinitions(): Promise<StrategyDefinition[]> {

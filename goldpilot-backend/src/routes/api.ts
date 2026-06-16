@@ -49,8 +49,11 @@ import {
 import {
   getStrategyDefinitionsEndpoint,
   getStrategyLabOverview,
+  getStrategyRuntimeRun,
   getStrategyScreenRuns,
   importBaseMaxXau15mHistory,
+  resetStrategyRuntimeRuns,
+  runStrategyRuntime,
   runStrategyScreen,
   suggestStrategySettings,
 } from '../controllers/strategyLab';
@@ -139,6 +142,9 @@ router.post('/research/quant-chain/intervention', optionalAuth, updateQuantInter
 router.get('/research/strategy-lab/overview', optionalAuth, getStrategyLabOverview);
 router.get('/research/strategy-lab/strategies', optionalAuth, getStrategyDefinitionsEndpoint);
 router.post('/research/strategy-lab/history/import-basemax-xau15m', optionalAuth, importBaseMaxXau15mHistory);
+router.get('/research/strategy-lab/runtime', optionalAuth, getStrategyRuntimeRun);
+router.post('/research/strategy-lab/runtime/run', optionalAuth, runStrategyRuntime);
+router.post('/research/strategy-lab/runtime/reset', optionalAuth, resetStrategyRuntimeRuns);
 router.post('/research/strategy-lab/screen', optionalAuth, runStrategyScreen);
 router.post('/research/strategy-lab/suggest-settings', optionalAuth, suggestStrategySettings);
 router.get('/research/strategy-lab/screens', optionalAuth, getStrategyScreenRuns);

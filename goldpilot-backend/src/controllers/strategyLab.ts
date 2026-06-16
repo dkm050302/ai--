@@ -4,6 +4,7 @@ import {
   AnalysisReportModel,
   BacktestRunModel,
   PaperAccountModel,
+  StrategyRuntimeRunModel,
   StrategyScreenRunModel,
   UserModel,
 } from '../models';
@@ -15,11 +16,13 @@ import {
   type StrategyOverride,
   type PublicStrategyDefinition,
 } from '../services/strategyScreening';
+import { runGoldStrategyRuntime } from '../services/goldStrategyRuntime';
 import { getUserApiKey } from './ai';
 import { DEEPSEEK_MODEL, getDeepSeekChatCompletionsUrl } from '../config';
 import { logger } from '../utils/logger';
 
 const LLM_SUGGESTION_TIMEOUT_MS = 20_000;
+const STRATEGY_RUNTIME_STALE_MS = 60 * 60 * 1000;
 
 function getUserAccountId(req: Request): string | null {
   return req.user?.accountId || null;
@@ -261,6 +264,53 @@ function summarizeTrades(accounts: any[]) {
   };
 }
 
+async function createStrategyRuntimeRun(
+  userAccountId: string,
+  options: { period?: string; limit?: number; initialBalance?: number } = {}
+) {
+  const period = options.period || '15m';
+  const limit = Number(options.limit || 3000);
+  const initialBalance = Number(options.initialBalance || 1_000_000);
+  const history = await goldHistoryService.getLongHistory(period, limit);
+
+  if (history.candles.length < 260) {
+    throw new Error('黄金历史K线不足，无法运行40策略模拟盘');
+  }
+
+  const output = runGoldStrategyRuntime(history.candles, history.meta, initialBalance);
+  return StrategyRuntimeRunModel.create({
+    userAccountId,
+    period: history.meta.period,
+    requestedLimit: history.meta.requestedLimit,
+    candleCount: history.meta.candleCount,
+    dataSource: history.meta.source,
+    dataStart: history.meta.startTime ? new Date(history.meta.startTime) : undefined,
+    dataEnd: history.meta.endTime ? new Date(history.meta.endTime) : undefined,
+    initialBalance,
+    summary: output.summary,
+    strategyResults: output.strategyResults,
+    dailySnapshots: output.dailySnapshots,
+    assumption: output.assumption,
+  });
+}
+
+async function getLatestStrategyRuntimeRun(userAccountId: string, autoCreate = true) {
+  const latest = await StrategyRuntimeRunModel.findOne({ userAccountId }).sort({ createdAt: -1 }).lean();
+  if (!autoCreate) return latest;
+
+  const latestTime = latest?.createdAt ? new Date(latest.createdAt).getTime() : 0;
+  const stale = !latestTime || Date.now() - latestTime > STRATEGY_RUNTIME_STALE_MS;
+  if (!stale) return latest;
+
+  try {
+    const created = await createStrategyRuntimeRun(userAccountId);
+    return created.toObject();
+  } catch (error) {
+    logger.warn('[StrategyLab] 自动生成40策略模拟运行失败，返回最近记录:', error);
+    return latest;
+  }
+}
+
 async function summarizeLiveAccount(userAccountId: string) {
   const [accountSnapshots, user] = await Promise.all([
     AccountModel.find({ accountId: userAccountId }).lean(),
@@ -302,11 +352,12 @@ export async function getStrategyLabOverview(req: Request, res: Response): Promi
       return;
     }
 
-    const [paperAccounts, liveTrading, historyCaches, latestScreenRun, counts] = await Promise.all([
+    const [paperAccounts, liveTrading, historyCaches, latestScreenRun, latestRuntimeRun, counts] = await Promise.all([
       PaperAccountModel.find({ userAccountId }).lean(),
       summarizeLiveAccount(userAccountId),
       goldHistoryService.getCacheSummaries(),
       StrategyScreenRunModel.findOne({ userAccountId }).sort({ createdAt: -1 }).lean(),
+      getLatestStrategyRuntimeRun(userAccountId),
       Promise.all([
         AnalysisReportModel.countDocuments({ userAccountId }),
         BacktestRunModel.countDocuments({ userAccountId }),
@@ -324,6 +375,7 @@ export async function getStrategyLabOverview(req: Request, res: Response): Promi
         aiBacktestCount: counts[1],
         strategyScreenCount: counts[2],
         latestScreenRun,
+        latestRuntimeRun,
       },
     });
   } catch (error) {
@@ -487,6 +539,59 @@ export async function suggestStrategySettings(req: Request, res: Response): Prom
   } catch (error) {
     logger.error('[StrategyLab] 生成策略参数建议失败:', error);
     res.status(500).json({ success: false, message: '生成策略参数建议失败' });
+  }
+}
+
+export async function getStrategyRuntimeRun(req: Request, res: Response): Promise<void> {
+  try {
+    const userAccountId = getUserAccountId(req);
+    if (!userAccountId) {
+      res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    const run = await getLatestStrategyRuntimeRun(userAccountId);
+    res.json({ success: true, data: { run } });
+  } catch (error) {
+    logger.error('[StrategyLab] 获取40策略模拟运行失败:', error);
+    res.status(500).json({ success: false, message: '获取40策略模拟运行失败' });
+  }
+}
+
+export async function runStrategyRuntime(req: Request, res: Response): Promise<void> {
+  try {
+    const userAccountId = getUserAccountId(req);
+    if (!userAccountId) {
+      res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    const period = typeof req.body?.period === 'string' ? req.body.period : '15m';
+    const limit = Number(req.body?.limit || 3000);
+    const initialBalance = Number(req.body?.initialBalance || 1_000_000);
+    const run = await createStrategyRuntimeRun(userAccountId, { period, limit, initialBalance });
+
+    res.json({ success: true, data: { run } });
+  } catch (error) {
+    logger.error('[StrategyLab] 运行40策略模拟盘失败:', error);
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : '运行40策略模拟盘失败' });
+  }
+}
+
+export async function resetStrategyRuntimeRuns(req: Request, res: Response): Promise<void> {
+  try {
+    const userAccountId = getUserAccountId(req);
+    if (!userAccountId) {
+      res.status(401).json({ success: false, message: '未授权' });
+      return;
+    }
+
+    await StrategyRuntimeRunModel.deleteMany({ userAccountId });
+    const run = await createStrategyRuntimeRun(userAccountId);
+    res.json({ success: true, data: { run } });
+  } catch (error) {
+    logger.error('[StrategyLab] 重置40策略模拟盘失败:', error);
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : '重置40策略模拟盘失败' });
   }
 }
 

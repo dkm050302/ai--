@@ -2,21 +2,28 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Card, Button, Form, Input, Modal, message, Descriptions, Tag, Space, Row, Col, Statistic, Select } from 'antd';
 import {
   ApiOutlined,
+  AuditOutlined,
+  BarChartOutlined,
   CheckCircleOutlined,
+  ControlOutlined,
   DeleteOutlined,
   EditOutlined,
+  FundProjectionScreenOutlined,
   KeyOutlined,
   LogoutOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   RobotOutlined,
   SaveOutlined,
+  SafetyCertificateOutlined,
   SearchOutlined,
+  TeamOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
 import { authFetch } from '@/utils/apiConfig';
 import { PageHeader } from '@/components/PageHeader';
-import { GOLD_STRATEGY_LIBRARY, getStrategyCapitalPct, getStrategyDecision } from '@/constants/goldStrategies';
+import { GOLD_STRATEGY_LIBRARY, getStrategyDecision } from '@/constants/goldStrategies';
+import { researchApi, type StrategyRuntimeRun } from '@/services/research';
 
 interface AIConfig {
   provider: string;
@@ -56,6 +63,24 @@ interface TradingRobot {
 }
 
 const ROBOTS_STORAGE_KEY = 'goldpilot:trading-robots:v1';
+const STRATEGY_TRADER_CAPITAL = 1_000_000;
+const TOTAL_TEST_CAPITAL = GOLD_STRATEGY_LIBRARY.length * STRATEGY_TRADER_CAPITAL;
+
+const selectionLabelText: Record<string, string> = {
+  selected: 'AI精选',
+  candidate: '候选',
+  watching: '观察',
+  downgraded: '降权',
+  frozen: '冻结',
+};
+
+const selectionLabelColor: Record<string, string> = {
+  selected: 'success',
+  candidate: 'blue',
+  watching: 'warning',
+  downgraded: 'orange',
+  frozen: 'default',
+};
 
 const ROBOT_TEMPLATES: RobotTemplate[] = [
   {
@@ -107,6 +132,17 @@ function readStoredRobots(): TradingRobot[] {
   }
 }
 
+function formatMoney(value: number): string {
+  return `$${Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function pct(value: number): string {
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
 export function AIAccount() {
   const [loading, setLoading] = useState(false);
   const [configModalVisible, setConfigModalVisible] = useState(false);
@@ -117,6 +153,7 @@ export function AIAccount() {
   const [selectedTemplate, setSelectedTemplate] = useState<RobotTemplate | null>(null);
   const [robotSearch, setRobotSearch] = useState('');
   const [robotStatusFilter, setRobotStatusFilter] = useState<'all' | RobotStatus>('all');
+  const [strategyRuntimeRun, setStrategyRuntimeRun] = useState<StrategyRuntimeRun | null>(null);
   const [form] = Form.useForm();
   const [robotForm] = Form.useForm();
   const usesGlobalAIConfig = aiConfig?.scope === 'global';
@@ -150,6 +187,9 @@ export function AIAccount() {
     const timer = window.setTimeout(() => {
       loadAIConfig();
       setRobots(readStoredRobots());
+      researchApi.getStrategyRuntimeRun()
+        .then(setStrategyRuntimeRun)
+        .catch(() => setStrategyRuntimeRun(null));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadAIConfig]);
@@ -169,29 +209,190 @@ export function AIAccount() {
   }, [robots]);
 
   const aiTraderPlan = useMemo(() => {
+    const runtimeMap = new Map((strategyRuntimeRun?.strategyResults || []).map((runtime) => [runtime.strategyId, runtime]));
     const rows = GOLD_STRATEGY_LIBRARY.map((strategy) => {
-      const allocationPct = getStrategyCapitalPct(strategy);
-      const decision = getStrategyDecision(strategy);
+      const runtime = runtimeMap.get(strategy.id);
+      const fallbackDecision = getStrategyDecision(strategy);
+      const selectionLabel = runtime?.selectionLabel || (fallbackDecision === '暂停' ? 'frozen' : 'watching');
+      const stableForAiTrader = Boolean(runtime?.stableForAiTrader);
+      const decision = stableForAiTrader
+        ? '运行'
+        : selectionLabel === 'frozen'
+          ? '暂停'
+          : '观察';
+      const allocation = runtime?.allocatedCapital || STRATEGY_TRADER_CAPITAL;
+      const equity = runtime?.endingEquity || allocation;
+      const pnl = runtime?.pnl || 0;
+      const pnlPct = runtime?.pnlPct || 0;
+
       return {
         ...strategy,
+        runtime: runtime || null,
         decision,
-        allocationPct,
-        allocation: Number(((1_000_000 * allocationPct) / 100).toFixed(2)),
+        selectionLabel,
+        riskAction: runtime?.riskAction || (selectionLabel === 'frozen' ? 'freeze' : 'watch'),
+        riskReason: runtime?.riskReason || '等待量化策略实验室生成模拟运行结果，暂不进入AI主力池',
+        stableForAiTrader,
+        allocation,
+        equity,
+        pnl,
+        pnlPct,
+        winRate: runtime?.winRate || 0,
+        maxDrawdown: runtime?.maxDrawdown || 0,
+        trades: runtime?.trades || 0,
+        consecutiveLosses: runtime?.consecutiveLosses || 0,
       };
     });
-    const running = rows.filter((row) => row.decision === '运行');
-    const observing = rows.filter((row) => row.decision === '观察');
-    const paused = rows.filter((row) => row.decision === '暂停');
+    const running = rows.filter((row) => row.stableForAiTrader && row.selectionLabel === 'selected');
+    const observing = rows.filter((row) => row.selectionLabel === 'candidate' || row.selectionLabel === 'watching');
+    const downgraded = rows.filter((row) => row.selectionLabel === 'downgraded');
+    const paused = rows.filter((row) => row.selectionLabel === 'frozen');
+    const totalStartingCapital = strategyRuntimeRun?.summary.totalStartingCapital || TOTAL_TEST_CAPITAL;
+    const totalEquity = strategyRuntimeRun?.summary.totalEquity || totalStartingCapital;
+    const totalPnl = strategyRuntimeRun?.summary.totalPnl || 0;
 
     return {
       rows,
       running,
       observing,
+      downgraded,
       paused,
       runningCapital: running.reduce((sum, row) => sum + row.allocation, 0),
       observingCapital: observing.reduce((sum, row) => sum + row.allocation, 0),
+      downgradedCapital: downgraded.reduce((sum, row) => sum + row.allocation, 0),
+      pausedCapital: paused.reduce((sum, row) => sum + row.allocation, 0),
+      totalStartingCapital,
+      totalEquity,
+      totalPnl,
+      totalPnlPct: strategyRuntimeRun?.summary.totalPnlPct || 0,
     };
-  }, []);
+  }, [strategyRuntimeRun]);
+
+  const teamDashboard = useMemo(() => {
+    const selectedCapital = aiTraderPlan.runningCapital;
+    const controlledCapital = aiTraderPlan.observingCapital + aiTraderPlan.downgradedCapital + aiTraderPlan.pausedCapital;
+    const runningPct = aiTraderPlan.totalStartingCapital > 0 ? (selectedCapital / aiTraderPlan.totalStartingCapital) * 100 : 0;
+    const observePct = aiTraderPlan.totalStartingCapital > 0 ? (controlledCapital / aiTraderPlan.totalStartingCapital) * 100 : 0;
+    const highRiskCount = aiTraderPlan.downgraded.length + aiTraderPlan.paused.length;
+    const defensiveCount = aiTraderPlan.rows.filter((row) => row.style === '防守').length;
+    const trendCount = aiTraderPlan.rows.filter((row) => row.method === '趋势跟踪').length;
+    const eventCount = aiTraderPlan.rows.filter((row) => row.kind !== '纯技术').length;
+    const stewardQueue = aiTraderPlan.rows
+      .map((row) => {
+        const score = Math.max(28, Math.min(94,
+          100 - row.riskScore * 0.42
+          + (row.style === '稳健' ? 12 : 0)
+          + (row.style === '防守' ? 15 : 0)
+          + (row.preferredState === '趋势' ? 8 : 0)
+          + (row.stableForAiTrader ? 18 : 0)
+          + Math.min(12, Math.max(-12, row.pnlPct * 3))
+          - row.maxDrawdown * 1.6
+          - row.consecutiveLosses * 5
+          + (row.selectionLabel === 'downgraded' ? -16 : row.selectionLabel === 'frozen' ? -28 : 0)
+        ));
+
+        return {
+          ...row,
+          stewardScore: Number(score.toFixed(1)),
+          stewardLevel: score >= 78 ? 'A档' : score >= 65 ? 'B档' : score >= 50 ? 'C档' : 'D档',
+        };
+      })
+      .sort((a, b) => b.stewardScore - a.stewardScore);
+
+    const roles = [
+      {
+        key: 'strategist',
+        title: 'AI策略师',
+        subtitle: '市场观点',
+        icon: <BarChartOutlined />,
+        status: '震荡偏多',
+        metric: `${trendCount} 个趋势策略可用`,
+        text: '黄金仍以结构整理为主，优先选择稳健趋势、低密度网格和均值回归，重大数据窗口前降低激进策略权重。',
+      },
+      {
+        key: 'trader',
+        title: 'AI交易员',
+        subtitle: '资金执行',
+        icon: <FundProjectionScreenOutlined />,
+        status: aiTraderPlan.running.length > 0 ? '精选运行' : '等待精选',
+        metric: `${pct(runningPct)} 进入主力池`,
+        text: `只启用盈利稳定、回撤低、样本足够的策略：当前 ${aiTraderPlan.running.length} 个进入主力池，${aiTraderPlan.observing.length} 个继续观察。`,
+      },
+      {
+        key: 'risk',
+        title: 'AI风控员',
+        subtitle: '独立审批',
+        icon: <SafetyCertificateOutlined />,
+        status: highRiskCount > 0 ? '降权/冻结' : '全部通过',
+        metric: `${highRiskCount} 个策略受限`,
+        text: '连续亏损、回撤过线或净值转弱会触发降权；连续亏损达到5笔或回撤达到10%时，风控员直接冻结开仓。',
+      },
+      {
+        key: 'steward',
+        title: '机器人管家',
+        subtitle: '策略看管',
+        icon: <ControlOutlined />,
+        status: '队列已编排',
+        metric: `${stewardQueue.length} 个机器人档案`,
+        text: `防守策略 ${defensiveCount} 个保持在线，事件型策略 ${eventCount} 个等待数据窗口，管家负责盯住AI精选、降权和冻结名单。`,
+      },
+    ];
+
+    const riskRules = [
+      { name: '单策略独立本金', value: '100万', state: '通过', detail: '40个策略各自独立核算' },
+      { name: 'AI精选样本门槛', value: '8笔+', state: aiTraderPlan.running.length > 0 ? '通过' : '监控', detail: '样本不足不进主力池' },
+      { name: '降权触发', value: '连亏3笔', state: aiTraderPlan.downgraded.length > 0 ? '监控' : '通过', detail: '降低交易优先级' },
+      { name: '冻结触发', value: '连亏5笔', state: aiTraderPlan.paused.length > 0 ? '监控' : '通过', detail: '停止新开仓' },
+      { name: '回撤警戒线', value: '6%', state: '监控', detail: '超过后风控员降权' },
+      { name: '回撤熔断线', value: '10%', state: '通过', detail: '超过后冻结策略' },
+    ];
+
+    const stewardLogs = [
+      {
+        time: '09:00',
+        actor: 'AI策略师',
+        action: '发布黄金市场晨会',
+        note: '当前结构震荡偏多，趋势策略可运行，事件策略等待确认。',
+      },
+      {
+        time: '09:03',
+        actor: 'AI交易员',
+        action: '完成资金初分配',
+        note: `AI主力资金 ${formatMoney(aiTraderPlan.runningCapital)}，观察资金 ${formatMoney(aiTraderPlan.observingCapital)}。`,
+      },
+      {
+        time: '09:05',
+        actor: 'AI风控员',
+        action: '限制高风险机器人',
+        note: `${aiTraderPlan.downgraded.length} 个策略降权，${aiTraderPlan.paused.length} 个策略冻结，未通过者不允许主力运行。`,
+      },
+      {
+        time: '09:08',
+        actor: '机器人管家',
+        action: '更新机器人队列',
+        note: `优先看管 ${stewardQueue.slice(0, 5).map((item) => item.name).join('、')}。`,
+      },
+    ];
+
+    const liveStages = [
+      { name: '模拟盘', status: '当前阶段', detail: '持续生成模拟交易、权益曲线和每日结算' },
+      { name: '只读实盘', status: '下一阶段', detail: '读取余额、净值、持仓和订单，不下单' },
+      { name: '半自动实盘', status: '规划中', detail: 'AI建议经用户确认后执行' },
+      { name: '自动实盘', status: '封闭测试后', detail: '必须具备硬风控、审计日志和一键停止' },
+    ];
+
+    return {
+      allocatedCapital: selectedCapital,
+      controlledCapital,
+      runningPct,
+      observePct,
+      roles,
+      riskRules,
+      stewardLogs,
+      liveStages,
+      stewardQueue,
+    };
+  }, [aiTraderPlan]);
 
   const filteredRobots = useMemo(() => {
     const keyword = robotSearch.trim().toLowerCase();
@@ -365,9 +566,9 @@ export function AIAccount() {
   return (
     <div className="workspace-page">
       <PageHeader
-        eyebrow="AI Trader"
+        eyebrow="AI Trading Team"
         title="AI交易员"
-        description="AI自主读取黄金策略库，决定哪些策略运行、观察或暂停，并分配100万虚拟资金"
+        description="以策略师、交易员、风控员和机器人管家组成黄金交易团队，先跑模拟盘，后续分阶段接入实盘"
         meta={aiConfig ? <Tag color="success">已连接</Tag> : <Tag color="warning">未配置</Tag>}
         actions={(
           <Space>
@@ -384,56 +585,154 @@ export function AIAccount() {
       <section className="ai-trader-desk">
         <div className="ai-trader-hero">
           <div>
-            <span>GoldPilot Autonomous Allocation</span>
-            <h2>AI交易员正在管理 XAUUSD 策略组合</h2>
-            <p>当前仅针对黄金品种，策略决策来自策略标签、风险等级和适配市场状态。稳健与防守策略优先运行，高波动和重大数据策略进入观察队列。</p>
+            <span>GoldPilot AI Trading Desk</span>
+            <h2>策略师、交易员、风控员正在共同管理 XAUUSD 机器人组合</h2>
+            <p>AI策略师负责判断市场，AI交易员负责资金和执行，AI风控员拥有一票否决权，机器人管家看管 40 个黄金策略机器人。</p>
           </div>
-          <div className="ai-trader-capital">
-            <strong>$1,000,000</strong>
-            <span>虚拟策略资金池</span>
+          <div className="ai-team-capital-panel">
+            <div>
+              <span>总测试资金</span>
+              <strong>{formatMoney(aiTraderPlan.totalStartingCapital)}</strong>
+            </div>
+            <div>
+              <span>AI主力资金</span>
+              <strong>{formatMoney(teamDashboard.allocatedCapital)}</strong>
+            </div>
+            <div>
+              <span>观察/风控资金</span>
+              <strong>{formatMoney(teamDashboard.controlledCapital)}</strong>
+            </div>
+            <Tag color="green">模拟盘阶段</Tag>
           </div>
         </div>
 
         <div className="ai-trader-kpis">
           <div>
-            <span>运行策略</span>
+            <span>AI精选主力</span>
             <strong>{aiTraderPlan.running.length}</strong>
-            <em>${aiTraderPlan.runningCapital.toLocaleString()}</em>
+            <em>{formatMoney(aiTraderPlan.runningCapital)}</em>
           </div>
           <div>
-            <span>观察策略</span>
+            <span>观察队列</span>
             <strong>{aiTraderPlan.observing.length}</strong>
-            <em>${aiTraderPlan.observingCapital.toLocaleString()}</em>
+            <em>{formatMoney(aiTraderPlan.observingCapital)}</em>
           </div>
           <div>
-            <span>暂停策略</span>
-            <strong>{aiTraderPlan.paused.length}</strong>
-            <em>等待风控触发</em>
+            <span>降权 / 冻结</span>
+            <strong>{aiTraderPlan.downgraded.length} / {aiTraderPlan.paused.length}</strong>
+            <em>{formatMoney(aiTraderPlan.downgradedCapital + aiTraderPlan.pausedCapital)}</em>
           </div>
           <div>
-            <span>策略总数</span>
-            <strong>{aiTraderPlan.rows.length}</strong>
-            <em>全部来自黄金策略库</em>
+            <span>测试总权益</span>
+            <strong className={aiTraderPlan.totalPnl >= 0 ? 'green' : 'red'}>
+              {formatMoney(aiTraderPlan.totalEquity)}
+            </strong>
+            <em>{aiTraderPlan.totalPnl >= 0 ? '+' : ''}{formatMoney(aiTraderPlan.totalPnl)} · {aiTraderPlan.totalPnlPct}%</em>
           </div>
         </div>
 
-        <div className="ai-trader-strategy-list">
-          {aiTraderPlan.rows.map((strategy) => (
+        <div className="ai-team-role-grid">
+          {teamDashboard.roles.map((role) => (
+            <article className="ai-team-role-card" key={role.key}>
+              <div className="ai-team-role-icon">{role.icon}</div>
+              <div>
+                <span>{role.subtitle}</span>
+                <strong>{role.title}</strong>
+              </div>
+              <Tag color={role.key === 'risk' ? 'warning' : 'processing'}>{role.status}</Tag>
+              <p>{role.text}</p>
+              <em>{role.metric}</em>
+            </article>
+          ))}
+        </div>
+
+        <div className="ai-team-operations-grid">
+          <article className="ai-team-panel">
+            <div className="ai-team-panel-head">
+              <div>
+                <span>Risk Approval</span>
+                <strong>AI风控员审批规则</strong>
+              </div>
+              <SafetyCertificateOutlined />
+            </div>
+            <div className="ai-risk-rule-grid">
+              {teamDashboard.riskRules.map((rule) => (
+                <div className="ai-risk-rule" key={rule.name}>
+                  <span>{rule.name}</span>
+                  <strong>{rule.value}</strong>
+                  <Tag color={rule.state === '通过' ? 'success' : 'warning'}>{rule.state}</Tag>
+                  <em>{rule.detail}</em>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="ai-team-panel">
+            <div className="ai-team-panel-head">
+              <div>
+                <span>Steward Log</span>
+                <strong>机器人管家动作日志</strong>
+              </div>
+              <AuditOutlined />
+            </div>
+            <div className="ai-steward-log">
+              {teamDashboard.stewardLogs.map((log) => (
+                <div className="ai-steward-log-item" key={`${log.time}-${log.action}`}>
+                  <time>{log.time}</time>
+                  <div>
+                    <strong>{log.actor} · {log.action}</strong>
+                    <span>{log.note}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        </div>
+
+        <div className="ai-live-stage-strip">
+          {teamDashboard.liveStages.map((stage, index) => (
+            <div className={index === 0 ? 'active' : ''} key={stage.name}>
+              <span>{stage.status}</span>
+              <strong>{stage.name}</strong>
+              <em>{stage.detail}</em>
+            </div>
+          ))}
+        </div>
+
+        <div className="ai-team-panel">
+          <div className="ai-team-panel-head">
+            <div>
+              <span>Robot Queue</span>
+              <strong>机器人管家运行队列</strong>
+            </div>
+            <TeamOutlined />
+          </div>
+          <div className="ai-trader-strategy-list">
+          {teamDashboard.stewardQueue.map((strategy) => (
             <article className="ai-trader-strategy-row" key={strategy.id}>
               <div>
                 <strong>{strategy.name}</strong>
                 <span>{strategy.direction} · {strategy.method} · {strategy.session} · {strategy.horizon}</span>
+                <span>{strategy.riskReason}</span>
               </div>
               <div className="ai-trader-row-tags">
-                <Tag color={strategy.decision === '运行' ? 'success' : strategy.decision === '观察' ? 'warning' : 'default'}>
-                  {strategy.decision}
+                <Tag color={selectionLabelColor[strategy.selectionLabel] || 'default'}>
+                  {selectionLabelText[strategy.selectionLabel] || strategy.selectionLabel}
+                </Tag>
+                <Tag color={strategy.stewardLevel === 'A档' ? 'success' : strategy.stewardLevel === 'B档' ? 'blue' : 'default'}>
+                  {strategy.stewardLevel} {strategy.stewardScore}
                 </Tag>
                 <Tag>{strategy.style}</Tag>
-                <Tag color="blue">{strategy.allocationPct}%</Tag>
+                <Tag color={strategy.pnl >= 0 ? 'success' : 'error'}>{strategy.pnl >= 0 ? '+' : ''}{strategy.pnlPct}%</Tag>
+                <Tag color="blue">回撤 {strategy.maxDrawdown}%</Tag>
               </div>
-              <strong className="ai-trader-row-money">${strategy.allocation.toLocaleString()}</strong>
+              <div className="ai-trader-row-money">
+                <strong>{formatMoney(strategy.equity)}</strong>
+                <span>{strategy.trades} 笔 · 胜率 {strategy.winRate}%</span>
+              </div>
             </article>
           ))}
+          </div>
         </div>
       </section>
 

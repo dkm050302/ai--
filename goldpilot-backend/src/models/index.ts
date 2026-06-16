@@ -7,4 +7,5 @@ export * from './PaperAccount';
 export * from './ManualSimAccount';
 export * from './BacktestRun';
 export * from './StrategyScreenRun';
+export * from './StrategyRuntimeRun';
 export * from './UserActionLog';
