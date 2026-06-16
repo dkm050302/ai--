@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Alert, Button, Card, Col, DatePicker, Descriptions, Input, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Col, DatePicker, Descriptions, Input, InputNumber, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ExperimentOutlined, FundProjectionScreenOutlined, LoadingOutlined, ReloadOutlined, RiseOutlined, RobotOutlined, UndoOutlined } from '@ant-design/icons';
-import { researchApi, type AnalysisReport, type BacktestConfig, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type QuantChain, type QuantInterventionMode, type ResearchSummary, type StrategyDefinition, type StrategyLabOverview, type StrategyOverride, type StrategyRuntimeRun, type StrategyScreenRun, type StrategySettingSuggestion } from '@/services/research';
+import { CopyOutlined, ExperimentOutlined, FundProjectionScreenOutlined, LoadingOutlined, ReloadOutlined, RiseOutlined, RobotOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
+import { researchApi, type AnalysisReport, type BacktestConfig, type BacktestProfileResult, type BacktestRun, type PaperAccount, type PaperTrade, type QuantChain, type QuantInterventionMode, type ResearchSummary, type StrategyDefinition, type StrategyLabOverview, type StrategyOverride, type StrategyRuntimeResult, type StrategyRuntimeRun, type StrategyScreenRun, type StrategySettingSuggestion } from '@/services/research';
 import { aiService, type AIAnalysisResult } from '@/services/ai';
 import { dataApi, type EconomicEvent, type MarketFlash } from '@/services/data';
 import { fetchCandles, fetchRealTimePrice } from '@/services/marketData';
 import { detectSignals } from '@/utils/signalCalculator';
 import { EquityCurveChart, type EquityCurveSeries } from '@/components/EquityCurveChart';
 import { PageHeader } from '@/components/PageHeader';
-import { GOLD_STRATEGY_LIBRARY, getStrategyDecision } from '@/constants/goldStrategies';
+import { GOLD_STRATEGY_LIBRARY, getStrategyDecision, type GoldStrategy } from '@/constants/goldStrategies';
+import { prependStoredRobot, type TradingRobot } from '@/services/robotStore';
 
 const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -44,6 +45,20 @@ const BARS_PER_TRADING_DAY: Record<string, number> = {
 type HistoryCacheItem = StrategyLabOverview['historyCaches'][number];
 type ScreenDateRange = [Dayjs, Dayjs] | null;
 type StrategyDisplayGroup = 'profit' | 'loss' | 'watching' | 'paused';
+type StrategySelectionLabel = StrategyRuntimeResult['selectionLabel'];
+type StrategyRuntimeCard = GoldStrategy & {
+  runtime: StrategyRuntimeResult | null;
+  capital: number;
+  equity: number;
+  pnl: number;
+  pnlPct: number;
+  portfolioGroup: StrategyDisplayGroup;
+  selectionLabel: StrategySelectionLabel;
+  riskReason: string;
+  stableForAiTrader: boolean;
+  consecutiveLosses: number;
+  decision: '运行' | '观察' | '暂停';
+};
 
 const strategyGroupMeta: Record<StrategyDisplayGroup, { label: string; hint: string; color: string }> = {
   profit: { label: '盈利策略', hint: '可进入AI交易员候选池', color: 'success' },
@@ -68,6 +83,14 @@ const selectionLabelColor: Record<string, string> = {
   watching: 'warning',
   downgraded: 'orange',
   frozen: 'default',
+};
+
+const customerRobotRiskLabel: Record<string, string> = {
+  防守: '低风险',
+  稳健: '稳健',
+  中风险: '中风险',
+  激进: '高风险',
+  暴利: '高风险',
 };
 
 function formatMoney(value: number): string {
@@ -357,6 +380,7 @@ export function ResearchCenter() {
   const [strategySuggesting, setStrategySuggesting] = useState(false);
   const [strategyRuntimeRun, setStrategyRuntimeRun] = useState<StrategyRuntimeRun | null>(null);
   const [strategyRuntimeRunning, setStrategyRuntimeRunning] = useState(false);
+  const [strategyAnalysisTarget, setStrategyAnalysisTarget] = useState<StrategyRuntimeCard | null>(null);
 
   const applyQuantChain = (chain: QuantChain | null) => {
     setQuantChain(chain);
@@ -578,7 +602,7 @@ export function ResearchCenter() {
     ? `${streamElapsedSeconds}s / ${streamSpeed} 字/秒`
     : `${streamElapsedSeconds}s`;
 
-  const strategyLibraryRows = useMemo(() => {
+  const strategyLibraryRows = useMemo<StrategyRuntimeCard[]>(() => {
     const runtimeMap = new Map((strategyRuntimeRun?.strategyResults || []).map((runtime) => [runtime.strategyId, runtime]));
     return GOLD_STRATEGY_LIBRARY.map((strategy) => {
       const runtime = runtimeMap.get(strategy.id);
@@ -599,7 +623,7 @@ export function ResearchCenter() {
         pnl: runtime?.pnl || 0,
         pnlPct: runtime?.pnlPct || 0,
         portfolioGroup: (runtime?.portfolioGroup || (decision === '暂停' ? 'paused' : 'watching')) as StrategyDisplayGroup,
-        selectionLabel: runtime?.selectionLabel || (decision === '暂停' ? 'frozen' : 'watching'),
+        selectionLabel: (runtime?.selectionLabel || (decision === '暂停' ? 'frozen' : 'watching')) as StrategySelectionLabel,
         riskReason: runtime?.riskReason || '等待后端生成逐笔模拟交易、权益曲线和每日结算记录',
         stableForAiTrader: Boolean(runtime?.stableForAiTrader),
         consecutiveLosses: runtime?.consecutiveLosses || 0,
@@ -882,6 +906,61 @@ export function ResearchCenter() {
     } finally {
       setStrategyRuntimeRunning(false);
     }
+  };
+
+  const buildStrategyLogic = (strategy: StrategyRuntimeCard): string[] => {
+    const methodLogic: Record<string, string> = {
+      趋势跟踪: '顺主趋势方向开仓，避免逆势接刀；趋势不清晰时降低信号优先级。',
+      突破: '等待关键高低点被有效突破后跟随，重点观察突破后的延续能力。',
+      均值回归: '价格偏离短期均线或区间边界后等待修复，适合震荡或低波动环境。',
+      网格: '围绕日内中轴或波动区间分层试探，必须限制单层仓位和总回撤。',
+      马丁: '只允许受限递增加仓，重大数据和高波动窗口必须禁开或降权。',
+      剥头皮: '使用短周期动量或衰竭信号快进快出，对交易成本和滑点敏感。',
+      事件驱动: '只在数据或快讯窗口后等待方向确认，不在事件前盲目追单。',
+      波动率: '利用 ATR、通道或波动扩张判断入场与止盈止损范围。',
+      套利过滤: '用美元、美债或相关过滤条件确认黄金方向，减少单一价格信号误判。',
+    };
+
+    return [
+      methodLogic[strategy.method] || '按策略定义的信号条件执行，先通过风控再进入交易员候选池。',
+      `适配环境：${strategy.preferredState}；交易时段：${strategy.session}；周期：${strategy.horizon}。`,
+      `核心风格：${strategy.style}，风险分 ${strategy.riskScore}，当前风控意见：${strategy.riskReason}`,
+    ];
+  };
+
+  const handleCopyStrategyRobot = (strategy: StrategyRuntimeCard) => {
+    if (strategy.portfolioGroup !== 'profit' || strategy.pnl <= 0) {
+      message.warning('只有盈利策略交易员可以复制成客户机器人');
+      return;
+    }
+
+    const runtime = strategy.runtime;
+    const robot: TradingRobot = {
+      id: `copied-${strategy.id}-${Date.now()}`,
+      name: `${strategy.name}机器人`,
+      strategy: strategy.name,
+      symbol: 'XAUUSD',
+      market: '黄金',
+      risk: customerRobotRiskLabel[strategy.style] || strategy.style,
+      tags: ['策略实验室复制', selectionLabelText[strategy.selectionLabel] || strategy.selectionLabel, strategy.style, strategy.method],
+      status: 'stopped',
+      equity: STRATEGY_TRADER_CAPITAL,
+      pnl: 0,
+      winRate: runtime?.winRate || 0,
+      description: `复制自盈利策略员「${strategy.name}」。模板表现：收益率 ${strategy.pnlPct >= 0 ? '+' : ''}${strategy.pnlPct}%，回撤 ${runtime?.maxDrawdown || 0}%，样本 ${runtime?.trades || 0} 笔。复制后先进入客户机器人列表，启动前继续由AI风控员审核。`,
+      createdAt: new Date().toISOString(),
+      sourceStrategyId: strategy.id,
+      sourceStrategyName: strategy.name,
+      sourceSelectionLabel: strategy.selectionLabel,
+      sourcePnlPct: strategy.pnlPct,
+      sourceMaxDrawdown: runtime?.maxDrawdown || 0,
+      sourceTrades: runtime?.trades || 0,
+      sourceCopiedAt: new Date().toISOString(),
+      operationMode: 'ai_steward',
+    };
+
+    prependStoredRobot(robot);
+    message.success(`${robot.name} 已复制到 AI交易员 · 我的机器人`);
   };
 
   const handleAIAnalyze = async () => {
@@ -1685,6 +1764,24 @@ export function ResearchCenter() {
                           <span>{runtime?.lastTradeAt ? formatDate(runtime.lastTradeAt) : '暂无成交'}</span>
                         </div>
                         <div className="strategy-risk-reason">{strategy.riskReason}</div>
+                        <div className="strategy-card-actions">
+                          <Button
+                            size="small"
+                            icon={<SearchOutlined />}
+                            onClick={() => setStrategyAnalysisTarget(strategy)}
+                          >
+                            分析策略
+                          </Button>
+                          <Button
+                            size="small"
+                            type={strategy.portfolioGroup === 'profit' ? 'primary' : 'default'}
+                            icon={<CopyOutlined />}
+                            disabled={strategy.portfolioGroup !== 'profit' || strategy.pnl <= 0}
+                            onClick={() => handleCopyStrategyRobot(strategy)}
+                          >
+                            复制机器人
+                          </Button>
+                        </div>
                         <div className="strategy-library-tags">
                           {[strategy.direction, strategy.method, strategy.kind, strategy.session, strategy.horizon, strategy.style, ...strategy.tags].map((tag) => (
                             <span key={`${strategy.id}-${tag}`}>{tag}</span>
@@ -1701,6 +1798,149 @@ export function ResearchCenter() {
           ))}
         </div>
       </Card>
+
+      <Modal
+        className="strategy-analysis-modal"
+        open={Boolean(strategyAnalysisTarget)}
+        title={strategyAnalysisTarget ? `${strategyAnalysisTarget.name} · 策略分析` : '策略分析'}
+        width={980}
+        onCancel={() => setStrategyAnalysisTarget(null)}
+        footer={[
+          <Button key="close" onClick={() => setStrategyAnalysisTarget(null)}>
+            关闭
+          </Button>,
+          <Button
+            key="copy"
+            type="primary"
+            icon={<CopyOutlined />}
+            disabled={!strategyAnalysisTarget || strategyAnalysisTarget.portfolioGroup !== 'profit' || strategyAnalysisTarget.pnl <= 0}
+            onClick={() => {
+              if (strategyAnalysisTarget) {
+                handleCopyStrategyRobot(strategyAnalysisTarget);
+              }
+            }}
+          >
+            复制为我的机器人
+          </Button>,
+        ]}
+      >
+        {strategyAnalysisTarget && (
+          <div className="strategy-analysis-body">
+            <div className="strategy-analysis-hero">
+              <div>
+                <span>{strategyAnalysisTarget.direction} · {strategyAnalysisTarget.method} · {strategyAnalysisTarget.session}</span>
+                <h3>{strategyAnalysisTarget.summary}</h3>
+                <p>{strategyAnalysisTarget.riskReason}</p>
+              </div>
+              <Tag color={selectionLabelColor[strategyAnalysisTarget.selectionLabel] || 'default'}>
+                {selectionLabelText[strategyAnalysisTarget.selectionLabel] || strategyAnalysisTarget.selectionLabel}
+              </Tag>
+            </div>
+
+            <div className="strategy-analysis-metrics">
+              <div>
+                <span>模板本金</span>
+                <strong>{formatMoney(strategyAnalysisTarget.capital)}</strong>
+              </div>
+              <div>
+                <span>当前权益</span>
+                <strong>{formatMoney(strategyAnalysisTarget.equity)}</strong>
+              </div>
+              <div>
+                <span>模板盈亏</span>
+                <strong className={strategyAnalysisTarget.pnl >= 0 ? 'green' : 'red'}>
+                  {strategyAnalysisTarget.pnl >= 0 ? '+' : ''}{formatMoney(strategyAnalysisTarget.pnl)}
+                </strong>
+              </div>
+              <div>
+                <span>收益率</span>
+                <strong className={strategyAnalysisTarget.pnlPct >= 0 ? 'green' : 'red'}>
+                  {strategyAnalysisTarget.pnlPct >= 0 ? '+' : ''}{strategyAnalysisTarget.pnlPct}%
+                </strong>
+              </div>
+              <div>
+                <span>胜率 / 回撤</span>
+                <strong>{strategyAnalysisTarget.runtime ? `${strategyAnalysisTarget.runtime.winRate}% / ${strategyAnalysisTarget.runtime.maxDrawdown}%` : '-'}</strong>
+              </div>
+              <div>
+                <span>交易样本</span>
+                <strong>{strategyAnalysisTarget.runtime?.trades || 0} 笔</strong>
+              </div>
+            </div>
+
+            <div className="strategy-analysis-section">
+              <strong>策略逻辑</strong>
+              <div className="strategy-analysis-logic">
+                {buildStrategyLogic(strategyAnalysisTarget).map((item) => (
+                  <p key={item}>{item}</p>
+                ))}
+              </div>
+            </div>
+
+            <Descriptions size="small" column={{ xs: 1, md: 3 }} bordered>
+              <Descriptions.Item label="策略类型">{strategyAnalysisTarget.kind}</Descriptions.Item>
+              <Descriptions.Item label="周期">{strategyAnalysisTarget.horizon}</Descriptions.Item>
+              <Descriptions.Item label="风险风格">{strategyAnalysisTarget.style}</Descriptions.Item>
+              <Descriptions.Item label="适配行情">{strategyAnalysisTarget.preferredState}</Descriptions.Item>
+              <Descriptions.Item label="连续亏损">{strategyAnalysisTarget.consecutiveLosses} 笔</Descriptions.Item>
+              <Descriptions.Item label="盈利因子">{strategyAnalysisTarget.runtime?.profitFactor || '-'}</Descriptions.Item>
+            </Descriptions>
+
+            <div className="strategy-analysis-section">
+              <strong>最近交易</strong>
+              <Table
+                size="small"
+                pagination={false}
+                scroll={{ x: 760 }}
+                dataSource={(strategyAnalysisTarget.runtime?.tradeLog || []).slice(-8).reverse().map((trade, index) => ({
+                  ...trade,
+                  key: `${trade.entryTime}-${index}`,
+                }))}
+                columns={[
+                  {
+                    title: '方向',
+                    dataIndex: 'direction',
+                    width: 70,
+                    render: (value: string) => value === 'long' ? <Tag color="red">多</Tag> : <Tag color="green">空</Tag>,
+                  },
+                  {
+                    title: '入场',
+                    dataIndex: 'entryPrice',
+                    width: 90,
+                    render: (value: number) => Number(value || 0).toFixed(2),
+                  },
+                  {
+                    title: '出场',
+                    dataIndex: 'exitPrice',
+                    width: 90,
+                    render: (value: number) => Number(value || 0).toFixed(2),
+                  },
+                  {
+                    title: '盈亏',
+                    dataIndex: 'pnl',
+                    width: 100,
+                    render: (value: number) => (
+                      <Text type={value >= 0 ? 'success' : 'danger'}>
+                        {value >= 0 ? '+' : ''}{formatMoney(value)}
+                      </Text>
+                    ),
+                  },
+                  {
+                    title: '退出原因',
+                    dataIndex: 'reason',
+                    width: 90,
+                  },
+                  {
+                    title: '时间',
+                    dataIndex: 'exitTime',
+                    render: (value: string) => formatDate(value),
+                  },
+                ]}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Card
         className="workspace-card quant-lab-card"

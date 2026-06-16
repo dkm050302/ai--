@@ -1095,6 +1095,110 @@ body {
   line-height: 1.55;
 }
 
+.strategy-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.strategy-analysis-body {
+  display: grid;
+  gap: 14px;
+}
+
+.strategy-analysis-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.92)),
+    #0f172a;
+  color: #e5eef7;
+}
+
+.strategy-analysis-hero span {
+  color: #f8d26a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.strategy-analysis-hero h3 {
+  margin: 7px 0;
+  color: #ffffff;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.strategy-analysis-hero p {
+  margin: 0;
+  color: #bfd0e0;
+  line-height: 1.6;
+}
+
+.strategy-analysis-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.strategy-analysis-metrics > div {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid #e5edf6;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.strategy-analysis-metrics span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.strategy-analysis-metrics strong {
+  display: block;
+  margin-top: 6px;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.strategy-analysis-metrics .green {
+  color: var(--green);
+}
+
+.strategy-analysis-metrics .red {
+  color: var(--red);
+}
+
+.strategy-analysis-section {
+  display: grid;
+  gap: 9px;
+}
+
+.strategy-analysis-section > strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.strategy-analysis-logic {
+  display: grid;
+  gap: 8px;
+}
+
+.strategy-analysis-logic p {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e5edf6;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #40546b;
+  line-height: 1.6;
+}
+
 .strategy-library-tags,
 .ai-trader-row-tags {
   display: flex;
@@ -1699,6 +1803,23 @@ body {
   min-height: 42px;
   margin: 0;
   line-height: 1.55;
+}
+
+.robot-source-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.robot-source-strip span {
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .robot-card-meta {
@@ -4542,6 +4663,7 @@ body {
   .strategy-library-grid,
   .strategy-group-strip,
   .strategy-runtime-strip,
+  .strategy-analysis-metrics,
   .ai-trader-kpis,
   .strategy-result-grid,
   .strategy-param-grid,
@@ -4555,6 +4677,12 @@ body {
 
   .strategy-group-head {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .strategy-card-actions,
+  .strategy-analysis-hero {
+    grid-template-columns: 1fr;
     flex-direction: column;
   }
 

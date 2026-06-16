@@ -24,6 +24,7 @@ import { authFetch } from '@/utils/apiConfig';
 import { PageHeader } from '@/components/PageHeader';
 import { GOLD_STRATEGY_LIBRARY, getStrategyDecision } from '@/constants/goldStrategies';
 import { researchApi, type StrategyRuntimeRun } from '@/services/research';
+import { readStoredRobots, writeStoredRobots, type RobotStatus, type TradingRobot } from '@/services/robotStore';
 
 interface AIConfig {
   provider: string;
@@ -35,8 +36,6 @@ interface AIConfig {
   scope?: 'global' | 'user';
 }
 
-type RobotStatus = 'running' | 'stopped';
-
 interface RobotTemplate {
   strategy: string;
   title: string;
@@ -46,23 +45,6 @@ interface RobotTemplate {
   featured?: boolean;
 }
 
-interface TradingRobot {
-  id: string;
-  name: string;
-  strategy: string;
-  symbol: string;
-  market: string;
-  risk: string;
-  tags: string[];
-  status: RobotStatus;
-  equity: number;
-  pnl: number;
-  winRate: number;
-  description: string;
-  createdAt: string;
-}
-
-const ROBOTS_STORAGE_KEY = 'goldpilot:trading-robots:v1';
 const STRATEGY_TRADER_CAPITAL = 1_000_000;
 const TOTAL_TEST_CAPITAL = GOLD_STRATEGY_LIBRARY.length * STRATEGY_TRADER_CAPITAL;
 
@@ -120,17 +102,6 @@ const ROBOT_TEMPLATES: RobotTemplate[] = [
     tags: ['低风险', '长期定投'],
   },
 ];
-
-function readStoredRobots(): TradingRobot[] {
-  try {
-    const raw = window.localStorage.getItem(ROBOTS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 function formatMoney(value: number): string {
   return `$${Number(value || 0).toLocaleString('en-US', {
@@ -196,7 +167,7 @@ export function AIAccount() {
 
   const persistRobots = useCallback((nextRobots: TradingRobot[]) => {
     setRobots(nextRobots);
-    window.localStorage.setItem(ROBOTS_STORAGE_KEY, JSON.stringify(nextRobots));
+    writeStoredRobots(nextRobots);
   }, []);
 
   const robotMetrics = useMemo(() => {
@@ -843,10 +814,19 @@ export function AIAccount() {
                   </Tag>
                 </div>
                 <p>{robot.description}</p>
+                {robot.sourceStrategyName && (
+                  <div className="robot-source-strip">
+                    <Tag color="processing">策略实验室复制</Tag>
+                    <span>{robot.sourceStrategyName}</span>
+                  </div>
+                )}
                 <div className="robot-card-meta">
                   <span>{robot.strategy}</span>
                   <span>{robot.risk}</span>
                   <span>胜率 {robot.winRate}%</span>
+                  {typeof robot.sourcePnlPct === 'number' && <span>模板收益 {robot.sourcePnlPct >= 0 ? '+' : ''}{robot.sourcePnlPct}%</span>}
+                  {typeof robot.sourceMaxDrawdown === 'number' && <span>模板回撤 {robot.sourceMaxDrawdown}%</span>}
+                  {typeof robot.sourceTrades === 'number' && <span>样本 {robot.sourceTrades} 笔</span>}
                 </div>
                 <div className="robot-card-stats">
                   <div>
