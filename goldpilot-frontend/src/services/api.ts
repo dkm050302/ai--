@@ -64,8 +64,17 @@ class ApiService {
       },
       (error) => {
         const duration = Date.now() - ((error.config as ExtendedAxiosRequestConfig)?.metadata?.startTime || Date.now());
+        const method = error.config?.method?.toUpperCase() || 'GET';
+        const url = error.config?.url || 'unknown';
+        const status = error.response?.status;
+        const serverMessage = error.response?.data?.message || error.response?.data?.error?.message;
+
+        if (status) {
+          error.message = serverMessage || `接口请求失败：${method} ${url}（${status}）`;
+        }
+
         logger.error(
-          `[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} - ${error.response?.status || 'NETWORK_ERROR'} (${duration}ms)`
+          `[API Error] ${method} ${url} - ${status || 'NETWORK_ERROR'} (${duration}ms)`
         );
 
         // 处理不同的错误状态码

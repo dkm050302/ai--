@@ -401,7 +401,7 @@ export function ResearchCenter() {
       setLoading(true);
       const [summary, reportList, chain, strategyLab, definitions, screenRuns] = await Promise.all([
         researchApi.getSummary(),
-        researchApi.getReports(),
+        researchApi.getReports().catch(() => []),
         researchApi.getQuantChain().catch(() => null),
         researchApi.getStrategyLabOverview().catch(() => null),
         researchApi.getStrategyDefinitions().catch(() => []),

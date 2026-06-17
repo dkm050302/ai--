@@ -60,10 +60,15 @@ export function flushActions(): void {
   const batch = buffer.splice(0, buffer.length);
   const token = localStorage.getItem('token');
   try {
-    navigator.sendBeacon(
-      '/api/actions/log-batch',
-      JSON.stringify({ actions: batch, token }),
-    );
+    fetch('/api/actions/log-batch', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ actions: batch }),
+      keepalive: true,
+    }).catch(() => undefined);
   } catch {
     // 静默失败
   }
